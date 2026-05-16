@@ -3,8 +3,9 @@ import Fastify from 'fastify';
 import { formatUnits } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
-import { arcClient, USDC_ADDRESS } from './lib/arc.js';
+import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
+import { erc8183Abi, JOB_STATUS } from './lib/abis/erc8183.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -94,6 +95,52 @@ app.get('/arc/usdc-balance', async () => {
     decimals,
     raw: rawBalance.toString(),
     formatted: formatUnits(rawBalance, decimals),
+  };
+});
+
+app.get('/arc/escrow/info', async () => {
+  const [jobCount, paymentToken, platformFeeBP, evaluatorFeeBP, platformTreasury] = await Promise.all([
+    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'jobCounter' }),
+    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'paymentToken' }),
+    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'platformFeeBP' }),
+    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'evaluatorFeeBP' }),
+    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'platformTreasury' }),
+  ]);
+
+  return {
+    address: ERC8183_ADDRESS,
+    jobCount: jobCount.toString(),
+    paymentToken,
+    platformFeeBP: platformFeeBP.toString(),
+    evaluatorFeeBP: evaluatorFeeBP.toString(),
+    platformTreasury,
+  };
+});
+
+app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply) => {
+  const jobId = BigInt(request.params.id);
+
+  const job = await arcClient.readContract({
+    address: ERC8183_ADDRESS,
+    abi: erc8183Abi,
+    functionName: 'getJob',
+    args: [jobId],
+  });
+
+  if (job.id === 0n && job.client === '0x0000000000000000000000000000000000000000') {
+    return reply.code(404).send({ error: `Job ${request.params.id} not found` });
+  }
+
+  return {
+    id: job.id.toString(),
+    client: job.client,
+    provider: job.provider,
+    evaluator: job.evaluator,
+    description: job.description,
+    budget: job.budget.toString(),
+    expiredAt: job.expiredAt.toString(),
+    status: JOB_STATUS[job.status] ?? `Unknown(${job.status})`,
+    hook: job.hook,
   };
 });
 
