@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
+import { formatUnits } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
-import { arcClient } from './lib/arc.js';
+import { arcClient, USDC_ADDRESS } from './lib/arc.js';
+import { erc20Abi } from './lib/abis/erc20.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -13,6 +15,7 @@ function requireEnv(key: string): string {
 const CIRCLE_API_KEY = requireEnv('CIRCLE_API_KEY');
 const CIRCLE_ENTITY_SECRET = requireEnv('CIRCLE_ENTITY_SECRET');
 const CIRCLE_OPERATOR_WALLET_ID = requireEnv('CIRCLE_OPERATOR_WALLET_ID');
+const CIRCLE_OPERATOR_ADDRESS = requireEnv('CIRCLE_OPERATOR_ADDRESS') as `0x${string}`;
 
 const circle = initiateDeveloperControlledWalletsClient({
   apiKey: CIRCLE_API_KEY,
@@ -61,6 +64,36 @@ app.get('/arc/health', async () => {
     rpc: 'connected',
     chainId,
     blockNumber: blockNumber.toString(),
+  };
+});
+
+app.get('/arc/usdc-balance', async () => {
+  const [rawBalance, decimals, symbol] = await Promise.all([
+    arcClient.readContract({
+      address: USDC_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [CIRCLE_OPERATOR_ADDRESS],
+    }),
+    arcClient.readContract({
+      address: USDC_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'decimals',
+    }),
+    arcClient.readContract({
+      address: USDC_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'symbol',
+    }),
+  ]);
+
+  return {
+    address: CIRCLE_OPERATOR_ADDRESS,
+    token: USDC_ADDRESS,
+    symbol,
+    decimals,
+    raw: rawBalance.toString(),
+    formatted: formatUnits(rawBalance, decimals),
   };
 });
 
