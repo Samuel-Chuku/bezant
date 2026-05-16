@@ -1,0 +1,72 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# Ideas / planning docs — kept local only
+ideas.md
+ideas/
+*-ideas*.md
+*-plan.md
+**/ideas.md
+**/ideas/
+**/*-ideas*.md
+
+# All READMEs — none tracked until we write a production-ready one at launch
+README.md
+**/README.md
+
+# Recovery files (Circle Entity Secret recovery)
+*recovery*
+*.recovery
+
+# Node
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# TypeScript build output
+dist/
+build/
+*.tsbuildinfo
+**/dist/
+**/build/
+
+# Next.js
+.next/
+out/
+**/.next/
+next-env.d.ts
+
+# Foundry (for Week 2 contracts/)
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/.gas-snapshot
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+.nyc_output/
