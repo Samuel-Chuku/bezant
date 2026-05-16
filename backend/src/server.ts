@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
+import { arcClient } from './lib/arc.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -49,6 +50,18 @@ app.get('/version', async () => {
 app.get('/wallet/balance', async () => {
   const res = await circle.getWalletTokenBalance({ id: CIRCLE_OPERATOR_WALLET_ID });
   return res.data;
+});
+
+app.get('/arc/health', async () => {
+  const [chainId, blockNumber] = await Promise.all([
+    arcClient.getChainId(),
+    arcClient.getBlockNumber(),
+  ]);
+  return {
+    rpc: 'connected',
+    chainId,
+    blockNumber: blockNumber.toString(),
+  };
 });
 
 
