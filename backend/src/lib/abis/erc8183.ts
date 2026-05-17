@@ -63,3 +63,17 @@ export const erc8183Abi = [
 
 // JobStatus enum order from EIP-8183: Open(0), Funded(1), Submitted(2), Completed(3), Rejected(4), Expired(5)
 export const JOB_STATUS = ['Open', 'Funded', 'Submitted', 'Completed', 'Rejected', 'Expired'] as const;
+
+// JobCreated event — parsed from tx receipts to find the actual jobId we created
+export const jobCreatedEvent = {
+  type: 'event',
+  name: 'JobCreated',
+  inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true },
+    { name: 'client', type: 'address', indexed: true },
+    { name: 'provider', type: 'address', indexed: true },
+    { name: 'evaluator', type: 'address' },
+    { name: 'expiredAt', type: 'uint256' },
+    { name: 'hook', type: 'address' },
+  ],
+} as const;
