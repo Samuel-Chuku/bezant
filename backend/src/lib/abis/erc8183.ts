@@ -1,5 +1,5 @@
-// ERC-8183 (Agentic Commerce Protocol) — view functions only.
-// Full interface in EIP-8183. Add write functions when we need them.
+// ERC-8183 (Agentic Commerce Protocol) — view + write functions in use.
+// Full interface in EIP-8183.
 
 export const erc8183Abi = [
   {
@@ -36,6 +36,46 @@ export const erc8183Abi = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'submit',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'jobId', type: 'uint256' },
+      { name: 'deliverable', type: 'bytes32' },
+      { name: 'optParams', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'complete',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'jobId', type: 'uint256' },
+      { name: 'reason', type: 'bytes32' },
+      { name: 'optParams', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'reject',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'jobId', type: 'uint256' },
+      { name: 'reason', type: 'bytes32' },
+      { name: 'optParams', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'claimRefund',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'jobId', type: 'uint256' }],
+    outputs: [],
   },
   {
     type: 'function',

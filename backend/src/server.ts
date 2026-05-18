@@ -24,6 +24,15 @@ const circle = initiateDeveloperControlledWalletsClient({
 });
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
+
+function toBytes32(input: string | undefined, fieldName: string): `0x${string}` {
+  if (input === undefined || input === '') return ZERO_BYTES32;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(input)) {
+    throw new Error(`${fieldName} must be a 0x-prefixed 32-byte hex string (66 chars total)`);
+  }
+  return input as `0x${string}`;
+}
 
 async function waitForCircleTx(id: string, timeoutMs = 90_000) {
   const start = Date.now();
@@ -225,6 +234,123 @@ app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/fund', async (request
     contractAddress: ERC8183_ADDRESS,
     abiFunctionSignature: 'fund(uint256,bytes)',
     abiParameters: [jobId, '0x'],
+    fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+  });
+
+  const tx = await waitForCircleTx(exec.data!.id);
+
+  return {
+    jobId,
+    txId: tx.id,
+    txHash: tx.txHash,
+    state: tx.state,
+  };
+});
+
+app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
+  '/arc/escrow/jobs/:id/submit',
+  async (request, reply) => {
+    const jobId = request.params.id;
+    let deliverable: `0x${string}`;
+    try {
+      deliverable = toBytes32(request.body?.deliverableHash, 'deliverableHash');
+      if (deliverable === ZERO_BYTES32) {
+        return reply.code(400).send({ error: 'deliverableHash is required' });
+      }
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+
+    const exec = await circle.createContractExecutionTransaction({
+      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      contractAddress: ERC8183_ADDRESS,
+      abiFunctionSignature: 'submit(uint256,bytes32,bytes)',
+      abiParameters: [jobId, deliverable, '0x'],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const tx = await waitForCircleTx(exec.data!.id);
+
+    return {
+      jobId,
+      deliverableHash: deliverable,
+      txId: tx.id,
+      txHash: tx.txHash,
+      state: tx.state,
+    };
+  }
+);
+
+app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+  '/arc/escrow/jobs/:id/complete',
+  async (request, reply) => {
+    const jobId = request.params.id;
+    let reason: `0x${string}`;
+    try {
+      reason = toBytes32(request.body?.reasonHash, 'reasonHash');
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+
+    const exec = await circle.createContractExecutionTransaction({
+      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      contractAddress: ERC8183_ADDRESS,
+      abiFunctionSignature: 'complete(uint256,bytes32,bytes)',
+      abiParameters: [jobId, reason, '0x'],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const tx = await waitForCircleTx(exec.data!.id);
+
+    return {
+      jobId,
+      reasonHash: reason,
+      txId: tx.id,
+      txHash: tx.txHash,
+      state: tx.state,
+    };
+  }
+);
+
+app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+  '/arc/escrow/jobs/:id/reject',
+  async (request, reply) => {
+    const jobId = request.params.id;
+    let reason: `0x${string}`;
+    try {
+      reason = toBytes32(request.body?.reasonHash, 'reasonHash');
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+
+    const exec = await circle.createContractExecutionTransaction({
+      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      contractAddress: ERC8183_ADDRESS,
+      abiFunctionSignature: 'reject(uint256,bytes32,bytes)',
+      abiParameters: [jobId, reason, '0x'],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const tx = await waitForCircleTx(exec.data!.id);
+
+    return {
+      jobId,
+      reasonHash: reason,
+      txId: tx.id,
+      txHash: tx.txHash,
+      state: tx.state,
+    };
+  }
+);
+
+app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/refund', async (request) => {
+  const jobId = request.params.id;
+
+  const exec = await circle.createContractExecutionTransaction({
+    walletId: CIRCLE_OPERATOR_WALLET_ID,
+    contractAddress: ERC8183_ADDRESS,
+    abiFunctionSignature: 'claimRefund(uint256)',
+    abiParameters: [jobId],
     fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
   });
 
