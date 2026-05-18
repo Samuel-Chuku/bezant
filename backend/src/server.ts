@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import { formatUnits, parseUnits, parseEventLogs } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
@@ -6,6 +7,7 @@ import pkg from '../package.json' with { type: 'json' };
 import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
 import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
+import { db, rowToUser, type UserRow } from './lib/db.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -17,6 +19,7 @@ const CIRCLE_API_KEY = requireEnv('CIRCLE_API_KEY');
 const CIRCLE_ENTITY_SECRET = requireEnv('CIRCLE_ENTITY_SECRET');
 const CIRCLE_OPERATOR_WALLET_ID = requireEnv('CIRCLE_OPERATOR_WALLET_ID');
 const CIRCLE_OPERATOR_ADDRESS = requireEnv('CIRCLE_OPERATOR_ADDRESS') as `0x${string}`;
+const CIRCLE_WALLET_SET_ID = requireEnv('CIRCLE_WALLET_SET_ID');
 
 const circle = initiateDeveloperControlledWalletsClient({
   apiKey: CIRCLE_API_KEY,
@@ -81,6 +84,67 @@ app.get('/wallet/balance', async () => {
   const res = await circle.getWalletTokenBalance({ id: CIRCLE_OPERATOR_WALLET_ID });
   return res.data;
 });
+
+app.post<{ Body: { handle: string } }>('/users', async (request, reply) => {
+  const handle = request.body?.handle?.trim();
+  if (!handle) return reply.code(400).send({ error: 'handle is required' });
+
+  const existing = db.prepare('SELECT id FROM users WHERE handle = ?').get(handle);
+  if (existing) return reply.code(409).send({ error: `handle '${handle}' already exists` });
+
+  const created = await circle.createWallets({
+    walletSetId: CIRCLE_WALLET_SET_ID,
+    blockchains: ['ARC-TESTNET'],
+    count: 1,
+    accountType: 'EOA',
+  });
+  const wallet = created.data?.wallets?.[0];
+  if (!wallet?.id || !wallet.address) {
+    return reply.code(502).send({ error: 'Circle did not return a usable wallet' });
+  }
+
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address) VALUES (?, ?, ?, ?)`
+  ).run(id, handle, wallet.id, wallet.address);
+
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
+  return reply.code(201).send(rowToUser(row));
+});
+
+app.get('/users', async () => {
+  const rows = db
+    .prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT 200')
+    .all() as UserRow[];
+  return { users: rows.map(rowToUser), count: rows.length };
+});
+
+app.get<{ Params: { id: string } }>('/users/:id', async (request, reply) => {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(request.params.id) as
+    | UserRow
+    | undefined;
+  if (!row) return reply.code(404).send({ error: 'user not found' });
+  return rowToUser(row);
+});
+
+app.get<{ Params: { handle: string } }>('/users/by-handle/:handle', async (request, reply) => {
+  const row = db.prepare('SELECT * FROM users WHERE handle = ?').get(request.params.handle) as
+    | UserRow
+    | undefined;
+  if (!row) return reply.code(404).send({ error: 'user not found' });
+  return rowToUser(row);
+});
+
+app.get<{ Params: { address: string } }>(
+  '/users/by-address/:address',
+  async (request, reply) => {
+    const row = db
+      .prepare('SELECT * FROM users WHERE LOWER(wallet_address) = LOWER(?)')
+      .get(request.params.address) as UserRow | undefined;
+    if (!row) return reply.code(404).send({ error: 'user not found' });
+    return rowToUser(row);
+  }
+);
 
 app.get('/arc/health', async () => {
   const [chainId, blockNumber] = await Promise.all([

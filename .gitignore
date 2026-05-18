@@ -70,3 +70,10 @@ logs/
 # Coverage
 coverage/
 .nyc_output/
+
+# Local SQLite databases
+backend/data/
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
