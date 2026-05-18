@@ -169,12 +169,14 @@ app.post<{
   };
 });
 
-app.post<{ Body: { handle: string } }>('/users', async (request, reply) => {
-  const handle = request.body?.handle?.trim();
-  if (!handle) return reply.code(400).send({ error: 'handle is required' });
+app.post<{ Body: { handle?: string } }>('/users', async (request, reply) => {
+  const rawHandle = request.body?.handle?.trim();
+  const handle = rawHandle && rawHandle.length > 0 ? rawHandle : null;
 
-  const existing = db.prepare('SELECT id FROM users WHERE handle = ?').get(handle);
-  if (existing) return reply.code(409).send({ error: `handle '${handle}' already exists` });
+  if (handle !== null) {
+    const existing = db.prepare('SELECT id FROM users WHERE handle = ?').get(handle);
+    if (existing) return reply.code(409).send({ error: `handle '${handle}' already exists` });
+  }
 
   const created = await circle.createWallets({
     walletSetId: CIRCLE_WALLET_SET_ID,
