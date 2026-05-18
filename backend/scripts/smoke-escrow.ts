@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomBytes } from 'node:crypto';
 
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:3001';
 const OPERATOR = process.env.CIRCLE_OPERATOR_ADDRESS;
@@ -13,6 +14,7 @@ const EVALUATOR = process.env.SMOKE_EVALUATOR ?? OPERATOR;
 const BUDGET = process.env.SMOKE_BUDGET ?? '0.1';
 const EXPIRES_IN = Number(process.env.SMOKE_EXPIRES_IN ?? 3600);
 const DESCRIPTION = process.env.SMOKE_DESCRIPTION ?? `smoke test ${new Date().toISOString()}`;
+const TARGET = (process.env.SMOKE_TARGET ?? 'completed').toLowerCase(); // 'funded' | 'completed'
 
 const GREEN = '\x1b[32m';
 const RED = '\x1b[31m';
@@ -46,7 +48,12 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 
 async function main() {
   step('Config');
-  console.log({ BASE, PROVIDER, EVALUATOR, BUDGET, EXPIRES_IN, DESCRIPTION });
+  console.log({ BASE, PROVIDER, EVALUATOR, BUDGET, EXPIRES_IN, DESCRIPTION, TARGET });
+
+  if (TARGET !== 'funded' && TARGET !== 'completed') {
+    console.error(`${RED}SMOKE_TARGET must be 'funded' or 'completed', got '${TARGET}'${RESET}`);
+    process.exit(1);
+  }
 
   step('0. Server health');
   await req('GET', '/health');
@@ -70,15 +77,36 @@ async function main() {
   step(`4. Fund job ${jobId}`);
   await req('POST', `/arc/escrow/jobs/${jobId}/fund`);
 
-  step('5. Verify final state');
+  if (TARGET === 'funded') {
+    step('5. Verify final state');
+    const job = await req<{ status: string }>('GET', `/arc/escrow/job/${jobId}`);
+
+    console.log();
+    if (job.status === 'Funded') {
+      console.log(`${GREEN}✓ smoke test passed — job ${jobId} is Funded${RESET}`);
+      process.exit(0);
+    } else {
+      console.log(`${RED}✗ expected Funded, got ${job.status}${RESET}`);
+      process.exit(1);
+    }
+  }
+
+  const deliverableHash = `0x${randomBytes(32).toString('hex')}`;
+  step(`5. Submit deliverable (${deliverableHash.slice(0, 10)}…)`);
+  await req('POST', `/arc/escrow/jobs/${jobId}/submit`, { deliverableHash });
+
+  step('6. Complete job (release to provider)');
+  await req('POST', `/arc/escrow/jobs/${jobId}/complete`, {});
+
+  step('7. Verify final state');
   const job = await req<{ status: string }>('GET', `/arc/escrow/job/${jobId}`);
 
   console.log();
-  if (job.status === 'Funded') {
-    console.log(`${GREEN}✓ smoke test passed — job ${jobId} is Funded${RESET}`);
+  if (job.status === 'Completed') {
+    console.log(`${GREEN}✓ smoke test passed — job ${jobId} is Completed${RESET}`);
     process.exit(0);
   } else {
-    console.log(`${RED}✗ expected Funded, got ${job.status}${RESET}`);
+    console.log(`${RED}✗ expected Completed, got ${job.status}${RESET}`);
     process.exit(1);
   }
 }
