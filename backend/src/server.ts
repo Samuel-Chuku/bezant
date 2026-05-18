@@ -116,6 +116,59 @@ app.get('/wallet/balance', async () => {
   return res.data;
 });
 
+app.post<{
+  Body: {
+    fromUserId: string;
+    toUserId?: string;
+    toAddress?: string;
+    amountUsdc: string;
+  };
+}>('/wallet/transfer-usdc', async (request, reply) => {
+  const { fromUserId, toUserId, toAddress, amountUsdc } = request.body;
+  const sender = requireSigner(reply, fromUserId);
+  if (!sender) return;
+
+  let destination: string;
+  if (toUserId) {
+    const recipient = db
+      .prepare('SELECT wallet_address FROM users WHERE id = ?')
+      .get(toUserId) as { wallet_address: string } | undefined;
+    if (!recipient) return reply.code(404).send({ error: `toUserId ${toUserId} not found` });
+    destination = recipient.wallet_address;
+  } else if (toAddress) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(toAddress)) {
+      return reply.code(400).send({ error: 'toAddress must be a 0x-prefixed 20-byte hex address' });
+    }
+    destination = toAddress;
+  } else {
+    return reply.code(400).send({ error: 'one of toUserId or toAddress is required' });
+  }
+
+  if (!amountUsdc || Number(amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amountRaw = parseUnits(amountUsdc, 6);
+
+  const exec = await circle.createContractExecutionTransaction({
+    walletId: sender.circle_wallet_id,
+    contractAddress: USDC_ADDRESS,
+    abiFunctionSignature: 'transfer(address,uint256)',
+    abiParameters: [destination, amountRaw.toString()],
+    fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+  });
+
+  const tx = await waitForCircleTx(exec.data!.id);
+
+  return {
+    from: sender.wallet_address,
+    to: destination,
+    amount: { raw: amountRaw.toString(), usdc: amountUsdc },
+    txId: tx.id,
+    txHash: tx.txHash,
+    state: tx.state,
+  };
+});
+
 app.post<{ Body: { handle: string } }>('/users', async (request, reply) => {
   const handle = request.body?.handle?.trim();
   if (!handle) return reply.code(400).send({ error: 'handle is required' });
