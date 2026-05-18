@@ -58,8 +58,14 @@ async function main() {
   step('0. Server health');
   await req('GET', '/health');
 
+  step('0b. Resolve operator user');
+  const operatorUser = await req<{ id: string }>('GET', `/users/by-address/${OPERATOR}`);
+  const userId = operatorUser.id;
+  console.log(`${GREEN}→ userId=${userId}${RESET}`);
+
   step('1. Create job');
   const created = await req<{ jobId: string }>('POST', '/arc/escrow/jobs', {
+    userId,
     provider: PROVIDER,
     evaluator: EVALUATOR,
     expiredInSeconds: EXPIRES_IN,
@@ -69,13 +75,13 @@ async function main() {
   console.log(`${GREEN}→ jobId=${jobId}${RESET}`);
 
   step(`2. Set budget (${BUDGET} USDC)`);
-  await req('POST', `/arc/escrow/jobs/${jobId}/budget`, { budgetUsdc: BUDGET });
+  await req('POST', `/arc/escrow/jobs/${jobId}/budget`, { userId, budgetUsdc: BUDGET });
 
   step(`3. Approve USDC (${BUDGET}) — idempotent`);
-  await req('POST', '/arc/usdc/approve', { amountUsdc: BUDGET });
+  await req('POST', '/arc/usdc/approve', { userId, amountUsdc: BUDGET });
 
   step(`4. Fund job ${jobId}`);
-  await req('POST', `/arc/escrow/jobs/${jobId}/fund`);
+  await req('POST', `/arc/escrow/jobs/${jobId}/fund`, { userId });
 
   if (TARGET === 'funded') {
     step('5. Verify final state');
@@ -93,10 +99,10 @@ async function main() {
 
   const deliverableHash = `0x${randomBytes(32).toString('hex')}`;
   step(`5. Submit deliverable (${deliverableHash.slice(0, 10)}…)`);
-  await req('POST', `/arc/escrow/jobs/${jobId}/submit`, { deliverableHash });
+  await req('POST', `/arc/escrow/jobs/${jobId}/submit`, { userId, deliverableHash });
 
   step('6. Complete job (release to provider)');
-  await req('POST', `/arc/escrow/jobs/${jobId}/complete`, {});
+  await req('POST', `/arc/escrow/jobs/${jobId}/complete`, { userId });
 
   step('7. Verify final state');
   const job = await req<{ status: string }>('GET', `/arc/escrow/job/${jobId}`);

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import { formatUnits, parseUnits, parseEventLogs } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
@@ -64,6 +64,37 @@ const app = Fastify({
     },
   },
 });
+
+// Ensure the operator wallet has a corresponding user row so the escrow routes
+// can resolve signers uniformly. Idempotent: skipped if the wallet is already
+// registered under any handle.
+const operatorRow = db
+  .prepare('SELECT id, handle FROM users WHERE circle_wallet_id = ?')
+  .get(CIRCLE_OPERATOR_WALLET_ID) as { id: string; handle: string } | undefined;
+if (!operatorRow) {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address) VALUES (?, ?, ?, ?)`
+  ).run(id, 'operator', CIRCLE_OPERATOR_WALLET_ID, CIRCLE_OPERATOR_ADDRESS);
+  app.log.info({ id, handle: 'operator' }, 'seeded operator user');
+}
+
+type SignerRow = { circle_wallet_id: string; wallet_address: string };
+
+function requireSigner(reply: FastifyReply, userId: string | undefined): SignerRow | null {
+  if (!userId || typeof userId !== 'string') {
+    reply.code(400).send({ error: 'userId is required' });
+    return null;
+  }
+  const row = db
+    .prepare('SELECT circle_wallet_id, wallet_address FROM users WHERE id = ?')
+    .get(userId) as SignerRow | undefined;
+  if (!row) {
+    reply.code(404).send({ error: `user ${userId} not found` });
+    return null;
+  }
+  return row;
+}
 
 app.get('/health', async () => {
   return {
@@ -208,13 +239,21 @@ app.get('/arc/escrow/info', async () => {
 });
 
 app.post<{
-  Body: { provider: string; evaluator: string; expiredInSeconds: number; description: string };
+  Body: {
+    userId: string;
+    provider: string;
+    evaluator: string;
+    expiredInSeconds: number;
+    description: string;
+  };
 }>('/arc/escrow/jobs', async (request, reply) => {
-  const { provider, evaluator, expiredInSeconds, description } = request.body;
+  const { userId, provider, evaluator, expiredInSeconds, description } = request.body;
+  const signer = requireSigner(reply, userId);
+  if (!signer) return;
   const expiredAt = Math.floor(Date.now() / 1000) + expiredInSeconds;
 
   const create = await circle.createContractExecutionTransaction({
-    walletId: CIRCLE_OPERATOR_WALLET_ID,
+    walletId: signer.circle_wallet_id,
     contractAddress: ERC8183_ADDRESS,
     abiFunctionSignature: 'createJob(address,address,uint256,string,address)',
     abiParameters: [provider, evaluator, expiredAt.toString(), description, ZERO_ADDRESS],
@@ -240,15 +279,17 @@ app.post<{
   };
 });
 
-app.post<{ Params: { id: string }; Body: { budgetUsdc: string } }>(
+app.post<{ Params: { id: string }; Body: { userId: string; budgetUsdc: string } }>(
   '/arc/escrow/jobs/:id/budget',
-  async (request) => {
-    const { budgetUsdc } = request.body;
+  async (request, reply) => {
+    const { userId, budgetUsdc } = request.body;
+    const signer = requireSigner(reply, userId);
+    if (!signer) return;
     const jobId = request.params.id;
     const amountRaw = parseUnits(budgetUsdc, 6);
 
     const exec = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'setBudget(uint256,uint256,bytes)',
       abiParameters: [jobId, amountRaw.toString(), '0x'],
@@ -267,12 +308,14 @@ app.post<{ Params: { id: string }; Body: { budgetUsdc: string } }>(
   }
 );
 
-app.post<{ Body: { amountUsdc: string } }>('/arc/usdc/approve', async (request) => {
-  const { amountUsdc } = request.body;
+app.post<{ Body: { userId: string; amountUsdc: string } }>('/arc/usdc/approve', async (request, reply) => {
+  const { userId, amountUsdc } = request.body;
+  const signer = requireSigner(reply, userId);
+  if (!signer) return;
   const amountRaw = parseUnits(amountUsdc, 6);
 
   const exec = await circle.createContractExecutionTransaction({
-    walletId: CIRCLE_OPERATOR_WALLET_ID,
+    walletId: signer.circle_wallet_id,
     contractAddress: USDC_ADDRESS,
     abiFunctionSignature: 'approve(address,uint256)',
     abiParameters: [ERC8183_ADDRESS, amountRaw.toString()],
@@ -290,30 +333,39 @@ app.post<{ Body: { amountUsdc: string } }>('/arc/usdc/approve', async (request) 
   };
 });
 
-app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/fund', async (request) => {
-  const jobId = request.params.id;
+app.post<{ Params: { id: string }; Body: { userId: string } }>(
+  '/arc/escrow/jobs/:id/fund',
+  async (request, reply) => {
+    const { userId } = request.body;
+    const signer = requireSigner(reply, userId);
+    if (!signer) return;
+    const jobId = request.params.id;
 
-  const exec = await circle.createContractExecutionTransaction({
-    walletId: CIRCLE_OPERATOR_WALLET_ID,
-    contractAddress: ERC8183_ADDRESS,
-    abiFunctionSignature: 'fund(uint256,bytes)',
-    abiParameters: [jobId, '0x'],
-    fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-  });
+    const exec = await circle.createContractExecutionTransaction({
+      walletId: signer.circle_wallet_id,
+      contractAddress: ERC8183_ADDRESS,
+      abiFunctionSignature: 'fund(uint256,bytes)',
+      abiParameters: [jobId, '0x'],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
 
-  const tx = await waitForCircleTx(exec.data!.id);
+    const tx = await waitForCircleTx(exec.data!.id);
 
-  return {
-    jobId,
-    txId: tx.id,
-    txHash: tx.txHash,
-    state: tx.state,
-  };
-});
+    return {
+      jobId,
+      txId: tx.id,
+      txHash: tx.txHash,
+      state: tx.state,
+    };
+  }
+);
 
-app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
+app.post<{ Params: { id: string }; Body: { userId: string; deliverableHash: string } }>(
   '/arc/escrow/jobs/:id/submit',
   async (request, reply) => {
+    const { userId } = request.body;
+    const signer = requireSigner(reply, userId);
+    if (!signer) return;
     const jobId = request.params.id;
     let deliverable: `0x${string}`;
     try {
@@ -326,7 +378,7 @@ app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
     }
 
     const exec = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'submit(uint256,bytes32,bytes)',
       abiParameters: [jobId, deliverable, '0x'],
@@ -345,9 +397,12 @@ app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
   }
 );
 
-app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+app.post<{ Params: { id: string }; Body: { userId: string; reasonHash?: string } }>(
   '/arc/escrow/jobs/:id/complete',
   async (request, reply) => {
+    const { userId } = request.body;
+    const signer = requireSigner(reply, userId);
+    if (!signer) return;
     const jobId = request.params.id;
     let reason: `0x${string}`;
     try {
@@ -357,7 +412,7 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
     }
 
     const exec = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'complete(uint256,bytes32,bytes)',
       abiParameters: [jobId, reason, '0x'],
@@ -376,9 +431,12 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
   }
 );
 
-app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+app.post<{ Params: { id: string }; Body: { userId: string; reasonHash?: string } }>(
   '/arc/escrow/jobs/:id/reject',
   async (request, reply) => {
+    const { userId } = request.body;
+    const signer = requireSigner(reply, userId);
+    if (!signer) return;
     const jobId = request.params.id;
     let reason: `0x${string}`;
     try {
@@ -388,7 +446,7 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
     }
 
     const exec = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'reject(uint256,bytes32,bytes)',
       abiParameters: [jobId, reason, '0x'],
@@ -407,29 +465,36 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
   }
 );
 
-app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/refund', async (request) => {
-  const jobId = request.params.id;
+app.post<{ Params: { id: string }; Body: { userId: string } }>(
+  '/arc/escrow/jobs/:id/refund',
+  async (request, reply) => {
+    const { userId } = request.body;
+    const signer = requireSigner(reply, userId);
+    if (!signer) return;
+    const jobId = request.params.id;
 
-  const exec = await circle.createContractExecutionTransaction({
-    walletId: CIRCLE_OPERATOR_WALLET_ID,
-    contractAddress: ERC8183_ADDRESS,
-    abiFunctionSignature: 'claimRefund(uint256)',
-    abiParameters: [jobId],
-    fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-  });
+    const exec = await circle.createContractExecutionTransaction({
+      walletId: signer.circle_wallet_id,
+      contractAddress: ERC8183_ADDRESS,
+      abiFunctionSignature: 'claimRefund(uint256)',
+      abiParameters: [jobId],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
 
-  const tx = await waitForCircleTx(exec.data!.id);
+    const tx = await waitForCircleTx(exec.data!.id);
 
-  return {
-    jobId,
-    txId: tx.id,
-    txHash: tx.txHash,
-    state: tx.state,
-  };
-});
+    return {
+      jobId,
+      txId: tx.id,
+      txHash: tx.txHash,
+      state: tx.state,
+    };
+  }
+);
 
 app.post<{
   Body: {
+    userId: string;
     provider: string;
     evaluator: string;
     expiredInSeconds: number;
@@ -437,7 +502,9 @@ app.post<{
     budgetUsdc: string;
   };
 }>('/trades', async (request, reply) => {
-  const { provider, evaluator, expiredInSeconds, description, budgetUsdc } = request.body;
+  const { userId, provider, evaluator, expiredInSeconds, description, budgetUsdc } = request.body;
+  const signer = requireSigner(reply, userId);
+  if (!signer) return;
   const amountRaw = parseUnits(budgetUsdc, 6);
   const expiredAt = Math.floor(Date.now() / 1000) + expiredInSeconds;
 
@@ -445,7 +512,7 @@ app.post<{
 
   try {
     const create = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'createJob(address,address,uint256,string,address)',
       abiParameters: [provider, evaluator, expiredAt.toString(), description, ZERO_ADDRESS],
@@ -465,7 +532,7 @@ app.post<{
     txs.createJob = { jobId, txId: createTx.id, txHash: createTx.txHash, state: createTx.state };
 
     const budgetExec = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'setBudget(uint256,uint256,bytes)',
       abiParameters: [jobId, amountRaw.toString(), '0x'],
@@ -478,7 +545,7 @@ app.post<{
       address: USDC_ADDRESS,
       abi: erc20Abi,
       functionName: 'allowance',
-      args: [CIRCLE_OPERATOR_ADDRESS, ERC8183_ADDRESS],
+      args: [signer.wallet_address as `0x${string}`, ERC8183_ADDRESS],
     });
 
     if (currentAllowance >= amountRaw) {
@@ -489,7 +556,7 @@ app.post<{
       };
     } else {
       const approveExec = await circle.createContractExecutionTransaction({
-        walletId: CIRCLE_OPERATOR_WALLET_ID,
+        walletId: signer.circle_wallet_id,
         contractAddress: USDC_ADDRESS,
         abiFunctionSignature: 'approve(address,uint256)',
         abiParameters: [ERC8183_ADDRESS, amountRaw.toString()],
@@ -500,7 +567,7 @@ app.post<{
     }
 
     const fundExec = await circle.createContractExecutionTransaction({
-      walletId: CIRCLE_OPERATOR_WALLET_ID,
+      walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'fund(uint256,bytes)',
       abiParameters: [jobId, '0x'],
