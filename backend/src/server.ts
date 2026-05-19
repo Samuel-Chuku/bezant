@@ -319,13 +319,19 @@ app.get('/arc/health', async () => {
   };
 });
 
-app.get('/arc/usdc-balance', async () => {
+app.get<{ Querystring: { address?: string } }>('/arc/usdc-balance', async (request, reply) => {
+  const queryAddress = request.query.address?.trim();
+  const target = (queryAddress && queryAddress.length > 0 ? queryAddress : CIRCLE_OPERATOR_ADDRESS) as `0x${string}`;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(target)) {
+    return reply.code(400).send({ error: `invalid address: ${target}` });
+  }
+
   const [rawBalance, decimals, symbol] = await Promise.all([
     arcClient.readContract({
       address: USDC_ADDRESS,
       abi: erc20Abi,
       functionName: 'balanceOf',
-      args: [CIRCLE_OPERATOR_ADDRESS],
+      args: [target],
     }),
     arcClient.readContract({
       address: USDC_ADDRESS,
@@ -340,7 +346,7 @@ app.get('/arc/usdc-balance', async () => {
   ]);
 
   return {
-    address: CIRCLE_OPERATOR_ADDRESS,
+    address: target,
     token: USDC_ADDRESS,
     symbol,
     decimals,
@@ -617,112 +623,6 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     };
   }
 );
-
-app.post<{
-  Body: {
-    userId?: string;
-    handle?: string;
-    provider: string;
-    evaluator: string;
-    expiredInSeconds: number;
-    description: string;
-    budgetUsdc: string;
-  };
-}>('/trades', async (request, reply) => {
-  const { provider, evaluator, expiredInSeconds, description, budgetUsdc } = request.body;
-  const signer = requireSigner(reply, request.body);
-  if (!signer) return;
-  const amountRaw = parseUnits(budgetUsdc, 6);
-  const expiredAt = Math.floor(Date.now() / 1000) + expiredInSeconds;
-
-  const txs: Record<string, unknown> = {};
-
-  try {
-    const create = await circle.createContractExecutionTransaction({
-      walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'createJob(address,address,uint256,string,address)',
-      abiParameters: [provider, evaluator, expiredAt.toString(), description, ZERO_ADDRESS],
-      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-    });
-    const createTx = await waitForCircleTx(create.data!.id);
-    if (!createTx.txHash) throw new Error('createJob confirmed without txHash');
-
-    const receipt = await arcClient.getTransactionReceipt({ hash: createTx.txHash as `0x${string}` });
-    const [createdLog] = parseEventLogs({
-      abi: [jobCreatedEvent],
-      eventName: 'JobCreated',
-      logs: receipt.logs,
-    });
-    if (!createdLog) throw new Error('JobCreated event missing from receipt');
-    const jobId = createdLog.args.jobId.toString();
-    txs.createJob = { jobId, txId: createTx.id, txHash: createTx.txHash, state: createTx.state };
-
-    const budgetExec = await circle.createContractExecutionTransaction({
-      walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'setBudget(uint256,uint256,bytes)',
-      abiParameters: [jobId, amountRaw.toString(), '0x'],
-      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-    });
-    const budgetTx = await waitForCircleTx(budgetExec.data!.id);
-    txs.setBudget = { txId: budgetTx.id, txHash: budgetTx.txHash, state: budgetTx.state };
-
-    const currentAllowance = await arcClient.readContract({
-      address: USDC_ADDRESS,
-      abi: erc20Abi,
-      functionName: 'allowance',
-      args: [signer.wallet_address as `0x${string}`, ERC8183_ADDRESS],
-    });
-
-    if (currentAllowance >= amountRaw) {
-      txs.approve = {
-        skipped: true,
-        reason: 'sufficient allowance',
-        currentAllowance: { raw: currentAllowance.toString(), usdc: formatUnits(currentAllowance, 6) },
-      };
-    } else {
-      const approveExec = await circle.createContractExecutionTransaction({
-        walletId: signer.circle_wallet_id,
-        contractAddress: USDC_ADDRESS,
-        abiFunctionSignature: 'approve(address,uint256)',
-        abiParameters: [ERC8183_ADDRESS, amountRaw.toString()],
-        fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-      });
-      const approveTx = await waitForCircleTx(approveExec.data!.id);
-      txs.approve = { txId: approveTx.id, txHash: approveTx.txHash, state: approveTx.state };
-    }
-
-    const fundExec = await circle.createContractExecutionTransaction({
-      walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'fund(uint256,bytes)',
-      abiParameters: [jobId, '0x'],
-      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
-    });
-    const fundTx = await waitForCircleTx(fundExec.data!.id);
-    txs.fund = { txId: fundTx.id, txHash: fundTx.txHash, state: fundTx.state };
-
-    const job = await arcClient.readContract({
-      address: ERC8183_ADDRESS,
-      abi: erc8183Abi,
-      functionName: 'getJob',
-      args: [BigInt(jobId)],
-    });
-
-    return {
-      jobId,
-      budget: { raw: amountRaw.toString(), usdc: budgetUsdc },
-      status: JOB_STATUS[job.status] ?? `Unknown(${job.status})`,
-      txs,
-    };
-  } catch (err) {
-    return reply.code(500).send({
-      error: err instanceof Error ? err.message : String(err),
-      completed: txs,
-    });
-  }
-});
 
 app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply) => {
   const jobId = BigInt(request.params.id);
