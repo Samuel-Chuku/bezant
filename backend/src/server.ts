@@ -80,20 +80,36 @@ if (!operatorRow) {
 }
 
 type SignerRow = { circle_wallet_id: string; wallet_address: string };
+type SignerLookup = { userId?: string; handle?: string };
 
-function requireSigner(reply: FastifyReply, userId: string | undefined): SignerRow | null {
-  if (!userId || typeof userId !== 'string') {
-    reply.code(400).send({ error: 'userId is required' });
-    return null;
+function requireSigner(reply: FastifyReply, lookup: SignerLookup | undefined): SignerRow | null {
+  const userId = lookup?.userId;
+  const handle = lookup?.handle;
+
+  if (userId && typeof userId === 'string') {
+    const row = db
+      .prepare('SELECT circle_wallet_id, wallet_address FROM users WHERE id = ?')
+      .get(userId) as SignerRow | undefined;
+    if (!row) {
+      reply.code(404).send({ error: `user ${userId} not found` });
+      return null;
+    }
+    return row;
   }
-  const row = db
-    .prepare('SELECT circle_wallet_id, wallet_address FROM users WHERE id = ?')
-    .get(userId) as SignerRow | undefined;
-  if (!row) {
-    reply.code(404).send({ error: `user ${userId} not found` });
-    return null;
+
+  if (handle && typeof handle === 'string') {
+    const row = db
+      .prepare('SELECT circle_wallet_id, wallet_address FROM users WHERE handle = ?')
+      .get(handle) as SignerRow | undefined;
+    if (!row) {
+      reply.code(404).send({ error: `user with handle '${handle}' not found` });
+      return null;
+    }
+    return row;
   }
-  return row;
+
+  reply.code(400).send({ error: 'userId or handle is required' });
+  return null;
 }
 
 app.get('/health', async () => {
@@ -118,14 +134,16 @@ app.get('/wallet/balance', async () => {
 
 app.post<{
   Body: {
-    fromUserId: string;
+    fromUserId?: string;
+    fromHandle?: string;
     toUserId?: string;
+    toHandle?: string;
     toAddress?: string;
     amountUsdc: string;
   };
 }>('/wallet/transfer-usdc', async (request, reply) => {
-  const { fromUserId, toUserId, toAddress, amountUsdc } = request.body;
-  const sender = requireSigner(reply, fromUserId);
+  const { fromUserId, fromHandle, toUserId, toHandle, toAddress, amountUsdc } = request.body;
+  const sender = requireSigner(reply, { userId: fromUserId, handle: fromHandle });
   if (!sender) return;
 
   let destination: string;
@@ -135,13 +153,19 @@ app.post<{
       .get(toUserId) as { wallet_address: string } | undefined;
     if (!recipient) return reply.code(404).send({ error: `toUserId ${toUserId} not found` });
     destination = recipient.wallet_address;
+  } else if (toHandle) {
+    const recipient = db
+      .prepare('SELECT wallet_address FROM users WHERE handle = ?')
+      .get(toHandle) as { wallet_address: string } | undefined;
+    if (!recipient) return reply.code(404).send({ error: `user with handle '${toHandle}' not found` });
+    destination = recipient.wallet_address;
   } else if (toAddress) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(toAddress)) {
       return reply.code(400).send({ error: 'toAddress must be a 0x-prefixed 20-byte hex address' });
     }
     destination = toAddress;
   } else {
-    return reply.code(400).send({ error: 'one of toUserId or toAddress is required' });
+    return reply.code(400).send({ error: 'one of toUserId, toHandle, or toAddress is required' });
   }
 
   if (!amountUsdc || Number(amountUsdc) <= 0) {
@@ -212,6 +236,57 @@ app.get<{ Params: { id: string } }>('/users/:id', async (request, reply) => {
   if (!row) return reply.code(404).send({ error: 'user not found' });
   return rowToUser(row);
 });
+
+// PATCH /users/:id — first-time handle assignment only.
+// Handles are immutable once set: a user with a non-null handle cannot rename
+// it or clear it. This prevents squatting attacks where a third party grabs
+// a recognizable handle the moment its original owner changes it.
+app.patch<{ Params: { id: string }; Body: { handle?: string | null } }>(
+  '/users/:id',
+  async (request, reply) => {
+    const id = request.params.id;
+    const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+    if (!existing) return reply.code(404).send({ error: 'user not found' });
+
+    const body = request.body ?? {};
+    if (!('handle' in body)) {
+      return rowToUser(existing);
+    }
+
+    if (existing.handle !== null) {
+      return reply.code(409).send({
+        error: 'handle is immutable once set',
+        currentHandle: existing.handle,
+      });
+    }
+
+    const raw = body.handle;
+    let newHandle: string | null;
+    if (raw === null) {
+      newHandle = null;
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      newHandle = trimmed.length > 0 ? trimmed : null;
+    } else {
+      return reply.code(400).send({ error: 'handle must be a string or null' });
+    }
+
+    if (newHandle === null) {
+      return rowToUser(existing);
+    }
+
+    const conflict = db
+      .prepare('SELECT id FROM users WHERE handle = ? AND id != ?')
+      .get(newHandle, id);
+    if (conflict) {
+      return reply.code(409).send({ error: `handle '${newHandle}' already exists` });
+    }
+
+    db.prepare('UPDATE users SET handle = ? WHERE id = ?').run(newHandle, id);
+    const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
+    return rowToUser(updated);
+  }
+);
 
 app.get<{ Params: { handle: string } }>('/users/by-handle/:handle', async (request, reply) => {
   const row = db.prepare('SELECT * FROM users WHERE handle = ?').get(request.params.handle) as
@@ -295,15 +370,16 @@ app.get('/arc/escrow/info', async () => {
 
 app.post<{
   Body: {
-    userId: string;
+    userId?: string;
+    handle?: string;
     provider: string;
     evaluator: string;
     expiredInSeconds: number;
     description: string;
   };
 }>('/arc/escrow/jobs', async (request, reply) => {
-  const { userId, provider, evaluator, expiredInSeconds, description } = request.body;
-  const signer = requireSigner(reply, userId);
+  const { provider, evaluator, expiredInSeconds, description } = request.body;
+  const signer = requireSigner(reply, request.body);
   if (!signer) return;
   const expiredAt = Math.floor(Date.now() / 1000) + expiredInSeconds;
 
@@ -334,11 +410,11 @@ app.post<{
   };
 });
 
-app.post<{ Params: { id: string }; Body: { userId: string; budgetUsdc: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; budgetUsdc: string } }>(
   '/arc/escrow/jobs/:id/budget',
   async (request, reply) => {
-    const { userId, budgetUsdc } = request.body;
-    const signer = requireSigner(reply, userId);
+    const { budgetUsdc } = request.body;
+    const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const jobId = request.params.id;
     const amountRaw = parseUnits(budgetUsdc, 6);
@@ -363,9 +439,9 @@ app.post<{ Params: { id: string }; Body: { userId: string; budgetUsdc: string } 
   }
 );
 
-app.post<{ Body: { userId: string; amountUsdc: string } }>('/arc/usdc/approve', async (request, reply) => {
-  const { userId, amountUsdc } = request.body;
-  const signer = requireSigner(reply, userId);
+app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/arc/usdc/approve', async (request, reply) => {
+  const { amountUsdc } = request.body;
+  const signer = requireSigner(reply, request.body);
   if (!signer) return;
   const amountRaw = parseUnits(amountUsdc, 6);
 
@@ -388,11 +464,10 @@ app.post<{ Body: { userId: string; amountUsdc: string } }>('/arc/usdc/approve', 
   };
 });
 
-app.post<{ Params: { id: string }; Body: { userId: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/escrow/jobs/:id/fund',
   async (request, reply) => {
-    const { userId } = request.body;
-    const signer = requireSigner(reply, userId);
+    const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const jobId = request.params.id;
 
@@ -415,11 +490,10 @@ app.post<{ Params: { id: string }; Body: { userId: string } }>(
   }
 );
 
-app.post<{ Params: { id: string }; Body: { userId: string; deliverableHash: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; deliverableHash: string } }>(
   '/arc/escrow/jobs/:id/submit',
   async (request, reply) => {
-    const { userId } = request.body;
-    const signer = requireSigner(reply, userId);
+    const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const jobId = request.params.id;
     let deliverable: `0x${string}`;
@@ -452,11 +526,10 @@ app.post<{ Params: { id: string }; Body: { userId: string; deliverableHash: stri
   }
 );
 
-app.post<{ Params: { id: string }; Body: { userId: string; reasonHash?: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; reasonHash?: string } }>(
   '/arc/escrow/jobs/:id/complete',
   async (request, reply) => {
-    const { userId } = request.body;
-    const signer = requireSigner(reply, userId);
+    const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const jobId = request.params.id;
     let reason: `0x${string}`;
@@ -486,11 +559,10 @@ app.post<{ Params: { id: string }; Body: { userId: string; reasonHash?: string }
   }
 );
 
-app.post<{ Params: { id: string }; Body: { userId: string; reasonHash?: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; reasonHash?: string } }>(
   '/arc/escrow/jobs/:id/reject',
   async (request, reply) => {
-    const { userId } = request.body;
-    const signer = requireSigner(reply, userId);
+    const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const jobId = request.params.id;
     let reason: `0x${string}`;
@@ -520,11 +592,10 @@ app.post<{ Params: { id: string }; Body: { userId: string; reasonHash?: string }
   }
 );
 
-app.post<{ Params: { id: string }; Body: { userId: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/escrow/jobs/:id/refund',
   async (request, reply) => {
-    const { userId } = request.body;
-    const signer = requireSigner(reply, userId);
+    const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const jobId = request.params.id;
 
@@ -549,7 +620,8 @@ app.post<{ Params: { id: string }; Body: { userId: string } }>(
 
 app.post<{
   Body: {
-    userId: string;
+    userId?: string;
+    handle?: string;
     provider: string;
     evaluator: string;
     expiredInSeconds: number;
@@ -557,8 +629,8 @@ app.post<{
     budgetUsdc: string;
   };
 }>('/trades', async (request, reply) => {
-  const { userId, provider, evaluator, expiredInSeconds, description, budgetUsdc } = request.body;
-  const signer = requireSigner(reply, userId);
+  const { provider, evaluator, expiredInSeconds, description, budgetUsdc } = request.body;
+  const signer = requireSigner(reply, request.body);
   if (!signer) return;
   const amountRaw = parseUnits(budgetUsdc, 6);
   const expiredAt = Math.floor(Date.now() / 1000) + expiredInSeconds;
