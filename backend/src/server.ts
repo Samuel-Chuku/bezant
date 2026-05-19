@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyReply } from 'fastify';
-import { formatUnits, parseUnits, parseEventLogs } from 'viem';
+import { encodeFunctionData, formatUnits, parseUnits, parseEventLogs, type Abi } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
-import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS } from './lib/arc.js';
+import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS, ARC_TESTNET_CHAIN_ID } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
 import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
 import { db, rowToUser, type UserRow } from './lib/db.js';
@@ -35,6 +35,18 @@ function toBytes32(input: string | undefined, fieldName: string): `0x${string}` 
     throw new Error(`${fieldName} must be a 0x-prefixed 32-byte hex string (66 chars total)`);
   }
   return input as `0x${string}`;
+}
+
+type UnsignedTx = {
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value: `0x${string}`;
+  chainId: number;
+};
+
+function buildUnsignedTx(to: `0x${string}`, abi: Abi, functionName: string, args: readonly unknown[]): UnsignedTx {
+  const data = encodeFunctionData({ abi, functionName, args });
+  return { to, data, value: '0x0', chainId: ARC_TESTNET_CHAIN_ID };
 }
 
 async function waitForCircleTx(id: string, timeoutMs = 90_000) {
@@ -623,6 +635,119 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     };
   }
 );
+
+// ────────────────────────────────────────────────────────────────────────────
+// Unsigned tx-data routes — for external wallets (MetaMask via wagmi) that
+// sign client-side. Each route returns { to, data, value, chainId } ready to
+// pass into wagmi's useSendTransaction. The backend does NOT call Circle and
+// does NOT look up any user — the signer is whatever wallet the frontend has
+// connected.
+// ────────────────────────────────────────────────────────────────────────────
+
+app.post<{
+  Body: {
+    provider: string;
+    evaluator: string;
+    expiredInSeconds: number;
+    description: string;
+  };
+}>('/arc/escrow/jobs/unsigned', async (request, reply) => {
+  const { provider, evaluator, expiredInSeconds, description } = request.body;
+  if (!provider || !/^0x[0-9a-fA-F]{40}$/.test(provider)) {
+    return reply.code(400).send({ error: 'provider must be a 0x-prefixed 20-byte hex address' });
+  }
+  if (!evaluator || !/^0x[0-9a-fA-F]{40}$/.test(evaluator)) {
+    return reply.code(400).send({ error: 'evaluator must be a 0x-prefixed 20-byte hex address' });
+  }
+  if (typeof expiredInSeconds !== 'number' || expiredInSeconds <= 300) {
+    return reply.code(400).send({ error: 'expiredInSeconds must be a number > 300 (reference contract floor is 5 minutes)' });
+  }
+  const expiredAt = BigInt(Math.floor(Date.now() / 1000) + expiredInSeconds);
+  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'createJob', [
+    provider as `0x${string}`,
+    evaluator as `0x${string}`,
+    expiredAt,
+    description ?? '',
+    ZERO_ADDRESS as `0x${string}`,
+  ]);
+});
+
+app.post<{ Params: { id: string }; Body: { budgetUsdc: string } }>(
+  '/arc/escrow/jobs/:id/budget/unsigned',
+  async (request, reply) => {
+    const jobId = BigInt(request.params.id);
+    const { budgetUsdc } = request.body;
+    if (!budgetUsdc || Number(budgetUsdc) <= 0) {
+      return reply.code(400).send({ error: 'budgetUsdc must be a positive number string' });
+    }
+    const amountRaw = parseUnits(budgetUsdc, 6);
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'setBudget', [jobId, amountRaw, '0x']);
+  },
+);
+
+app.post<{ Body: { amountUsdc: string } }>('/arc/usdc/approve/unsigned', async (request, reply) => {
+  const { amountUsdc } = request.body;
+  if (!amountUsdc || Number(amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amountRaw = parseUnits(amountUsdc, 6);
+  return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [ERC8183_ADDRESS, amountRaw]);
+});
+
+app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/fund/unsigned', async (request) => {
+  const jobId = BigInt(request.params.id);
+  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'fund', [jobId, '0x']);
+});
+
+app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
+  '/arc/escrow/jobs/:id/submit/unsigned',
+  async (request, reply) => {
+    const jobId = BigInt(request.params.id);
+    let deliverable: `0x${string}`;
+    try {
+      deliverable = toBytes32(request.body.deliverableHash, 'deliverableHash');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    if (deliverable === ZERO_BYTES32) {
+      return reply.code(400).send({ error: 'deliverableHash is required' });
+    }
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'submit', [jobId, deliverable, '0x']);
+  },
+);
+
+app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+  '/arc/escrow/jobs/:id/complete/unsigned',
+  async (request, reply) => {
+    const jobId = BigInt(request.params.id);
+    let reason: `0x${string}`;
+    try {
+      reason = toBytes32(request.body.reasonHash, 'reasonHash');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'complete', [jobId, reason, '0x']);
+  },
+);
+
+app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+  '/arc/escrow/jobs/:id/reject/unsigned',
+  async (request, reply) => {
+    const jobId = BigInt(request.params.id);
+    let reason: `0x${string}`;
+    try {
+      reason = toBytes32(request.body.reasonHash, 'reasonHash');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'reject', [jobId, reason, '0x']);
+  },
+);
+
+app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/refund/unsigned', async (request) => {
+  const jobId = BigInt(request.params.id);
+  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'claimRefund', [jobId]);
+});
 
 app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply) => {
   const jobId = BigInt(request.params.id);
