@@ -9,59 +9,81 @@ import {
 } from '@/lib/api';
 import { useSigner } from './use-signer';
 
+// State machine:
+//   idle:    no signer connected
+//   loading: looking up the address in our backend
+//   ready:   lookup done. user === null means connected but unregistered (no DB row yet)
+//   error:   GET /users/by-address failed (network, CORS, etc.)
 type State =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; user: UserRecord }
+  | { status: 'ready'; user: UserRecord | null }
   | { status: 'error'; message: string };
 
 export function useUserRecord() {
   const signer = useSigner();
   const [state, setState] = useState<State>({ status: 'idle' });
 
-  const ensureRecord = useCallback(
-    async (address: string, signingMode: 'external' | 'circle-modular') => {
-      setState({ status: 'loading' });
-      try {
-        const existing = await getUserByAddress(address);
-        if (existing) {
-          setState({ status: 'ready', user: existing });
-          return;
-        }
-        const created = await registerExternalUser({
-          walletAddress: address,
-          signingMode,
-        });
-        setState({ status: 'ready', user: created });
-      } catch (err) {
-        setState({
-          status: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    },
-    [],
-  );
-
+  // On connect: probe the backend to see if this address already has a row.
+  // We do NOT auto-create. Registration only happens when the user claims a
+  // handle (atomic — same call creates the row).
   useEffect(() => {
     if (!signer.isConnected) {
       setState({ status: 'idle' });
       return;
     }
-    const signingMode = signer.mode === 'circle' ? 'circle-modular' : 'external';
-    void ensureRecord(signer.address.toLowerCase(), signingMode);
-  }, [signer.isConnected, signer.address, signer.mode, ensureRecord]);
+    const address = signer.address.toLowerCase();
+    let cancelled = false;
+    setState({ status: 'loading' });
+    void (async () => {
+      try {
+        const existing = await getUserByAddress(address);
+        if (!cancelled) setState({ status: 'ready', user: existing });
+      } catch (err) {
+        if (!cancelled) {
+          setState({
+            status: 'error',
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signer.isConnected, signer.address]);
 
+  // claimHandle is the single entry point for "I want a handle." It picks the
+  // right backend call based on whether a row already exists:
+  //   - no row yet  → POST /users/register-external creates the row + handle in one shot
+  //   - legacy row with no handle → PATCH /users/:id { handle }
+  // Backend uniqueness is enforced atomically in both cases.
   const claimHandle = useCallback(
     async (handle: string) => {
       if (state.status !== 'ready') {
-        throw new Error('Cannot claim handle before user record is ready');
+        throw new Error('Not ready to claim a handle yet');
       }
-      const updated = await claimHandleApi(state.user.id, handle);
-      setState({ status: 'ready', user: updated });
-      return updated;
+      if (!signer.isConnected) {
+        throw new Error('Not connected');
+      }
+      const signingMode = signer.mode === 'circle' ? 'circle-modular' : 'external';
+      if (state.user === null) {
+        const created = await registerExternalUser({
+          walletAddress: signer.address.toLowerCase(),
+          signingMode,
+          handle,
+        });
+        setState({ status: 'ready', user: created });
+        return created;
+      }
+      if (state.user.handle === null) {
+        const updated = await claimHandleApi(state.user.id, handle);
+        setState({ status: 'ready', user: updated });
+        return updated;
+      }
+      throw new Error('Handle already claimed');
     },
-    [state],
+    [state, signer],
   );
 
   return { state, claimHandle };

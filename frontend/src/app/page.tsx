@@ -20,8 +20,12 @@ export default function Home() {
 
   const user = userState.status === 'ready' ? userState.user : null;
   const displayName = user?.handle ?? (signer.isConnected ? shortAddress(signer.address) : null);
+  // Show the "claim a handle?" prompt when the user is connected and either
+  // (a) has no backend record yet, or (b) has a record but no handle (legacy).
   const shouldShowHandlePrompt =
-    user !== null && user.handle === null && !handlePromptDismissed;
+    userState.status === 'ready' &&
+    (user === null || user.handle === null) &&
+    !handlePromptDismissed;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
@@ -114,11 +118,11 @@ export default function Home() {
           </dl>
 
           {userState.status === 'loading' && (
-            <p className="mt-3 text-xs text-neutral-500">Checking your account…</p>
+            <p className="mt-3 text-xs text-neutral-500">Looking up your account…</p>
           )}
           {userState.status === 'error' && (
             <p className="mt-3 text-xs text-red-400">
-              Couldn&apos;t reach the backend to register your wallet: {userState.message}
+              Couldn&apos;t reach the backend: {userState.message}
             </p>
           )}
         </section>
