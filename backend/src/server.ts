@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyReply } from 'fastify';
+import cors from '@fastify/cors';
 import { encodeFunctionData, formatUnits, parseUnits, parseEventLogs, type Abi } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
@@ -77,6 +78,17 @@ const app = Fastify({
   },
 });
 
+// CORS — let the frontend dev server (and any explicit allow-listed origins)
+// hit the backend. Override with CORS_ORIGINS as a comma-separated list.
+const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.register(cors, {
+  origin: corsOrigins,
+  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+});
+
 // Ensure the operator wallet has a corresponding user row so the escrow routes
 // can resolve signers uniformly. Idempotent: skipped if the wallet is already
 // registered under any handle.
@@ -86,42 +98,58 @@ const operatorRow = db
 if (!operatorRow) {
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address) VALUES (?, ?, ?, ?)`
-  ).run(id, 'operator', CIRCLE_OPERATOR_WALLET_ID, CIRCLE_OPERATOR_ADDRESS);
+    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address, signing_mode) VALUES (?, ?, ?, ?, ?)`
+  ).run(id, 'operator', CIRCLE_OPERATOR_WALLET_ID, CIRCLE_OPERATOR_ADDRESS, 'dev-controlled');
   app.log.info({ id, handle: 'operator' }, 'seeded operator user');
 }
 
-type SignerRow = { circle_wallet_id: string; wallet_address: string };
+type SignerRow = {
+  circle_wallet_id: string | null;
+  wallet_address: string;
+  signing_mode: string;
+};
 type SignerLookup = { userId?: string; handle?: string };
 
-function requireSigner(reply: FastifyReply, lookup: SignerLookup | undefined): SignerRow | null {
+function requireSigner(
+  reply: FastifyReply,
+  lookup: SignerLookup | undefined,
+): { circle_wallet_id: string; wallet_address: string } | null {
   const userId = lookup?.userId;
   const handle = lookup?.handle;
 
+  let row: SignerRow | undefined;
+  let identifier: string;
+
   if (userId && typeof userId === 'string') {
-    const row = db
-      .prepare('SELECT circle_wallet_id, wallet_address FROM users WHERE id = ?')
+    row = db
+      .prepare('SELECT circle_wallet_id, wallet_address, signing_mode FROM users WHERE id = ?')
       .get(userId) as SignerRow | undefined;
-    if (!row) {
-      reply.code(404).send({ error: `user ${userId} not found` });
-      return null;
-    }
-    return row;
-  }
-
-  if (handle && typeof handle === 'string') {
-    const row = db
-      .prepare('SELECT circle_wallet_id, wallet_address FROM users WHERE handle = ?')
+    identifier = `user ${userId}`;
+  } else if (handle && typeof handle === 'string') {
+    row = db
+      .prepare('SELECT circle_wallet_id, wallet_address, signing_mode FROM users WHERE handle = ?')
       .get(handle) as SignerRow | undefined;
-    if (!row) {
-      reply.code(404).send({ error: `user with handle '${handle}' not found` });
-      return null;
-    }
-    return row;
+    identifier = `user with handle '${handle}'`;
+  } else {
+    reply.code(400).send({ error: 'userId or handle is required' });
+    return null;
   }
 
-  reply.code(400).send({ error: 'userId or handle is required' });
-  return null;
+  if (!row) {
+    reply.code(404).send({ error: `${identifier} not found` });
+    return null;
+  }
+
+  // External / Circle-Modular users sign client-side via wagmi or their own bundler.
+  // The backend can't sign on their behalf — they should use the /unsigned routes instead.
+  if (row.signing_mode !== 'dev-controlled' || !row.circle_wallet_id) {
+    reply.code(409).send({
+      error: `${identifier} has signing_mode='${row.signing_mode}' — backend cannot sign for this user. Use the /unsigned variant of this route and have the wallet sign client-side.`,
+    });
+    return null;
+  }
+
+  return { circle_wallet_id: row.circle_wallet_id, wallet_address: row.wallet_address };
 }
 
 app.get('/health', async () => {
@@ -227,8 +255,47 @@ app.post<{ Body: { handle?: string } }>('/users', async (request, reply) => {
 
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address) VALUES (?, ?, ?, ?)`
-  ).run(id, handle, wallet.id, wallet.address);
+    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address, signing_mode) VALUES (?, ?, ?, ?, ?)`
+  ).run(id, handle, wallet.id, wallet.address, 'dev-controlled');
+
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
+  return reply.code(201).send(rowToUser(row));
+});
+
+// Register a wallet the backend does NOT custody — used by the frontend after
+// a user connects MetaMask/Rabby (wagmi) or signs in with Circle Modular passkey.
+// circle_wallet_id stays NULL; the signer must use the /unsigned routes to act.
+app.post<{
+  Body: { walletAddress: string; handle?: string; signingMode?: 'external' | 'circle-modular' };
+}>('/users/register-external', async (request, reply) => {
+  const walletAddress = request.body?.walletAddress?.trim().toLowerCase();
+  if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
+    return reply.code(400).send({ error: 'walletAddress must be a 0x-prefixed 20-byte hex address' });
+  }
+  const signingMode = request.body?.signingMode ?? 'external';
+  if (signingMode !== 'external' && signingMode !== 'circle-modular') {
+    return reply
+      .code(400)
+      .send({ error: "signingMode must be 'external' or 'circle-modular'" });
+  }
+
+  // Address is unique — idempotent: if this address is already registered, return the existing row.
+  const existing = db
+    .prepare('SELECT * FROM users WHERE wallet_address = ?')
+    .get(walletAddress) as UserRow | undefined;
+  if (existing) return reply.code(200).send(rowToUser(existing));
+
+  const rawHandle = request.body?.handle?.trim();
+  const handle = rawHandle && rawHandle.length > 0 ? rawHandle : null;
+  if (handle !== null) {
+    const taken = db.prepare('SELECT id FROM users WHERE handle = ?').get(handle);
+    if (taken) return reply.code(409).send({ error: `handle '${handle}' already exists` });
+  }
+
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address, signing_mode) VALUES (?, ?, NULL, ?, ?)`,
+  ).run(id, handle, walletAddress, signingMode);
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
   return reply.code(201).send(rowToUser(row));

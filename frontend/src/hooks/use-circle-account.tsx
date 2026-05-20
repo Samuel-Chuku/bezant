@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { BundlerClient, SmartAccount } from 'viem/account-abstraction';
 import type { Address } from 'viem';
 import {
@@ -19,7 +20,16 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'connected'; address: Address; smartAccount: SmartAccount; bundlerClient: BundlerClient };
 
-export function useCircleAccount() {
+type CircleAccountContextValue = {
+  state: State;
+  register: (username: string) => Promise<void>;
+  login: () => Promise<void>;
+  disconnect: () => void;
+};
+
+const CircleAccountContext = createContext<CircleAccountContextValue | null>(null);
+
+export function CircleAccountProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ status: 'idle' });
 
   const hydrateFromCredential = useCallback(async (credential: P256Credential) => {
@@ -85,5 +95,18 @@ export function useCircleAccount() {
     setState({ status: 'idle' });
   }, []);
 
-  return { state, register, login, disconnect };
+  const value = useMemo<CircleAccountContextValue>(
+    () => ({ state, register, login, disconnect }),
+    [state, register, login, disconnect],
+  );
+
+  return <CircleAccountContext.Provider value={value}>{children}</CircleAccountContext.Provider>;
+}
+
+export function useCircleAccount(): CircleAccountContextValue {
+  const ctx = useContext(CircleAccountContext);
+  if (!ctx) {
+    throw new Error('useCircleAccount must be used within a CircleAccountProvider');
+  }
+  return ctx;
 }

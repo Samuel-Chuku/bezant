@@ -1,13 +1,27 @@
 'use client';
 
+import { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useBalance } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
+import { useUserRecord } from '@/hooks/use-user-record';
 import { EmailSignIn } from '@/components/email-sign-in';
+import { HandlePrompt } from '@/components/handle-prompt';
+
+function shortAddress(address: string) {
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
 
 export default function Home() {
   const signer = useSigner();
   const { data: balance } = useBalance({ address: signer.address });
+  const { state: userState, claimHandle } = useUserRecord();
+  const [handlePromptDismissed, setHandlePromptDismissed] = useState(false);
+
+  const user = userState.status === 'ready' ? userState.user : null;
+  const displayName = user?.handle ?? (signer.isConnected ? shortAddress(signer.address) : null);
+  const shouldShowHandlePrompt =
+    user !== null && user.handle === null && !handlePromptDismissed;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
@@ -73,12 +87,24 @@ export default function Home() {
           </div>
 
           <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+            {displayName && (
+              <div>
+                <dt className="text-neutral-500">Signed in as</dt>
+                <dd className="text-neutral-100">
+                  {user?.handle ? (
+                    <span className="font-medium">{user.handle}</span>
+                  ) : (
+                    <span className="font-mono text-xs text-neutral-300">{displayName}</span>
+                  )}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-neutral-500">Address</dt>
               <dd className="font-mono text-xs text-neutral-200 break-all">{signer.address}</dd>
             </div>
             {balance && (
-              <div>
+              <div className="sm:col-span-2">
                 <dt className="text-neutral-500">{balance.symbol} balance</dt>
                 <dd className="text-neutral-200">
                   {balance.formatted} {balance.symbol}
@@ -86,7 +112,28 @@ export default function Home() {
               </div>
             )}
           </dl>
+
+          {userState.status === 'loading' && (
+            <p className="mt-3 text-xs text-neutral-500">Checking your account…</p>
+          )}
+          {userState.status === 'error' && (
+            <p className="mt-3 text-xs text-red-400">
+              Couldn&apos;t reach the backend to register your wallet: {userState.message}
+            </p>
+          )}
         </section>
+      )}
+
+      {shouldShowHandlePrompt && (
+        <div className="mt-6">
+          <HandlePrompt
+            onClaim={async (handle) => {
+              await claimHandle(handle);
+              setHandlePromptDismissed(true);
+            }}
+            onSkip={() => setHandlePromptDismissed(true)}
+          />
+        </div>
       )}
 
       <footer className="mt-16 text-xs text-neutral-600">
