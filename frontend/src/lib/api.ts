@@ -143,6 +143,25 @@ export async function getJobState(jobId: string): Promise<JobLiveState> {
   return jsonFetch<JobLiveState>('GET', `/arc/escrow/job/${encodeURIComponent(jobId)}`);
 }
 
+export type JobEvent = {
+  jobId: string;
+  eventType: 'Submitted' | 'Completed' | 'Rejected';
+  hashValue: string;
+  actor: string;
+  blockNumber: number;
+  txHash: string;
+  logIndex: number;
+  indexedAt: string;
+};
+
+export async function getJobEvents(jobId: string): Promise<JobEvent[]> {
+  const res = await jsonFetch<{ jobId: string; events: JobEvent[] }>(
+    'GET',
+    `/arc/escrow/job/${encodeURIComponent(jobId)}/events`,
+  );
+  return res.events;
+}
+
 // ─── Unsigned calldata builders for every lifecycle action ─────────────────
 // Each returns { to, data, value, chainId } ready to pass into
 // useSigner().sendCall(). The signer is whoever's connected; the backend

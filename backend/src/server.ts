@@ -8,7 +8,15 @@ import pkg from '../package.json' with { type: 'json' };
 import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS, ARC_TESTNET_CHAIN_ID } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
 import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
-import { db, rowToUser, rowToJobIndex, type UserRow, type JobIndexRow } from './lib/db.js';
+import {
+  db,
+  rowToUser,
+  rowToJobIndex,
+  rowToJobEvent,
+  type UserRow,
+  type JobIndexRow,
+  type JobEventRow,
+} from './lib/db.js';
 import { startJobIndexer } from './lib/job-indexer.js';
 
 function requireEnv(key: string): string {
@@ -893,6 +901,22 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
     status: JOB_STATUS[job.status] ?? `Unknown(${job.status})`,
     hook: job.hook,
   };
+});
+
+// Lifecycle events for a job (Submitted/Completed/Rejected). Surfaces the
+// on-chain bytes32 deliverable + reason hashes for any viewer; indexed via
+// job-indexer. Empty array is valid (e.g. Open or Funded jobs).
+app.get<{ Params: { id: string } }>('/arc/escrow/job/:id/events', async (request, reply) => {
+  if (!/^\d+$/.test(request.params.id)) {
+    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  }
+  const rows = db
+    .prepare(
+      `SELECT * FROM job_events WHERE job_id = ?
+       ORDER BY block_number ASC, log_index ASC`,
+    )
+    .all(request.params.id) as JobEventRow[];
+  return { jobId: request.params.id, events: rows.map(rowToJobEvent) };
 });
 
 

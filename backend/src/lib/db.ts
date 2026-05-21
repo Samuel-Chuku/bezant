@@ -134,6 +134,22 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  -- Lifecycle events from ERC-8183 (Submitted/Completed/Rejected).
+  -- One row per emitted event; PK is (tx_hash, log_index) so re-indexing
+  -- the same block range is a no-op.
+  CREATE TABLE IF NOT EXISTS job_events (
+    job_id        TEXT NOT NULL,
+    event_type    TEXT NOT NULL,
+    hash_value    TEXT NOT NULL,
+    actor         TEXT NOT NULL,
+    block_number  INTEGER NOT NULL,
+    tx_hash       TEXT NOT NULL,
+    log_index     INTEGER NOT NULL,
+    indexed_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tx_hash, log_index)
+  );
+  CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events(job_id);
 `);
 
 export type JobIndexRow = {
@@ -170,6 +186,43 @@ export function rowToJobIndex(row: JobIndexRow): JobIndex {
     hook: row.hook,
     blockNumber: row.block_number,
     txHash: row.tx_hash,
+    indexedAt: row.indexed_at,
+  };
+}
+
+export type JobEventType = 'Submitted' | 'Completed' | 'Rejected';
+
+export type JobEventRow = {
+  job_id: string;
+  event_type: JobEventType;
+  hash_value: string;
+  actor: string;
+  block_number: number;
+  tx_hash: string;
+  log_index: number;
+  indexed_at: string;
+};
+
+export type JobEvent = {
+  jobId: string;
+  eventType: JobEventType;
+  hashValue: string;
+  actor: string;
+  blockNumber: number;
+  txHash: string;
+  logIndex: number;
+  indexedAt: string;
+};
+
+export function rowToJobEvent(row: JobEventRow): JobEvent {
+  return {
+    jobId: row.job_id,
+    eventType: row.event_type,
+    hashValue: row.hash_value,
+    actor: row.actor,
+    blockNumber: row.block_number,
+    txHash: row.tx_hash,
+    logIndex: row.log_index,
     indexedAt: row.indexed_at,
   };
 }

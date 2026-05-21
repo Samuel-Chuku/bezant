@@ -151,3 +151,35 @@ export const jobCreatedEvent = {
     { name: 'hook', type: 'address' },
   ],
 } as const;
+
+// Lifecycle events carrying the bytes32 commitments — indexer picks these up
+// so the frontend can show the on-chain hash without re-scanning logs.
+export const jobSubmittedEvent = {
+  type: 'event',
+  name: 'JobSubmitted',
+  inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true },
+    { name: 'provider', type: 'address', indexed: true },
+    { name: 'deliverable', type: 'bytes32' },
+  ],
+} as const;
+
+export const jobCompletedEvent = {
+  type: 'event',
+  name: 'JobCompleted',
+  inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true },
+    { name: 'evaluator', type: 'address', indexed: true },
+    { name: 'reason', type: 'bytes32' },
+  ],
+} as const;
+
+export const jobRejectedEvent = {
+  type: 'event',
+  name: 'JobRejected',
+  inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true },
+    { name: 'rejector', type: 'address', indexed: true },
+    { name: 'reason', type: 'bytes32' },
+  ],
+} as const;

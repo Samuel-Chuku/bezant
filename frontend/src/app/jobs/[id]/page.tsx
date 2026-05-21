@@ -13,8 +13,10 @@ import {
   buildRejectUnsigned,
   buildSetBudgetUnsigned,
   buildSubmitUnsigned,
+  getJobEvents,
   getJobState,
   getUserByAddress,
+  type JobEvent,
   type JobLiveState,
   type JobRole,
 } from '@/lib/api';
@@ -163,6 +165,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const signer = useSigner();
   const publicClient = usePublicClient();
   const [job, setJob] = useState<JobLiveState | null>(null);
+  const [events, setEvents] = useState<JobEvent[]>([]);
   const [loadingJob, setLoadingJob] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>({ status: 'idle' });
@@ -178,8 +181,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     setLoadingJob(true);
     setLoadError(null);
     try {
-      const live = await getJobState(jobId);
+      const [live, evts] = await Promise.all([getJobState(jobId), getJobEvents(jobId)]);
       setJob(live);
+      setEvents(evts);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -397,6 +401,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 You are: <span className="text-neutral-200">{roles.join(', ')}</span>
               </p>
             )}
+
+            <OnChainRecord events={events} liveStatus={job.status} handlesByAddress={handlesByAddress} />
           </section>
 
           {!signer.isConnected && (
@@ -688,6 +694,86 @@ function Mono({
         </span>
       )}
     </span>
+  );
+}
+
+function OnChainRecord({
+  events,
+  liveStatus,
+  handlesByAddress,
+}: {
+  events: JobEvent[];
+  liveStatus: string;
+  handlesByAddress: Record<string, string | null>;
+}) {
+  // Jobs at Open/Funded have nothing to show. For Submitted/Completed/Rejected,
+  // if no event row has indexed yet (~10s lag), show a soft hint instead of
+  // hiding the section entirely.
+  const expectsRecord =
+    liveStatus === 'Submitted' || liveStatus === 'Completed' || liveStatus === 'Rejected';
+  if (events.length === 0 && !expectsRecord) return null;
+
+  const labels: Record<JobEvent['eventType'], { title: string; hashLabel: string }> = {
+    Submitted: { title: 'Submitted', hashLabel: 'Deliverable hash' },
+    Completed: { title: 'Completed', hashLabel: 'Reason hash' },
+    Rejected: { title: 'Rejected', hashLabel: 'Reason hash' },
+  };
+
+  return (
+    <div className="mt-5 border-t border-neutral-800 pt-4">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+        On-chain record
+      </h3>
+      {events.length === 0 ? (
+        <p className="mt-2 text-xs text-neutral-500">Indexing the event from chain…</p>
+      ) : (
+        <ul className="mt-2 space-y-3">
+          {events.map((e) => {
+            const handle = handlesByAddress[e.actor.toLowerCase()];
+            const { title, hashLabel } = labels[e.eventType];
+            return (
+              <li
+                key={`${e.txHash}-${e.logIndex}`}
+                className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-neutral-200">{title}</span>
+                  <a
+                    href={`https://testnet.arcscan.app/tx/${e.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-neutral-500 underline hover:text-neutral-300"
+                  >
+                    view tx
+                  </a>
+                </div>
+                <dl className="mt-2 space-y-1">
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-neutral-500">By</dt>
+                    <dd className="font-mono text-neutral-300 break-all">
+                      {e.actor}
+                      {handle && (
+                        <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 font-sans text-neutral-200">
+                          @{handle}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-neutral-500">{hashLabel}</dt>
+                    <dd className="font-mono text-neutral-300 break-all">{e.hashValue}</dd>
+                  </div>
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-neutral-500">Block</dt>
+                    <dd className="font-mono text-neutral-400">{e.blockNumber}</dd>
+                  </div>
+                </dl>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

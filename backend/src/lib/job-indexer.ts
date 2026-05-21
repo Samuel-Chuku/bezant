@@ -1,9 +1,14 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { arcClient, ERC8183_ADDRESS } from './arc.js';
-import { jobCreatedEvent } from './abis/erc8183.js';
+import {
+  jobCreatedEvent,
+  jobSubmittedEvent,
+  jobCompletedEvent,
+  jobRejectedEvent,
+} from './abis/erc8183.js';
 import { db, getIndexerState, setIndexerState } from './db.js';
 
-// How often to poll the chain for new JobCreated events.
+// How often to poll the chain for new events.
 const POLL_INTERVAL_MS = Number(process.env.JOB_INDEXER_POLL_MS ?? 10_000);
 
 // How far back to scan on first run if there's no saved progress.
@@ -16,6 +21,7 @@ const INITIAL_LOOKBACK_BLOCKS = BigInt(process.env.JOB_INDEXER_LOOKBACK ?? 1_000
 const MAX_BLOCKS_PER_QUERY = 5_000n;
 
 const LAST_BLOCK_KEY = 'jobs_index:last_block';
+const EVENTS_LAST_BLOCK_KEY = 'job_events:last_block';
 
 const insertJob = db.prepare(
   `INSERT OR IGNORE INTO jobs_index
@@ -23,11 +29,20 @@ const insertJob = db.prepare(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
-async function pollOnce(log: FastifyBaseLogger): Promise<void> {
-  const head = await arcClient.getBlockNumber();
-  const stored = getIndexerState(LAST_BLOCK_KEY);
-  let from = stored ? BigInt(stored) + 1n : (head > INITIAL_LOOKBACK_BLOCKS ? head - INITIAL_LOOKBACK_BLOCKS : 0n);
+const insertJobEvent = db.prepare(
+  `INSERT OR IGNORE INTO job_events
+   (job_id, event_type, hash_value, actor, block_number, tx_hash, log_index)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+);
 
+function startBlock(stored: string | null, head: bigint): bigint {
+  if (stored) return BigInt(stored) + 1n;
+  return head > INITIAL_LOOKBACK_BLOCKS ? head - INITIAL_LOOKBACK_BLOCKS : 0n;
+}
+
+async function pollJobsOnce(log: FastifyBaseLogger): Promise<void> {
+  const head = await arcClient.getBlockNumber();
+  let from = startBlock(getIndexerState(LAST_BLOCK_KEY), head);
   if (from > head) return;
 
   let inserted = 0;
@@ -61,13 +76,64 @@ async function pollOnce(log: FastifyBaseLogger): Promise<void> {
   if (inserted > 0) log.info({ inserted, head: head.toString() }, 'jobs indexer caught up');
 }
 
+async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
+  const head = await arcClient.getBlockNumber();
+  let from = startBlock(getIndexerState(EVENTS_LAST_BLOCK_KEY), head);
+  if (from > head) return;
+
+  let inserted = 0;
+  while (from <= head) {
+    const to = from + MAX_BLOCKS_PER_QUERY - 1n > head ? head : from + MAX_BLOCKS_PER_QUERY - 1n;
+
+    const [submitted, completed, rejected] = await Promise.all([
+      arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobSubmittedEvent, fromBlock: from, toBlock: to }),
+      arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobCompletedEvent, fromBlock: from, toBlock: to }),
+      arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobRejectedEvent, fromBlock: from, toBlock: to }),
+    ]);
+
+    for (const entry of submitted) {
+      const a = entry.args;
+      if (!a.jobId || !a.provider || !a.deliverable) continue;
+      const r = insertJobEvent.run(
+        a.jobId.toString(), 'Submitted', a.deliverable, a.provider.toLowerCase(),
+        Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
+    for (const entry of completed) {
+      const a = entry.args;
+      if (!a.jobId || !a.evaluator || !a.reason) continue;
+      const r = insertJobEvent.run(
+        a.jobId.toString(), 'Completed', a.reason, a.evaluator.toLowerCase(),
+        Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
+    for (const entry of rejected) {
+      const a = entry.args;
+      if (!a.jobId || !a.rejector || !a.reason) continue;
+      const r = insertJobEvent.run(
+        a.jobId.toString(), 'Rejected', a.reason, a.rejector.toLowerCase(),
+        Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
+
+    setIndexerState(EVENTS_LAST_BLOCK_KEY, to.toString());
+    from = to + 1n;
+  }
+
+  if (inserted > 0) log.info({ inserted, head: head.toString() }, 'job events indexer caught up');
+}
+
 export function startJobIndexer(log: FastifyBaseLogger): void {
   let running = false;
   const tick = async () => {
     if (running) return;
     running = true;
     try {
-      await pollOnce(log);
+      await pollJobsOnce(log);
+      await pollLifecycleOnce(log);
     } catch (err) {
       log.error({ err }, 'jobs indexer poll failed');
     } finally {
