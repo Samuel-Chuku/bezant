@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { keccak256, toBytes, type Hex } from 'viem';
+import { keccak256, stringToBytes, type Hex } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
 import {
@@ -13,9 +13,14 @@ import {
   buildRejectUnsigned,
   buildSetBudgetUnsigned,
   buildSubmitUnsigned,
+  getDeliverable,
   getJobEvents,
   getJobState,
+  getOrCreateReadAuth,
   getUserByAddress,
+  uploadDeliverableContent,
+  type Deliverable,
+  type DeliverableContentType,
   type JobEvent,
   type JobLiveState,
   type JobRole,
@@ -175,7 +180,14 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
   // Form inputs for actions that need them.
   const [budgetInput, setBudgetInput] = useState('');
+  const [deliverableType, setDeliverableType] = useState<DeliverableContentType>('url');
   const [deliverableInput, setDeliverableInput] = useState('');
+  // After a chain-submit succeeds, hold the (hash, content) pair so the user
+  // can retry the off-chain upload without re-pasting if the upload step fails.
+  const [pendingUpload, setPendingUpload] = useState<
+    | { jobId: string; hash: Hex; contentType: DeliverableContentType; content: string }
+    | null
+  >(null);
 
   const fetchJob = useCallback(async () => {
     setLoadingJob(true);
@@ -405,6 +417,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
             <OnChainRecord events={events} liveStatus={job.status} handlesByAddress={handlesByAddress} />
           </section>
 
+          <DeliverableContent
+            jobId={jobId}
+            events={events}
+            isParty={roles.length > 0}
+            signer={signer}
+          />
+
           {!signer.isConnected && (
             <p className="mt-6 rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
               Connect a wallet or sign in to act on this job.{' '}
@@ -528,38 +547,159 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   </ActionCard>
                 )}
 
-                {/* submit — provider only, while Funded */}
+                {/* submit — provider only, while Funded.
+                    Two-phase: commit hash on-chain, then upload content
+                    off-chain (parties-only read). Upload-only retry surface
+                    appears if the off-chain step fails after the chain step
+                    succeeds. */}
                 {roles.includes('provider') && status === 'Funded' && (
                   <ActionCard
                     title="Submit deliverable"
-                    hint="Provide either a 32-byte hex hash, or some text we'll hash with keccak256 client-side for you."
+                    hint="Pick a type, then paste the content. We hash it client-side and commit the hash on-chain; the content goes to our backend, visible only to client / provider / evaluator."
                   >
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={deliverableInput}
-                        onChange={(e) => setDeliverableInput(e.target.value)}
-                        placeholder="0x… or any text to hash"
-                        className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!guardDeadline('Submitting')) return;
-                          const v = deliverableInput.trim();
-                          const hash: Hex = /^0x[0-9a-fA-F]{64}$/.test(v)
-                            ? (v as Hex)
-                            : keccak256(toBytes(v || `arc-trade:${jobId}:${Date.now()}`));
-                          void runAction('Submitting…', () =>
-                            sendUnsigned('Submitting…', () => buildSubmitUnsigned(jobId, hash)),
-                          );
-                        }}
-                        disabled={actionState.status === 'busy'}
-                        className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
-                      >
-                        Submit
-                      </button>
+                    <div className="space-y-3">
+                      <div className="flex gap-2 text-xs">
+                        {(['url', 'text'] as DeliverableContentType[]).map((t) => (
+                          <label
+                            key={t}
+                            className={`cursor-pointer rounded-md border px-3 py-1.5 ${
+                              deliverableType === t
+                                ? 'border-neutral-400 bg-neutral-800 text-neutral-100'
+                                : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="deliverable-type"
+                              value={t}
+                              checked={deliverableType === t}
+                              onChange={() => setDeliverableType(t)}
+                              className="sr-only"
+                            />
+                            {t === 'url' ? 'URL' : 'Text'}
+                          </label>
+                        ))}
+                      </div>
+                      {deliverableType === 'url' ? (
+                        <input
+                          type="url"
+                          value={deliverableInput}
+                          onChange={(e) => setDeliverableInput(e.target.value)}
+                          placeholder="https://…"
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+                        />
+                      ) : (
+                        <textarea
+                          value={deliverableInput}
+                          onChange={(e) => setDeliverableInput(e.target.value)}
+                          placeholder="Paste your deliverable text…"
+                          rows={5}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+                        />
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!guardDeadline('Submitting')) return;
+                            if (!signer.isConnected) return;
+                            const content = deliverableInput.trim();
+                            if (!content) {
+                              setActionState({ status: 'error', message: 'Content is required.' });
+                              return;
+                            }
+                            const hash = keccak256(stringToBytes(content));
+                            void (async () => {
+                              setActionState({ status: 'busy', label: 'Submitting on-chain…' });
+                              try {
+                                const onchain = await sendUnsigned(
+                                  'Submitting on-chain…',
+                                  () => buildSubmitUnsigned(jobId, hash),
+                                );
+                                setActionState({ status: 'busy', label: 'Uploading content…' });
+                                try {
+                                  await uploadDeliverableContent({
+                                    jobId,
+                                    contentType: deliverableType,
+                                    content,
+                                    expectedHash: hash,
+                                    uploadedBy: signer.address,
+                                  });
+                                  setPendingUpload(null);
+                                  setDeliverableInput('');
+                                  setActionState({ status: 'success', txHash: onchain.txHash });
+                                  await fetchJob();
+                                } catch (uploadErr) {
+                                  setPendingUpload({
+                                    jobId,
+                                    hash,
+                                    contentType: deliverableType,
+                                    content,
+                                  });
+                                  setActionState({
+                                    status: 'error',
+                                    message: `On-chain submit succeeded (tx ${onchain.txHash}) but content upload failed: ${
+                                      uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+                                    }. The hash is committed; use Retry upload below.`,
+                                  });
+                                  await fetchJob();
+                                }
+                              } catch (err) {
+                                setActionState({
+                                  status: 'error',
+                                  message: err instanceof Error ? err.message : String(err),
+                                });
+                              }
+                            })();
+                          }}
+                          disabled={actionState.status === 'busy' || !deliverableInput.trim()}
+                          className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+                        >
+                          Submit
+                        </button>
+                      </div>
                     </div>
+                  </ActionCard>
+                )}
+
+                {/* Retry-upload surface — chain submit landed, off-chain
+                    upload didn't. Provider can re-run the upload step
+                    without re-signing on-chain. */}
+                {roles.includes('provider') && pendingUpload && pendingUpload.jobId === jobId && (
+                  <ActionCard
+                    title="Retry deliverable content upload"
+                    hint={`The hash ${pendingUpload.hash.slice(0, 10)}… is already committed on-chain. Re-uploading the same content will satisfy the parties-only display.`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!signer.isConnected) return;
+                        void (async () => {
+                          setActionState({ status: 'busy', label: 'Uploading content…' });
+                          try {
+                            await uploadDeliverableContent({
+                              jobId: pendingUpload.jobId,
+                              contentType: pendingUpload.contentType,
+                              content: pendingUpload.content,
+                              expectedHash: pendingUpload.hash,
+                              uploadedBy: signer.address,
+                            });
+                            setPendingUpload(null);
+                            setActionState({ status: 'success', txHash: '0x' as Hex });
+                            await fetchJob();
+                          } catch (err) {
+                            setActionState({
+                              status: 'error',
+                              message: err instanceof Error ? err.message : String(err),
+                            });
+                          }
+                        })();
+                      }}
+                      disabled={actionState.status === 'busy'}
+                      className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:opacity-50"
+                    >
+                      Retry upload
+                    </button>
                   </ActionCard>
                 )}
 
@@ -694,6 +834,163 @@ function Mono({
         </span>
       )}
     </span>
+  );
+}
+
+function DeliverableContent({
+  jobId,
+  events,
+  isParty,
+  signer,
+}: {
+  jobId: string;
+  events: JobEvent[];
+  isParty: boolean;
+  signer: ReturnType<typeof useSigner>;
+}) {
+  const submittedEvent = useMemo(
+    () => events.find((e) => e.eventType === 'Submitted'),
+    [events],
+  );
+
+  const [content, setContent] = useState<Deliverable | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [needsUnlock, setNeedsUnlock] = useState(false);
+
+  // The hash claimed on-chain; null until indexer catches up.
+  const onchainHash = submittedEvent?.hashValue ?? null;
+
+  // Client-side hash verification: recompute and compare to the on-chain
+  // commitment. Falsy if content not yet loaded.
+  const hashMatches = useMemo(() => {
+    if (!content || !onchainHash) return null;
+    const recomputed = keccak256(stringToBytes(content.textContent));
+    return recomputed.toLowerCase() === onchainHash.toLowerCase();
+  }, [content, onchainHash]);
+
+  const loadContent = useCallback(async () => {
+    if (!signer.isConnected || !submittedEvent) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const auth = await getOrCreateReadAuth(
+        jobId,
+        signer.address,
+        signer.signMessage,
+      );
+      const fetched = await getDeliverable(jobId, submittedEvent.hashValue, auth);
+      setContent(fetched);
+      setNeedsUnlock(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [jobId, signer, submittedEvent]);
+
+  // On mount / when becoming a party: if a cached signature exists, auto-load.
+  // Otherwise surface an explicit "Unlock" button so the user understands
+  // why a wallet popup is about to appear.
+  useEffect(() => {
+    if (!isParty || !signer.isConnected || !submittedEvent) return;
+    if (typeof window === 'undefined') return;
+    const cacheKey = `arc:deliv-sig:${jobId}:${signer.address.toLowerCase()}`;
+    if (localStorage.getItem(cacheKey)) {
+      void loadContent();
+    } else {
+      setNeedsUnlock(true);
+    }
+  }, [isParty, signer.isConnected, signer.address, submittedEvent, jobId, loadContent]);
+
+  if (!submittedEvent) return null;
+
+  return (
+    <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+      <h2 className="text-sm font-medium text-neutral-300">Deliverable content</h2>
+
+      {!signer.isConnected && (
+        <p className="mt-3 text-xs text-neutral-500">
+          Sign in or connect a wallet to view. Visible to client, provider, and evaluator only.
+        </p>
+      )}
+
+      {signer.isConnected && !isParty && (
+        <p className="mt-3 text-xs text-neutral-500">
+          You aren&apos;t a party to this job. The content is visible to client, provider, and evaluator only — but you can still verify the on-chain hash above.
+        </p>
+      )}
+
+      {signer.isConnected && isParty && needsUnlock && !content && (
+        <div className="mt-3">
+          <p className="text-xs text-neutral-400">
+            Your wallet will be asked to sign a short challenge so the server can confirm you&apos;re a party to this job. Signature is cached locally for ~24h.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadContent()}
+            disabled={loading}
+            className="mt-3 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+          >
+            {loading ? 'Waiting for signature…' : 'Unlock deliverable'}
+          </button>
+        </div>
+      )}
+
+      {loading && !needsUnlock && (
+        <p className="mt-3 text-xs text-neutral-400">Loading…</p>
+      )}
+
+      {error && (
+        <div className="mt-3 rounded-lg border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-300">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadContent()}
+            className="mt-2 text-red-200 underline"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {content && (
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center gap-2 text-xs">
+            <span
+              className={`rounded-md border px-2 py-0.5 ${
+                hashMatches
+                  ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300'
+                  : 'border-red-900/60 bg-red-950/40 text-red-300'
+              }`}
+            >
+              {hashMatches ? '✓ Verified — matches on-chain hash' : '✗ Hash mismatch'}
+            </span>
+            <span className="text-neutral-500">
+              {content.contentType === 'url' ? 'URL' : 'Text'}
+            </span>
+          </div>
+          {content.contentType === 'url' ? (
+            <a
+              href={content.textContent}
+              target="_blank"
+              rel="noreferrer"
+              className="block break-all rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 font-mono text-xs text-sky-300 underline hover:text-sky-200"
+            >
+              {content.textContent}
+            </a>
+          ) : (
+            <pre className="whitespace-pre-wrap rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-xs text-neutral-200">
+              {content.textContent}
+            </pre>
+          )}
+          <p className="text-xs text-neutral-500">
+            Uploaded <span className="font-mono">{content.uploadedBy.slice(0, 6)}…{content.uploadedBy.slice(-4)}</span>{' '}
+            at {new Date(content.uploadedAt).toLocaleString()}.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 

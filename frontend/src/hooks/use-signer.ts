@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback } from 'react';
 import type { Address, Hex } from 'viem';
 import {
   useAccount,
   useDisconnect,
   usePublicClient,
   useSendTransaction,
+  useSignMessage,
 } from 'wagmi';
 import { useCircleAccount } from './use-circle-account';
 
@@ -28,6 +28,7 @@ type ConnectedState = {
   mode: SignerMode;
   address: Address;
   sendCall: (params: SendCallParams) => Promise<SendCallResult>;
+  signMessage: (message: string) => Promise<Hex>;
   disconnect: () => void;
 };
 
@@ -36,6 +37,7 @@ type DisconnectedState = {
   mode: null;
   address: undefined;
   sendCall: undefined;
+  signMessage: undefined;
   disconnect: undefined;
 };
 
@@ -44,6 +46,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
   const wagmi = useAccount();
   const wagmiPublic = usePublicClient();
   const { sendTransactionAsync } = useSendTransaction();
+  const { signMessageAsync: wagmiSignMessageAsync } = useSignMessage();
   const { disconnect: wagmiDisconnect } = useDisconnect();
 
   // Circle Modular Wallets — passkey-backed smart account.
@@ -69,6 +72,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
           },
         };
       },
+      signMessage: async (message) => wagmiSignMessageAsync({ message }),
       disconnect: () => wagmiDisconnect(),
     };
   }
@@ -100,6 +104,10 @@ export function useSigner(): ConnectedState | DisconnectedState {
           },
         };
       },
+      // Smart-account sig is ERC-1271; backend verifies via on-chain
+      // isValidSignature, so the smart account must already be deployed
+      // (true for any address that's already a party on a job).
+      signMessage: async (message) => smartAccount.signMessage({ message }),
       disconnect: () => circle.disconnect(),
     };
   }
@@ -109,6 +117,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
     mode: null,
     address: undefined,
     sendCall: undefined,
+    signMessage: undefined,
     disconnect: undefined,
   };
 }

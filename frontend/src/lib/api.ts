@@ -162,6 +162,118 @@ export async function getJobEvents(jobId: string): Promise<JobEvent[]> {
   return res.events;
 }
 
+// ─── Deliverable content (Layer 2) ─────────────────────────────────────────
+// Off-chain content attached to a Submitted event. Upload is gated by hash
+// verification (only the preimage holder — the provider — can store). Read
+// is gated by wallet-signature auth, parties-only.
+
+export type DeliverableContentType = 'text' | 'url';
+
+export type Deliverable = {
+  jobId: string;
+  hash: string;
+  contentType: DeliverableContentType;
+  textContent: string;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
+export async function uploadDeliverableContent(input: {
+  jobId: string;
+  contentType: DeliverableContentType;
+  content: string;
+  expectedHash: string;
+  uploadedBy: string;
+}): Promise<{ jobId: string; hash: string; contentType: DeliverableContentType }> {
+  return jsonFetch(
+    'POST',
+    `/arc/escrow/job/${encodeURIComponent(input.jobId)}/deliverable-content`,
+    {
+      contentType: input.contentType,
+      content: input.content,
+      expectedHash: input.expectedHash,
+      uploadedBy: input.uploadedBy,
+    },
+  );
+}
+
+// Builds the canonical read-challenge message for a given jobId + timestamp.
+// Backend must reconstruct this exact string to verify the signature.
+export function readDeliverableChallenge(jobId: string, ts: number): string {
+  return `arc-trade:read-deliverable:${jobId}:${ts}`;
+}
+
+// Reuses a cached signature from localStorage if it's within the validity
+// window (a hair under the 24h backend window, to avoid races). Otherwise
+// prompts the wallet once and caches. Caller passes signMessage so we stay
+// signer-agnostic (wagmi or Circle Modular).
+export async function getOrCreateReadAuth(
+  jobId: string,
+  viewer: string,
+  signMessage: (msg: string) => Promise<string>,
+): Promise<{ viewer: string; sig: string; ts: number }> {
+  const CACHE_TTL_SECONDS = 23 * 60 * 60;
+  const cacheKey = `arc:deliv-sig:${jobId}:${viewer.toLowerCase()}`;
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      try {
+        const cached = JSON.parse(raw) as { sig: string; ts: number };
+        if (nowSec - cached.ts < CACHE_TTL_SECONDS && cached.sig && cached.ts) {
+          return { viewer, sig: cached.sig, ts: cached.ts };
+        }
+      } catch {
+        // Bad JSON in cache — fall through to fresh sign.
+      }
+    }
+  }
+
+  const ts = nowSec;
+  const sig = await signMessage(readDeliverableChallenge(jobId, ts));
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(cacheKey, JSON.stringify({ sig, ts }));
+  }
+
+  return { viewer, sig, ts };
+}
+
+export async function getDeliverable(
+  jobId: string,
+  hash: string,
+  auth: { viewer: string; sig: string; ts: number },
+): Promise<Deliverable> {
+  const res = await fetch(
+    `${API_BASE}/arc/escrow/job/${encodeURIComponent(jobId)}/deliverable?hash=${encodeURIComponent(hash)}`,
+    {
+      headers: {
+        'x-arc-viewer': auth.viewer,
+        'x-arc-sig': auth.sig,
+        'x-arc-ts': String(auth.ts),
+      },
+    },
+  );
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = text;
+  }
+  if (!res.ok) {
+    const message =
+      parsed && typeof parsed === 'object' && 'error' in parsed
+        ? String((parsed as { error: unknown }).error)
+        : `HTTP ${res.status}`;
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return parsed as Deliverable;
+}
+
 // ─── Unsigned calldata builders for every lifecycle action ─────────────────
 // Each returns { to, data, value, chainId } ready to pass into
 // useSigner().sendCall(). The signer is whoever's connected; the backend

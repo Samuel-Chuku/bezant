@@ -2,7 +2,15 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
-import { encodeFunctionData, formatUnits, parseUnits, parseEventLogs, type Abi } from 'viem';
+import {
+  encodeFunctionData,
+  formatUnits,
+  parseUnits,
+  parseEventLogs,
+  keccak256,
+  stringToBytes,
+  type Abi,
+} from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
 import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS, ARC_TESTNET_CHAIN_ID } from './lib/arc.js';
@@ -13,9 +21,12 @@ import {
   rowToUser,
   rowToJobIndex,
   rowToJobEvent,
+  rowToDeliverable,
   type UserRow,
   type JobIndexRow,
   type JobEventRow,
+  type DeliverableRow,
+  type DeliverableContentType,
 } from './lib/db.js';
 import { startJobIndexer } from './lib/job-indexer.js';
 
@@ -917,6 +928,162 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id/events', async (request
     )
     .all(request.params.id) as JobEventRow[];
   return { jobId: request.params.id, events: rows.map(rowToJobEvent) };
+});
+
+// ─── Deliverable content (Layer 2) ─────────────────────────────────────────
+// Off-chain content (text or URL) attached to a Submitted event. Stored
+// keyed by (jobId, hash). Upload is gated by hash verification — the
+// supplied content must keccak256 to the claimed hash, which means only
+// whoever already knew the preimage (i.e. the provider) can store content
+// for that slot. Read is gated by wallet-signature auth, parties-only.
+
+const DELIVERABLE_TEXT_MAX_BYTES = 200_000;
+const DELIVERABLE_URL_MAX_BYTES = 2_048;
+const READ_CHALLENGE_WINDOW_SECONDS = 24 * 60 * 60;
+
+function isHexBytes32(s: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(s);
+}
+
+app.post<{
+  Params: { id: string };
+  Body: { contentType?: string; content?: string; expectedHash?: string; uploadedBy?: string };
+}>('/arc/escrow/job/:id/deliverable-content', async (request, reply) => {
+  const jobId = request.params.id;
+  if (!/^\d+$/.test(jobId)) {
+    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  }
+  const { contentType, content, expectedHash, uploadedBy } = request.body ?? {};
+
+  if (contentType !== 'text' && contentType !== 'url') {
+    return reply.code(400).send({ error: "contentType must be 'text' or 'url'" });
+  }
+  if (typeof content !== 'string' || content.length === 0) {
+    return reply.code(400).send({ error: 'content is required' });
+  }
+  const limit = contentType === 'text' ? DELIVERABLE_TEXT_MAX_BYTES : DELIVERABLE_URL_MAX_BYTES;
+  if (Buffer.byteLength(content, 'utf8') > limit) {
+    return reply.code(413).send({ error: `content exceeds ${limit} byte limit for ${contentType}` });
+  }
+  if (contentType === 'url') {
+    try {
+      const u = new URL(content);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return reply.code(400).send({ error: 'url must use http or https' });
+      }
+    } catch {
+      return reply.code(400).send({ error: 'content is not a valid URL' });
+    }
+  }
+  if (typeof expectedHash !== 'string' || !isHexBytes32(expectedHash)) {
+    return reply.code(400).send({ error: 'expectedHash must be a 0x-prefixed 32-byte hex string' });
+  }
+  if (typeof uploadedBy !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(uploadedBy)) {
+    return reply.code(400).send({ error: 'uploadedBy must be a 0x-prefixed 20-byte hex address' });
+  }
+
+  const computed = keccak256(stringToBytes(content));
+  if (computed.toLowerCase() !== expectedHash.toLowerCase()) {
+    return reply.code(400).send({
+      error: 'content does not hash to expectedHash',
+      computed,
+    });
+  }
+
+  const existing = db
+    .prepare('SELECT hash FROM deliverables WHERE job_id = ? AND hash = ?')
+    .get(jobId, computed.toLowerCase()) as { hash: string } | undefined;
+  if (existing) {
+    return reply.code(409).send({ error: 'deliverable already uploaded for this hash' });
+  }
+
+  db.prepare(
+    `INSERT INTO deliverables (job_id, hash, content_type, text_content, uploaded_by)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(jobId, computed.toLowerCase(), contentType, content, uploadedBy.toLowerCase());
+
+  return reply.code(201).send({ jobId, hash: computed.toLowerCase(), contentType });
+});
+
+// Read a stored deliverable. Parties-only: caller must prove (via wallet
+// signature) that they are the client, provider, or evaluator on this job.
+// Challenge format: `arc-trade:read-deliverable:${jobId}:${ts}` where ts is
+// a unix-seconds timestamp within the last READ_CHALLENGE_WINDOW_SECONDS.
+// Sent via headers so query strings don't leak signatures into server logs.
+app.get<{
+  Params: { id: string };
+  Querystring: { hash?: string };
+  Headers: { 'x-arc-viewer'?: string; 'x-arc-sig'?: string; 'x-arc-ts'?: string };
+}>('/arc/escrow/job/:id/deliverable', async (request, reply) => {
+  const jobId = request.params.id;
+  if (!/^\d+$/.test(jobId)) {
+    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  }
+  const hash = request.query.hash;
+  if (typeof hash !== 'string' || !isHexBytes32(hash)) {
+    return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
+  }
+
+  const viewer = request.headers['x-arc-viewer'];
+  const sig = request.headers['x-arc-sig'];
+  const tsStr = request.headers['x-arc-ts'];
+  if (typeof viewer !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(viewer)) {
+    return reply.code(401).send({ error: 'x-arc-viewer header (address) is required' });
+  }
+  if (typeof sig !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig)) {
+    return reply.code(401).send({ error: 'x-arc-sig header (hex signature) is required' });
+  }
+  if (typeof tsStr !== 'string' || !/^\d+$/.test(tsStr)) {
+    return reply.code(401).send({ error: 'x-arc-ts header (unix seconds) is required' });
+  }
+  const ts = Number(tsStr);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > READ_CHALLENGE_WINDOW_SECONDS) {
+    return reply.code(401).send({ error: 'challenge timestamp expired or too far in the future' });
+  }
+
+  // viem's verifyMessage on a public client handles both EOA signatures
+  // (wagmi external wallets) AND ERC-1271 contract signatures (Circle Modular
+  // smart accounts) via on-chain isValidSignature. The smart account must
+  // already be deployed — true for any address that's already a party on
+  // this job, since being a party required a prior on-chain action.
+  const message = `arc-trade:read-deliverable:${jobId}:${ts}`;
+  let valid = false;
+  try {
+    valid = await arcClient.verifyMessage({
+      address: viewer as `0x${string}`,
+      message,
+      signature: sig as `0x${string}`,
+    });
+  } catch {
+    valid = false;
+  }
+  if (!valid) {
+    return reply.code(401).send({ error: 'invalid signature for viewer' });
+  }
+
+  // Verify the viewer is a party on this job. We use the local index — if a
+  // legitimate party hits this before the JobCreated indexer caught up, the
+  // 403 self-resolves within ~10s. Acceptable for now.
+  const jobRow = db
+    .prepare('SELECT client, provider, evaluator FROM jobs_index WHERE job_id = ?')
+    .get(jobId) as { client: string; provider: string; evaluator: string } | undefined;
+  if (!jobRow) {
+    return reply.code(404).send({ error: 'job not indexed yet — try again in a few seconds' });
+  }
+  const v = viewer.toLowerCase();
+  if (v !== jobRow.client && v !== jobRow.provider && v !== jobRow.evaluator) {
+    return reply.code(403).send({ error: 'not a party to this job' });
+  }
+
+  const row = db
+    .prepare('SELECT * FROM deliverables WHERE job_id = ? AND hash = ?')
+    .get(jobId, hash.toLowerCase()) as DeliverableRow | undefined;
+  if (!row) {
+    return reply.code(404).send({ error: 'no deliverable content stored for this hash' });
+  }
+
+  return rowToDeliverable(row);
 });
 
 

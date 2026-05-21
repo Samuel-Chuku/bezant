@@ -150,6 +150,20 @@ db.exec(`
     PRIMARY KEY (tx_hash, log_index)
   );
   CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events(job_id);
+
+  -- Off-chain deliverable content keyed by (job_id, hash). Only inserted
+  -- if the supplied content actually hashes to the claimed hash — the
+  -- on-chain bytes32 is the access credential. Reads are parties-only
+  -- (enforced in the route via signed-challenge auth).
+  CREATE TABLE IF NOT EXISTS deliverables (
+    job_id        TEXT NOT NULL,
+    hash          TEXT NOT NULL,
+    content_type  TEXT NOT NULL,
+    text_content  TEXT NOT NULL,
+    uploaded_by   TEXT NOT NULL,
+    uploaded_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (job_id, hash)
+  );
 `);
 
 export type JobIndexRow = {
@@ -224,6 +238,37 @@ export function rowToJobEvent(row: JobEventRow): JobEvent {
     txHash: row.tx_hash,
     logIndex: row.log_index,
     indexedAt: row.indexed_at,
+  };
+}
+
+export type DeliverableContentType = 'text' | 'url';
+
+export type DeliverableRow = {
+  job_id: string;
+  hash: string;
+  content_type: DeliverableContentType;
+  text_content: string;
+  uploaded_by: string;
+  uploaded_at: string;
+};
+
+export type Deliverable = {
+  jobId: string;
+  hash: string;
+  contentType: DeliverableContentType;
+  textContent: string;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
+export function rowToDeliverable(row: DeliverableRow): Deliverable {
+  return {
+    jobId: row.job_id,
+    hash: row.hash,
+    contentType: row.content_type,
+    textContent: row.text_content,
+    uploadedBy: row.uploaded_by,
+    uploadedAt: row.uploaded_at,
   };
 }
 
