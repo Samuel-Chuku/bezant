@@ -80,9 +80,14 @@ export function useSigner(): ConnectedState | DisconnectedState {
       mode: 'circle',
       address: smartAccount.address,
       sendCall: async ({ to, data, value }) => {
+        // Circle's bundler enforces a 1 gwei minimum priority fee on UserOps;
+        // viem's default uses Arc's chain-reported priority (~0.002 gwei) which
+        // fails precheck. Set explicit fees safely above the floor.
         const userOpHash = await bundlerClient.sendUserOperation({
           calls: [{ to, data, value: value ?? 0n }],
           paymaster: true,
+          maxPriorityFeePerGas: 1_000_000_000n, // 1 gwei
+          maxFeePerGas: 50_000_000_000n,        // 50 gwei ceiling
         });
         return {
           hash: userOpHash,

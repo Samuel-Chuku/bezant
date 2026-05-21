@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useBalance } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
@@ -56,9 +57,10 @@ export default function Home() {
             </div>
 
             <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-5">
-              <h3 className="font-medium">Sign in with passkey</h3>
+              <h3 className="font-medium">Sign in with email</h3>
               <p className="mt-1 text-xs text-neutral-500">
-                Backed by a Circle smart account on Arc. No wallet required.
+                Backed by a Circle smart account on Arc. Your email is your identifier; a passkey
+                (Bitwarden, Touch ID, etc.) signs your transactions. No wallet required.
               </p>
               <div className="mt-4">
                 <EmailSignIn />
@@ -125,6 +127,21 @@ export default function Home() {
               Couldn&apos;t reach the backend: {userState.message}
             </p>
           )}
+
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-emerald-900/30 pt-4">
+            <Link
+              href="/create"
+              className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
+            >
+              Create a job
+            </Link>
+            <Link
+              href="/jobs"
+              className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 transition hover:text-neutral-100"
+            >
+              My jobs
+            </Link>
+          </div>
         </section>
       )}
 

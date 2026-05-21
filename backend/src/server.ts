@@ -8,7 +8,8 @@ import pkg from '../package.json' with { type: 'json' };
 import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS, ARC_TESTNET_CHAIN_ID } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
 import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
-import { db, rowToUser, type UserRow } from './lib/db.js';
+import { db, rowToUser, rowToJobIndex, type UserRow, type JobIndexRow } from './lib/db.js';
+import { startJobIndexer } from './lib/job-indexer.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -816,6 +817,51 @@ app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/refund/unsigned', asy
   return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'claimRefund', [jobId]);
 });
 
+// Lookup jobs by participant address. Indexed locally by polling JobCreated
+// events from the reference contract; live state (status, budget) still comes
+// from the chain via /arc/escrow/job/:id. Returned rows include the role the
+// address plays in each job so the frontend doesn't need to recompute it.
+type JobsByAddressEntry = {
+  jobId: string;
+  client: string;
+  provider: string;
+  evaluator: string;
+  expiredAt: number;
+  hook: string;
+  blockNumber: number;
+  txHash: string;
+  indexedAt: string;
+  roles: Array<'client' | 'provider' | 'evaluator'>;
+};
+
+app.get<{ Params: { address: string } }>(
+  '/jobs/by-address/:address',
+  async (request, reply) => {
+    const address = request.params.address.toLowerCase();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      return reply.code(400).send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
+    }
+    const rows = db
+      .prepare(
+        `SELECT * FROM jobs_index
+         WHERE client = ? OR provider = ? OR evaluator = ?
+         ORDER BY block_number DESC`,
+      )
+      .all(address, address, address) as JobIndexRow[];
+
+    const jobs: JobsByAddressEntry[] = rows.map((row) => {
+      const base = rowToJobIndex(row);
+      const roles: JobsByAddressEntry['roles'] = [];
+      if (base.client === address) roles.push('client');
+      if (base.provider === address) roles.push('provider');
+      if (base.evaluator === address) roles.push('evaluator');
+      return { ...base, roles };
+    });
+
+    return { address, jobs, count: jobs.length };
+  },
+);
+
 app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply) => {
   const jobId = BigInt(request.params.id);
 
@@ -852,7 +898,10 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
 
 const port = Number(process.env.PORT ?? 3001);
 
-app.listen({ port, host: '0.0.0.0' }).catch((err) => {
-  app.log.error(err);
-  process.exit(1);
-});
+app
+  .listen({ port, host: '0.0.0.0' })
+  .then(() => startJobIndexer(app.log))
+  .catch((err) => {
+    app.log.error(err);
+    process.exit(1);
+  });

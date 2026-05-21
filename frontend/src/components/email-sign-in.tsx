@@ -36,11 +36,11 @@ export function EmailSignIn() {
 
       {mode === 'register' && (
         <input
-          type="text"
+          type="email"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="Choose a username"
-          autoComplete="username"
+          placeholder="your-email@example.com"
+          autoComplete="email"
           className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
         />
       )}
@@ -54,8 +54,8 @@ export function EmailSignIn() {
         {isLoading
           ? 'Waiting for passkey…'
           : mode === 'register'
-            ? 'Create with passkey'
-            : 'Sign in with passkey'}
+            ? 'Continue'
+            : 'Sign in'}
       </button>
 
       {errorMessage && (
