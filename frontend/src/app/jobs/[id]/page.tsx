@@ -60,80 +60,96 @@ function userRoles(live: JobLiveState, address: string | undefined): JobRole[] {
   return roles;
 }
 
-// Explains the current state of the job when the user has no action to take.
-// Returns a (title, body) pair to render in the Actions panel.
-function describeWaiting(
+// Describes the job's current lifecycle position in plain language, plus
+// what's expected next from the user's perspective. Always rendered at the
+// top of the Actions panel — regardless of whether actions are available —
+// so the user always knows where they are in the flow.
+function describeCurrentStep(
   job: JobLiveState,
   status: string,
   roles: JobRole[],
-): { title: string; body: string } {
-  if (roles.length === 0) {
-    return {
-      title: 'Read-only',
-      body: 'You are not a party to this job (not client, provider, or evaluator). You can view its state but not act on it.',
-    };
-  }
-
-  if (status === 'Completed') {
-    return {
-      title: 'Job complete',
-      body: 'The evaluator released the budget to the provider. No further actions are available.',
-    };
-  }
-  if (status === 'Rejected') {
-    return {
-      title: 'Job rejected',
-      body: 'The job was rejected. Any locked funds were returned to the client.',
-    };
-  }
-  if (status === 'Expired') {
-    // claimRefund is rendered separately when applicable; this is the terminal case.
-    return {
-      title: 'Expired',
-      body: 'The deadline has passed and no funds are locked. No further actions are available on this job.',
-    };
-  }
-
+): { summary: string; nextHint: string | null } {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
   const isEvaluator = roles.includes('evaluator');
   const budgetSet = job.budget.usdc !== '0';
 
-  if (status === 'Open' && isEvaluator && !isClient && !isProvider) {
+  if (status === 'Completed') {
     return {
-      title: 'Waiting on the provider and client',
-      body: budgetSet
-        ? 'The provider has quoted a price. Waiting for the client to fund the job.'
-        : 'Waiting for the provider to set a price, then for the client to fund.',
+      summary: `Job complete. ${job.budget.usdc} USDC released to the provider.`,
+      nextHint: null,
     };
   }
 
-  if (status === 'Funded' && isClient) {
+  if (status === 'Rejected') {
     return {
-      title: 'Waiting on the provider',
-      body: 'Funds are locked in escrow. The provider needs to submit a deliverable before the evaluator can complete or reject.',
-    };
-  }
-  if (status === 'Funded' && isEvaluator && !isProvider) {
-    return {
-      title: 'Waiting on the provider',
-      body: 'Funds are locked. The provider needs to submit a deliverable before you can complete the job. You can also reject now if needed.',
+      summary: 'Job rejected. Any locked funds were returned to the client.',
+      nextHint: null,
     };
   }
 
-  if (status === 'Submitted' && (isClient || isProvider)) {
+  if (status === 'Expired') {
+    if (job.status === 'Funded' || job.status === 'Submitted') {
+      return {
+        summary: `Deadline passed with ${job.budget.usdc} USDC still locked.`,
+        nextHint: isClient
+          ? 'Anyone (including you) can call claimRefund to return the funds.'
+          : 'Anyone can call claimRefund to return the funds to the client.',
+      };
+    }
     return {
-      title: 'Waiting on the evaluator',
-      body: isProvider
-        ? 'You\'ve submitted a deliverable. The evaluator will either complete (releasing the budget to you) or reject (refunding the client).'
-        : 'The provider has submitted a deliverable. The evaluator will either complete (releasing the budget to the provider) or reject (refunding you).',
+      summary: 'Deadline passed before any funds were locked.',
+      nextHint: isClient
+        ? 'You can cancel this job to clean it up, then post a fresh one with a longer deadline.'
+        : 'Waiting for the client to cancel and post a new job.',
     };
   }
 
-  return {
-    title: 'Nothing to do right now',
-    body: `Job status is ${status}; nothing is available for your role at this stage.`,
-  };
+  if (status === 'Open' && !budgetSet) {
+    return {
+      summary: 'Job posted. No quote yet.',
+      nextHint: isProvider
+        ? 'Set your budget below to quote a price.'
+        : isClient
+          ? 'Waiting for the provider to set a price. Once they do, you can fund.'
+          : 'Waiting for the provider to set a price, then for the client to fund.',
+    };
+  }
+
+  if (status === 'Open' && budgetSet) {
+    return {
+      summary: `Provider has quoted ${job.budget.usdc} USDC.`,
+      nextHint: isClient
+        ? 'Fund the job to lock the price, or wait if you want a re-quote.'
+        : isProvider
+          ? 'Waiting for the client to fund at this price. You can re-quote anytime.'
+          : 'Waiting for the client to fund.',
+    };
+  }
+
+  if (status === 'Funded') {
+    return {
+      summary: `${job.budget.usdc} USDC locked in escrow.`,
+      nextHint: isProvider
+        ? 'Submit your deliverable so the evaluator can review and release the funds.'
+        : isEvaluator
+          ? 'Waiting for the provider to submit. You can reject early if needed.'
+          : 'Waiting for the provider to submit a deliverable.',
+    };
+  }
+
+  if (status === 'Submitted') {
+    return {
+      summary: 'Provider has submitted a deliverable.',
+      nextHint: isEvaluator
+        ? 'Review and complete (release funds to provider) or reject (refund client).'
+        : isProvider
+          ? 'Waiting for the evaluator to review your submission.'
+          : 'Waiting for the evaluator to complete or reject.',
+    };
+  }
+
+  return { summary: `Status: ${status}.`, nextHint: null };
 }
 
 type ActionState =
@@ -211,35 +227,15 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     [job, signer],
   );
 
-  // Detect whether any action card will render for this user given the job
-  // state. Used to decide whether to show the explanatory "waiting" message.
-  const hasAvailableAction = useMemo(() => {
-    if (!job || !signer.isConnected || !status) return false;
-    const r = roles;
-    if (status === 'Open') {
-      if (r.includes('provider')) return true; // setBudget
-      if (r.includes('client')) return true; // fund (if budget set) OR cancel
-    }
-    if (status === 'Funded') {
-      if (r.includes('provider')) return true; // submit
-      if (r.includes('evaluator')) return true; // reject
-    }
-    if (status === 'Submitted') {
-      if (r.includes('evaluator')) return true; // complete or reject
-    }
-    if (status === 'Expired' && (job.status === 'Funded' || job.status === 'Submitted')) {
-      return true; // claimRefund (anyone)
-    }
-    if (r.includes('client') && job.status === 'Open') {
-      return true; // cancel
-    }
-    return false;
-  }, [job, signer.isConnected, status, roles]);
+  // Always-on lifecycle context — what's happening, what's next. Independent
+  // of whether an action card renders for this user.
+  const currentStep = useMemo(
+    () => (job && status ? describeCurrentStep(job, status, roles) : null),
+    [job, status, roles],
+  );
 
-  const waitingMessage = useMemo(() => {
-    if (!job || !status || hasAvailableAction) return null;
-    return describeWaiting(job, status, roles);
-  }, [job, status, roles, hasAvailableAction]);
+  // Read-only banner shown only when user has no role at all on this job.
+  const showReadOnlyNotice = signer.isConnected && roles.length === 0;
 
   const runAction = async (
     label: string,
@@ -415,6 +411,25 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           {signer.isConnected && status && (
             <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
               <h2 className="text-sm font-medium text-neutral-300">Actions</h2>
+
+              {currentStep && (
+                <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+                  <p className="text-sm text-neutral-100">{currentStep.summary}</p>
+                  {currentStep.nextHint && (
+                    <p className="mt-1 text-xs text-neutral-400">
+                      <span className="text-neutral-600">→</span> {currentStep.nextHint}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {showReadOnlyNotice && (
+                <p className="mt-3 text-xs text-neutral-500">
+                  You aren&apos;t a party to this job (not client, provider, or evaluator).
+                  Read-only view.
+                </p>
+              )}
+
               <div className="mt-4 space-y-4">
                 {/* setBudget — provider only, while Open */}
                 {roles.includes('provider') && status === 'Open' && (
@@ -608,13 +623,6 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     </ActionCard>
                   )}
 
-                {/* No-action fallback — explain who/what we're waiting on. */}
-                {waitingMessage && (
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-950/30 p-4">
-                    <h3 className="text-sm font-medium text-neutral-200">{waitingMessage.title}</h3>
-                    <p className="mt-1 text-xs text-neutral-500">{waitingMessage.body}</p>
-                  </div>
-                )}
               </div>
 
               {/* Action status surface */}
