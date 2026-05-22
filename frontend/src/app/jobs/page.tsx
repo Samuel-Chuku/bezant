@@ -56,6 +56,18 @@ const STATUS_TINT: Record<string, string> = {
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
 };
 
+// Waiting-cue color matches the status badge so card + cue read as one.
+// Only non-terminal statuses have entries — terminal states don't pulse.
+const WAITING_TINT: Record<'Open' | 'Funded' | 'Submitted', {
+  ping: string;
+  solid: string;
+  text: string;
+}> = {
+  Open: { ping: 'bg-sky-400', solid: 'bg-sky-500', text: 'text-sky-300' },
+  Funded: { ping: 'bg-amber-400', solid: 'bg-amber-500', text: 'text-amber-300' },
+  Submitted: { ping: 'bg-violet-400', solid: 'bg-violet-500', text: 'text-violet-300' },
+};
+
 export default function MyJobsPage() {
   const signer = useSigner();
   const [jobs, setJobs] = useState<EnrichedJob[]>([]);
@@ -214,12 +226,49 @@ export default function MyJobsPage() {
   );
 }
 
+// Non-terminal jobs get a one-line "Waiting on X..." cue with a pulsing
+// dot + text. Completed/Rejected/Expired return null — terminal states
+// have nothing to wait on. The detail page's lifecycle timeline tells the
+// full story; this list-card cue is the at-a-glance preview.
+function jobWaitingLine(live: JobLiveState | null, effectiveStatus: string): string | null {
+  if (!live) return null;
+  if (
+    effectiveStatus === 'Completed' ||
+    effectiveStatus === 'Rejected' ||
+    effectiveStatus === 'Expired'
+  ) {
+    return null;
+  }
+  if (live.status === 'Open') {
+    return live.budget.usdc === '0'
+      ? 'Waiting for the provider to quote a price…'
+      : 'Waiting for the client to fund the job…';
+  }
+  if (live.status === 'Funded') {
+    return 'Waiting for the provider to submit a deliverable…';
+  }
+  if (live.status === 'Submitted') {
+    return 'Waiting for the evaluator to complete or reject…';
+  }
+  return null;
+}
+
 function JobCard({ job }: { job: EnrichedJob }) {
   const status = effectiveStatus(job, Date.now());
   const isSoftExpired =
     status === 'Expired' && job.live?.status !== 'Expired' && job.live?.status !== 'Rejected';
   const statusClass =
     STATUS_TINT[status] ?? 'bg-neutral-900 text-neutral-400 border-neutral-800';
+  // Show the pulsing cue for every non-terminal job. effectiveStatus may
+  // upgrade Open/Funded/Submitted → Expired past the deadline; suppress
+  // the cue in that case so the soft-expired notice stays the focus.
+  const waitingLine = jobWaitingLine(job.live, status);
+  // jobWaitingLine guarantees null unless live.status is Open / Funded /
+  // Submitted, so the type assertion is sound and TS keeps WAITING_TINT
+  // narrow to those three keys.
+  const waitingTint = waitingLine
+    ? WAITING_TINT[job.live!.status as keyof typeof WAITING_TINT]
+    : null;
 
   return (
     <li>
@@ -228,6 +277,7 @@ function JobCard({ job }: { job: EnrichedJob }) {
         className="block rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition hover:border-neutral-700 hover:bg-neutral-900/70"
       >
       <div className="flex items-start justify-between gap-4">
+        {/* Left column: identity + content */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm text-neutral-300">#{job.jobId}</span>
@@ -236,14 +286,6 @@ function JobCard({ job }: { job: EnrichedJob }) {
             >
               {status}
             </span>
-            {job.roles.map((role) => (
-              <span
-                key={role}
-                className="rounded-md border border-neutral-800 px-2 py-0.5 text-xs text-neutral-400"
-              >
-                {ROLE_LABEL[role]}
-              </span>
-            ))}
           </div>
           {job.live?.description && (
             <p className="mt-2 truncate text-sm text-neutral-200">{job.live.description}</p>
@@ -264,6 +306,35 @@ function JobCard({ job }: { job: EnrichedJob }) {
               </span>
             </span>
           </div>
+        </div>
+
+        {/* Right column: roles top-aligned (matching #id row), pulsing
+            waiting cue stacked beneath. flex-shrink-0 keeps it from being
+            squeezed on narrow viewports. */}
+        <div className="flex flex-shrink-0 flex-col items-end gap-3">
+          <div className="flex flex-wrap justify-end gap-2">
+            {job.roles.map((role) => (
+              <span
+                key={role}
+                className="rounded-md border border-neutral-800 px-2 py-0.5 text-xs text-neutral-400"
+              >
+                {ROLE_LABEL[role]}
+              </span>
+            ))}
+          </div>
+          {waitingLine && waitingTint && (
+            <div className={`flex items-center gap-2 text-xs ${waitingTint.text}`}>
+              <span className="relative flex h-2 w-2">
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${waitingTint.ping}`}
+                />
+                <span
+                  className={`relative inline-flex h-2 w-2 rounded-full ${waitingTint.solid}`}
+                />
+              </span>
+              <span className="animate-pulse">{waitingLine}</span>
+            </div>
+          )}
         </div>
       </div>
       {isSoftExpired && (

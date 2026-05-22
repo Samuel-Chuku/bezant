@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync, statSync, createReadStream } from 'node:fs';
+import { resolve, join } from 'node:path';
 import Fastify, { type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import {
@@ -895,6 +897,15 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
     return reply.code(404).send({ error: `Job ${request.params.id} not found` });
   }
 
+  // Bolt on the creation metadata from the local index so the frontend can
+  // render a lifecycle timeline without a second roundtrip. null if the
+  // indexer hasn't caught up yet (~10s window after a fresh JobCreated).
+  const createdRow = db
+    .prepare('SELECT block_number, tx_hash, indexed_at FROM jobs_index WHERE job_id = ?')
+    .get(request.params.id) as
+    | { block_number: number; tx_hash: string; indexed_at: string }
+    | undefined;
+
   return {
     id: job.id.toString(),
     client: job.client,
@@ -911,6 +922,13 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
     },
     status: JOB_STATUS[job.status] ?? `Unknown(${job.status})`,
     hook: job.hook,
+    createdAt: createdRow
+      ? {
+          blockNumber: createdRow.block_number,
+          txHash: createdRow.tx_hash,
+          indexedAt: createdRow.indexed_at,
+        }
+      : null,
   };
 });
 
@@ -930,123 +948,60 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id/events', async (request
   return { jobId: request.params.id, events: rows.map(rowToJobEvent) };
 });
 
-// ─── Deliverable content (Layer 2) ─────────────────────────────────────────
-// Off-chain content (text or URL) attached to a Submitted event. Stored
-// keyed by (jobId, hash). Upload is gated by hash verification — the
+// ─── Deliverable content (Layers 2 + 3) ────────────────────────────────────
+// Off-chain content (text, URL, or file) attached to a Submitted event.
+// Stored keyed by (jobId, hash). Upload is gated by hash verification — the
 // supplied content must keccak256 to the claimed hash, which means only
 // whoever already knew the preimage (i.e. the provider) can store content
 // for that slot. Read is gated by wallet-signature auth, parties-only.
+// Files travel base64-in-JSON; raw bytes are written to disk and served
+// from a separate binary route. Both read routes share the same auth helper.
 
 const DELIVERABLE_TEXT_MAX_BYTES = 200_000;
 const DELIVERABLE_URL_MAX_BYTES = 2_048;
+const DELIVERABLE_FILE_MAX_BYTES = Number(
+  process.env.DELIVERABLE_FILE_MAX_BYTES ?? 10 * 1024 * 1024,
+);
 const READ_CHALLENGE_WINDOW_SECONDS = 24 * 60 * 60;
+
+const DELIVERABLE_FILES_DIR = resolve(process.cwd(), 'data', 'deliverables');
+mkdirSync(DELIVERABLE_FILES_DIR, { recursive: true });
 
 function isHexBytes32(s: string): boolean {
   return /^0x[0-9a-fA-F]{64}$/.test(s);
 }
 
-app.post<{
-  Params: { id: string };
-  Body: { contentType?: string; content?: string; expectedHash?: string; uploadedBy?: string };
-}>('/arc/escrow/job/:id/deliverable-content', async (request, reply) => {
-  const jobId = request.params.id;
-  if (!/^\d+$/.test(jobId)) {
-    return reply.code(400).send({ error: 'id must be a numeric job id' });
-  }
-  const { contentType, content, expectedHash, uploadedBy } = request.body ?? {};
-
-  if (contentType !== 'text' && contentType !== 'url') {
-    return reply.code(400).send({ error: "contentType must be 'text' or 'url'" });
-  }
-  if (typeof content !== 'string' || content.length === 0) {
-    return reply.code(400).send({ error: 'content is required' });
-  }
-  const limit = contentType === 'text' ? DELIVERABLE_TEXT_MAX_BYTES : DELIVERABLE_URL_MAX_BYTES;
-  if (Buffer.byteLength(content, 'utf8') > limit) {
-    return reply.code(413).send({ error: `content exceeds ${limit} byte limit for ${contentType}` });
-  }
-  if (contentType === 'url') {
-    try {
-      const u = new URL(content);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        return reply.code(400).send({ error: 'url must use http or https' });
-      }
-    } catch {
-      return reply.code(400).send({ error: 'content is not a valid URL' });
-    }
-  }
-  if (typeof expectedHash !== 'string' || !isHexBytes32(expectedHash)) {
-    return reply.code(400).send({ error: 'expectedHash must be a 0x-prefixed 32-byte hex string' });
-  }
-  if (typeof uploadedBy !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(uploadedBy)) {
-    return reply.code(400).send({ error: 'uploadedBy must be a 0x-prefixed 20-byte hex address' });
-  }
-
-  const computed = keccak256(stringToBytes(content));
-  if (computed.toLowerCase() !== expectedHash.toLowerCase()) {
-    return reply.code(400).send({
-      error: 'content does not hash to expectedHash',
-      computed,
-    });
-  }
-
-  const existing = db
-    .prepare('SELECT hash FROM deliverables WHERE job_id = ? AND hash = ?')
-    .get(jobId, computed.toLowerCase()) as { hash: string } | undefined;
-  if (existing) {
-    return reply.code(409).send({ error: 'deliverable already uploaded for this hash' });
-  }
-
-  db.prepare(
-    `INSERT INTO deliverables (job_id, hash, content_type, text_content, uploaded_by)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(jobId, computed.toLowerCase(), contentType, content, uploadedBy.toLowerCase());
-
-  return reply.code(201).send({ jobId, hash: computed.toLowerCase(), contentType });
-});
-
-// Read a stored deliverable. Parties-only: caller must prove (via wallet
-// signature) that they are the client, provider, or evaluator on this job.
-// Challenge format: `arc-trade:read-deliverable:${jobId}:${ts}` where ts is
-// a unix-seconds timestamp within the last READ_CHALLENGE_WINDOW_SECONDS.
-// Sent via headers so query strings don't leak signatures into server logs.
-app.get<{
-  Params: { id: string };
-  Querystring: { hash?: string };
-  Headers: { 'x-arc-viewer'?: string; 'x-arc-sig'?: string; 'x-arc-ts'?: string };
-}>('/arc/escrow/job/:id/deliverable', async (request, reply) => {
-  const jobId = request.params.id;
-  if (!/^\d+$/.test(jobId)) {
-    return reply.code(400).send({ error: 'id must be a numeric job id' });
-  }
-  const hash = request.query.hash;
-  if (typeof hash !== 'string' || !isHexBytes32(hash)) {
-    return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
-  }
-
+// Verify x-arc-viewer / x-arc-sig / x-arc-ts and check the viewer is a
+// party on this job. Returns the lowercased viewer address on success,
+// or null after sending an error response. Shared between the JSON
+// metadata route and the binary file route.
+async function verifyDeliverableReadAuth(
+  request: import('fastify').FastifyRequest,
+  reply: FastifyReply,
+  jobId: string,
+): Promise<string | null> {
   const viewer = request.headers['x-arc-viewer'];
   const sig = request.headers['x-arc-sig'];
   const tsStr = request.headers['x-arc-ts'];
   if (typeof viewer !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(viewer)) {
-    return reply.code(401).send({ error: 'x-arc-viewer header (address) is required' });
+    reply.code(401).send({ error: 'x-arc-viewer header (address) is required' });
+    return null;
   }
   if (typeof sig !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig)) {
-    return reply.code(401).send({ error: 'x-arc-sig header (hex signature) is required' });
+    reply.code(401).send({ error: 'x-arc-sig header (hex signature) is required' });
+    return null;
   }
   if (typeof tsStr !== 'string' || !/^\d+$/.test(tsStr)) {
-    return reply.code(401).send({ error: 'x-arc-ts header (unix seconds) is required' });
+    reply.code(401).send({ error: 'x-arc-ts header (unix seconds) is required' });
+    return null;
   }
   const ts = Number(tsStr);
   const nowSec = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSec - ts) > READ_CHALLENGE_WINDOW_SECONDS) {
-    return reply.code(401).send({ error: 'challenge timestamp expired or too far in the future' });
+    reply.code(401).send({ error: 'challenge timestamp expired or too far in the future' });
+    return null;
   }
 
-  // viem's verifyMessage on a public client handles both EOA signatures
-  // (wagmi external wallets) AND ERC-1271 contract signatures (Circle Modular
-  // smart accounts) via on-chain isValidSignature. The smart account must
-  // already be deployed — true for any address that's already a party on
-  // this job, since being a party required a prior on-chain action.
   const message = `arc-trade:read-deliverable:${jobId}:${ts}`;
   let valid = false;
   try {
@@ -1059,22 +1014,170 @@ app.get<{
     valid = false;
   }
   if (!valid) {
-    return reply.code(401).send({ error: 'invalid signature for viewer' });
+    reply.code(401).send({ error: 'invalid signature for viewer' });
+    return null;
   }
 
-  // Verify the viewer is a party on this job. We use the local index — if a
-  // legitimate party hits this before the JobCreated indexer caught up, the
-  // 403 self-resolves within ~10s. Acceptable for now.
   const jobRow = db
     .prepare('SELECT client, provider, evaluator FROM jobs_index WHERE job_id = ?')
     .get(jobId) as { client: string; provider: string; evaluator: string } | undefined;
   if (!jobRow) {
-    return reply.code(404).send({ error: 'job not indexed yet — try again in a few seconds' });
+    reply.code(404).send({ error: 'job not indexed yet — try again in a few seconds' });
+    return null;
   }
   const v = viewer.toLowerCase();
   if (v !== jobRow.client && v !== jobRow.provider && v !== jobRow.evaluator) {
-    return reply.code(403).send({ error: 'not a party to this job' });
+    reply.code(403).send({ error: 'not a party to this job' });
+    return null;
   }
+  return v;
+}
+
+// Per-route bodyLimit so we can accept up to ~14 MB of base64 (a 10 MB file).
+// Other routes keep Fastify's default limit. Server also enforces the actual
+// post-decode size against DELIVERABLE_FILE_MAX_BYTES.
+const UPLOAD_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
+
+app.post<{
+  Params: { id: string };
+  Body: {
+    contentType?: string;
+    content?: string;
+    expectedHash?: string;
+    uploadedBy?: string;
+    fileBase64?: string;
+    fileName?: string;
+    mime?: string;
+  };
+}>(
+  '/arc/escrow/job/:id/deliverable-content',
+  { bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+  async (request, reply) => {
+  const jobId = request.params.id;
+  if (!/^\d+$/.test(jobId)) {
+    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  }
+  const { contentType, content, expectedHash, uploadedBy, fileBase64, fileName, mime } =
+    request.body ?? {};
+
+  if (contentType !== 'text' && contentType !== 'url' && contentType !== 'file') {
+    return reply.code(400).send({ error: "contentType must be 'text', 'url', or 'file'" });
+  }
+  if (typeof expectedHash !== 'string' || !isHexBytes32(expectedHash)) {
+    return reply.code(400).send({ error: 'expectedHash must be a 0x-prefixed 32-byte hex string' });
+  }
+  if (typeof uploadedBy !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(uploadedBy)) {
+    return reply.code(400).send({ error: 'uploadedBy must be a 0x-prefixed 20-byte hex address' });
+  }
+
+  // Idempotency check up-front so we don't write a file we'll then reject.
+  const existing = db
+    .prepare('SELECT hash FROM deliverables WHERE job_id = ? AND hash = ?')
+    .get(jobId, expectedHash.toLowerCase()) as { hash: string } | undefined;
+  if (existing) {
+    return reply.code(409).send({ error: 'deliverable already uploaded for this hash' });
+  }
+
+  if (contentType === 'text' || contentType === 'url') {
+    if (typeof content !== 'string' || content.length === 0) {
+      return reply.code(400).send({ error: 'content is required' });
+    }
+    const limit = contentType === 'text' ? DELIVERABLE_TEXT_MAX_BYTES : DELIVERABLE_URL_MAX_BYTES;
+    if (Buffer.byteLength(content, 'utf8') > limit) {
+      return reply.code(413).send({ error: `content exceeds ${limit} byte limit for ${contentType}` });
+    }
+    if (contentType === 'url') {
+      try {
+        const u = new URL(content);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          return reply.code(400).send({ error: 'url must use http or https' });
+        }
+      } catch {
+        return reply.code(400).send({ error: 'content is not a valid URL' });
+      }
+    }
+    const computed = keccak256(stringToBytes(content));
+    if (computed.toLowerCase() !== expectedHash.toLowerCase()) {
+      return reply.code(400).send({ error: 'content does not hash to expectedHash', computed });
+    }
+    db.prepare(
+      `INSERT INTO deliverables (job_id, hash, content_type, text_content, uploaded_by)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(jobId, computed.toLowerCase(), contentType, content, uploadedBy.toLowerCase());
+    return reply.code(201).send({ jobId, hash: computed.toLowerCase(), contentType });
+  }
+
+  // contentType === 'file'
+  if (typeof fileBase64 !== 'string' || fileBase64.length === 0) {
+    return reply.code(400).send({ error: 'fileBase64 is required for file uploads' });
+  }
+  if (typeof fileName !== 'string' || fileName.length === 0 || fileName.length > 255) {
+    return reply.code(400).send({ error: 'fileName is required (1..255 chars)' });
+  }
+  if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('\0')) {
+    return reply.code(400).send({ error: 'fileName must not contain path separators or nulls' });
+  }
+  const safeMime =
+    typeof mime === 'string' && mime.length > 0 && mime.length < 256 ? mime : 'application/octet-stream';
+
+  let bytes: Buffer;
+  try {
+    bytes = Buffer.from(fileBase64, 'base64');
+  } catch {
+    return reply.code(400).send({ error: 'fileBase64 is not valid base64' });
+  }
+  if (bytes.length === 0) {
+    return reply.code(400).send({ error: 'decoded file is empty' });
+  }
+  if (bytes.length > DELIVERABLE_FILE_MAX_BYTES) {
+    return reply.code(413).send({
+      error: `file exceeds ${DELIVERABLE_FILE_MAX_BYTES} byte limit`,
+      sizeBytes: bytes.length,
+    });
+  }
+  const computed = keccak256(bytes);
+  if (computed.toLowerCase() !== expectedHash.toLowerCase()) {
+    return reply.code(400).send({ error: 'file does not hash to expectedHash', computed });
+  }
+
+  const hashLower = computed.toLowerCase();
+  const jobDir = join(DELIVERABLE_FILES_DIR, jobId);
+  mkdirSync(jobDir, { recursive: true });
+  const relativePath = join(jobId, `${hashLower}.bin`);
+  const absolutePath = join(DELIVERABLE_FILES_DIR, relativePath);
+  writeFileSync(absolutePath, bytes);
+
+  db.prepare(
+    `INSERT INTO deliverables (job_id, hash, content_type, text_content, mime, size_bytes, file_path, uploaded_by)
+     VALUES (?, ?, 'file', ?, ?, ?, ?, ?)`,
+  ).run(jobId, hashLower, fileName, safeMime, bytes.length, relativePath, uploadedBy.toLowerCase());
+
+  return reply.code(201).send({
+    jobId,
+    hash: hashLower,
+    contentType: 'file',
+    fileName,
+    mime: safeMime,
+    sizeBytes: bytes.length,
+  });
+});
+
+// Read deliverable metadata. Parties-only. The binary bytes for file-type
+// deliverables come from /deliverable/file instead.
+app.get<{
+  Params: { id: string };
+  Querystring: { hash?: string };
+}>('/arc/escrow/job/:id/deliverable', async (request, reply) => {
+  const jobId = request.params.id;
+  if (!/^\d+$/.test(jobId)) {
+    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  }
+  const hash = request.query.hash;
+  if (typeof hash !== 'string' || !isHexBytes32(hash)) {
+    return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
+  }
+  const ok = await verifyDeliverableReadAuth(request, reply, jobId);
+  if (!ok) return;
 
   const row = db
     .prepare('SELECT * FROM deliverables WHERE job_id = ? AND hash = ?')
@@ -1082,8 +1185,47 @@ app.get<{
   if (!row) {
     return reply.code(404).send({ error: 'no deliverable content stored for this hash' });
   }
-
   return rowToDeliverable(row);
+});
+
+// Download the binary bytes of a file-type deliverable. Same auth as the
+// metadata route. Streams from disk; sets Content-Type from the stored
+// MIME and Content-Disposition so the browser saves with the original name.
+app.get<{
+  Params: { id: string };
+  Querystring: { hash?: string };
+}>('/arc/escrow/job/:id/deliverable/file', async (request, reply) => {
+  const jobId = request.params.id;
+  if (!/^\d+$/.test(jobId)) {
+    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  }
+  const hash = request.query.hash;
+  if (typeof hash !== 'string' || !isHexBytes32(hash)) {
+    return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
+  }
+  const ok = await verifyDeliverableReadAuth(request, reply, jobId);
+  if (!ok) return;
+
+  const row = db
+    .prepare('SELECT * FROM deliverables WHERE job_id = ? AND hash = ?')
+    .get(jobId, hash.toLowerCase()) as DeliverableRow | undefined;
+  if (!row || row.content_type !== 'file' || !row.file_path) {
+    return reply.code(404).send({ error: 'no file deliverable stored for this hash' });
+  }
+  const absolutePath = join(DELIVERABLE_FILES_DIR, row.file_path);
+  let size: number;
+  try {
+    size = statSync(absolutePath).size;
+  } catch {
+    return reply.code(500).send({ error: 'stored file missing from disk' });
+  }
+  // RFC 6266 filename* avoids fish-eats-quote-style breakage on non-ASCII.
+  const encodedName = encodeURIComponent(row.text_content);
+  reply
+    .header('Content-Type', row.mime ?? 'application/octet-stream')
+    .header('Content-Length', String(size))
+    .header('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+  return reply.send(createReadStream(absolutePath));
 });
 
 

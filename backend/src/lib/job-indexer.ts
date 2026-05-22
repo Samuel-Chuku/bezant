@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { arcClient, ERC8183_ADDRESS } from './arc.js';
 import {
   jobCreatedEvent,
+  jobFundedEvent,
   jobSubmittedEvent,
   jobCompletedEvent,
   jobRejectedEvent,
@@ -31,8 +32,8 @@ const insertJob = db.prepare(
 
 const insertJobEvent = db.prepare(
   `INSERT OR IGNORE INTO job_events
-   (job_id, event_type, hash_value, actor, block_number, tx_hash, log_index)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+   (job_id, event_type, hash_value, amount_raw, actor, block_number, tx_hash, log_index)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
 function startBlock(stored: string | null, head: bigint): bigint {
@@ -85,17 +86,27 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
   while (from <= head) {
     const to = from + MAX_BLOCKS_PER_QUERY - 1n > head ? head : from + MAX_BLOCKS_PER_QUERY - 1n;
 
-    const [submitted, completed, rejected] = await Promise.all([
+    const [funded, submitted, completed, rejected] = await Promise.all([
+      arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobFundedEvent, fromBlock: from, toBlock: to }),
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobSubmittedEvent, fromBlock: from, toBlock: to }),
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobCompletedEvent, fromBlock: from, toBlock: to }),
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobRejectedEvent, fromBlock: from, toBlock: to }),
     ]);
 
+    for (const entry of funded) {
+      const a = entry.args;
+      if (!a.jobId || !a.client || a.amount == null) continue;
+      const r = insertJobEvent.run(
+        a.jobId.toString(), 'Funded', '', a.amount.toString(), a.client.toLowerCase(),
+        Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
     for (const entry of submitted) {
       const a = entry.args;
       if (!a.jobId || !a.provider || !a.deliverable) continue;
       const r = insertJobEvent.run(
-        a.jobId.toString(), 'Submitted', a.deliverable, a.provider.toLowerCase(),
+        a.jobId.toString(), 'Submitted', a.deliverable, null, a.provider.toLowerCase(),
         Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
       );
       if (r.changes > 0) inserted += 1;
@@ -104,7 +115,7 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
       const a = entry.args;
       if (!a.jobId || !a.evaluator || !a.reason) continue;
       const r = insertJobEvent.run(
-        a.jobId.toString(), 'Completed', a.reason, a.evaluator.toLowerCase(),
+        a.jobId.toString(), 'Completed', a.reason, null, a.evaluator.toLowerCase(),
         Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
       );
       if (r.changes > 0) inserted += 1;
@@ -113,7 +124,7 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
       const a = entry.args;
       if (!a.jobId || !a.rejector || !a.reason) continue;
       const r = insertJobEvent.run(
-        a.jobId.toString(), 'Rejected', a.reason, a.rejector.toLowerCase(),
+        a.jobId.toString(), 'Rejected', a.reason, null, a.rejector.toLowerCase(),
         Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
       );
       if (r.changes > 0) inserted += 1;
@@ -127,6 +138,19 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
 }
 
 export function startJobIndexer(log: FastifyBaseLogger): void {
+  // One-shot M30 backfill: when no Funded events are indexed yet, rewind the
+  // events cursor so the next poll re-scans the lookback window. Submitted/
+  // Completed/Rejected rows are PK-protected against duplicate inserts, so
+  // re-indexing those is a safe no-op. Skipped on fresh DBs (no cursor).
+  const fundedExists = db
+    .prepare("SELECT 1 FROM job_events WHERE event_type = 'Funded' LIMIT 1")
+    .get();
+  const eventsCursor = getIndexerState(EVENTS_LAST_BLOCK_KEY);
+  if (!fundedExists && eventsCursor) {
+    db.prepare('DELETE FROM indexer_state WHERE key = ?').run(EVENTS_LAST_BLOCK_KEY);
+    log.info('rewinding job_events cursor to backfill historical JobFunded events');
+  }
+
   let running = false;
   const tick = async () => {
     if (running) return;

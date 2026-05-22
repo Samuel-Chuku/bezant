@@ -155,16 +155,44 @@ db.exec(`
   -- if the supplied content actually hashes to the claimed hash — the
   -- on-chain bytes32 is the access credential. Reads are parties-only
   -- (enforced in the route via signed-challenge auth).
+  -- content_type: 'text' | 'url' | 'file'.
+  -- text_content holds the actual text/url, or the filename for files.
+  -- mime / size_bytes / file_path are only populated for files.
   CREATE TABLE IF NOT EXISTS deliverables (
     job_id        TEXT NOT NULL,
     hash          TEXT NOT NULL,
     content_type  TEXT NOT NULL,
     text_content  TEXT NOT NULL,
+    mime          TEXT,
+    size_bytes    INTEGER,
+    file_path     TEXT,
     uploaded_by   TEXT NOT NULL,
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (job_id, hash)
   );
 `);
+
+// Idempotent ALTER TABLE migration for pre-M28 databases that already have
+// the deliverables table without the file columns. Guard each ADD with a
+// pragma check so re-running doesn't error.
+const deliverableCols = db
+  .prepare("SELECT name FROM pragma_table_info('deliverables')")
+  .all() as { name: string }[];
+const colNames = new Set(deliverableCols.map((c) => c.name));
+if (!colNames.has('mime')) db.exec('ALTER TABLE deliverables ADD COLUMN mime TEXT');
+if (!colNames.has('size_bytes')) db.exec('ALTER TABLE deliverables ADD COLUMN size_bytes INTEGER');
+if (!colNames.has('file_path')) db.exec('ALTER TABLE deliverables ADD COLUMN file_path TEXT');
+
+// Idempotent migration for pre-M30 databases — adds amount_raw to job_events
+// so JobFunded rows can store the locked amount (uint256 as decimal string).
+// Existing Submitted/Completed/Rejected rows keep amount_raw NULL.
+const jobEventCols = db
+  .prepare("SELECT name FROM pragma_table_info('job_events')")
+  .all() as { name: string }[];
+const jobEventColNames = new Set(jobEventCols.map((c) => c.name));
+if (!jobEventColNames.has('amount_raw')) {
+  db.exec('ALTER TABLE job_events ADD COLUMN amount_raw TEXT');
+}
 
 export type JobIndexRow = {
   job_id: string;
@@ -204,12 +232,13 @@ export function rowToJobIndex(row: JobIndexRow): JobIndex {
   };
 }
 
-export type JobEventType = 'Submitted' | 'Completed' | 'Rejected';
+export type JobEventType = 'Submitted' | 'Completed' | 'Rejected' | 'Funded';
 
 export type JobEventRow = {
   job_id: string;
   event_type: JobEventType;
-  hash_value: string;
+  hash_value: string;       // bytes32 hex for Submitted/Completed/Rejected; '' for Funded
+  amount_raw: string | null; // raw uint256 string for Funded; null for hash events
   actor: string;
   block_number: number;
   tx_hash: string;
@@ -221,6 +250,7 @@ export type JobEvent = {
   jobId: string;
   eventType: JobEventType;
   hashValue: string;
+  amountRaw: string | null;
   actor: string;
   blockNumber: number;
   txHash: string;
@@ -233,6 +263,7 @@ export function rowToJobEvent(row: JobEventRow): JobEvent {
     jobId: row.job_id,
     eventType: row.event_type,
     hashValue: row.hash_value,
+    amountRaw: row.amount_raw,
     actor: row.actor,
     blockNumber: row.block_number,
     txHash: row.tx_hash,
@@ -241,13 +272,16 @@ export function rowToJobEvent(row: JobEventRow): JobEvent {
   };
 }
 
-export type DeliverableContentType = 'text' | 'url';
+export type DeliverableContentType = 'text' | 'url' | 'file';
 
 export type DeliverableRow = {
   job_id: string;
   hash: string;
   content_type: DeliverableContentType;
   text_content: string;
+  mime: string | null;
+  size_bytes: number | null;
+  file_path: string | null;
   uploaded_by: string;
   uploaded_at: string;
 };
@@ -257,6 +291,9 @@ export type Deliverable = {
   hash: string;
   contentType: DeliverableContentType;
   textContent: string;
+  mime: string | null;
+  sizeBytes: number | null;
+  filePath: string | null;
   uploadedBy: string;
   uploadedAt: string;
 };
@@ -267,6 +304,9 @@ export function rowToDeliverable(row: DeliverableRow): Deliverable {
     hash: row.hash,
     contentType: row.content_type,
     textContent: row.text_content,
+    mime: row.mime,
+    sizeBytes: row.size_bytes,
+    filePath: row.file_path,
     uploadedBy: row.uploaded_by,
     uploadedAt: row.uploaded_at,
   };

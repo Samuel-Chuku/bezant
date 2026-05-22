@@ -137,6 +137,9 @@ export type JobLiveState = {
   expiredAt: { unix: number; iso: string };
   status: 'Open' | 'Funded' | 'Submitted' | 'Completed' | 'Rejected' | 'Expired' | string;
   hook: string;
+  // Creation metadata from the local jobs_index. null if the indexer hasn't
+  // caught up to the JobCreated event yet (~10s after creation).
+  createdAt: { blockNumber: number; txHash: string; indexedAt: string } | null;
 };
 
 export async function getJobState(jobId: string): Promise<JobLiveState> {
@@ -145,8 +148,10 @@ export async function getJobState(jobId: string): Promise<JobLiveState> {
 
 export type JobEvent = {
   jobId: string;
-  eventType: 'Submitted' | 'Completed' | 'Rejected';
+  eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded';
   hashValue: string;
+  // Set for Funded rows (uint256 USDC amount as decimal string); null otherwise.
+  amountRaw: string | null;
   actor: string;
   blockNumber: number;
   txHash: string;
@@ -167,20 +172,23 @@ export async function getJobEvents(jobId: string): Promise<JobEvent[]> {
 // verification (only the preimage holder — the provider — can store). Read
 // is gated by wallet-signature auth, parties-only.
 
-export type DeliverableContentType = 'text' | 'url';
+export type DeliverableContentType = 'text' | 'url' | 'file';
 
 export type Deliverable = {
   jobId: string;
   hash: string;
   contentType: DeliverableContentType;
   textContent: string;
+  mime: string | null;
+  sizeBytes: number | null;
+  filePath: string | null;
   uploadedBy: string;
   uploadedAt: string;
 };
 
 export async function uploadDeliverableContent(input: {
   jobId: string;
-  contentType: DeliverableContentType;
+  contentType: 'text' | 'url';
   content: string;
   expectedHash: string;
   uploadedBy: string;
@@ -195,6 +203,70 @@ export async function uploadDeliverableContent(input: {
       uploadedBy: input.uploadedBy,
     },
   );
+}
+
+// Files travel base64-in-JSON to the same upload endpoint. Caller provides
+// the precomputed keccak256 hash so the server can refuse mismatches without
+// us redoing the hash twice.
+export async function uploadDeliverableFile(input: {
+  jobId: string;
+  fileName: string;
+  mime: string;
+  fileBase64: string;
+  expectedHash: string;
+  uploadedBy: string;
+}): Promise<{
+  jobId: string;
+  hash: string;
+  contentType: 'file';
+  fileName: string;
+  mime: string;
+  sizeBytes: number;
+}> {
+  return jsonFetch(
+    'POST',
+    `/arc/escrow/job/${encodeURIComponent(input.jobId)}/deliverable-content`,
+    {
+      contentType: 'file',
+      fileName: input.fileName,
+      mime: input.mime,
+      fileBase64: input.fileBase64,
+      expectedHash: input.expectedHash,
+      uploadedBy: input.uploadedBy,
+    },
+  );
+}
+
+// Fetches the raw bytes for a file deliverable. Returns a Blob so the caller
+// can recompute the hash client-side before saving the file to disk.
+export async function getDeliverableFile(
+  jobId: string,
+  hash: string,
+  auth: { viewer: string; sig: string; ts: number },
+): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE}/arc/escrow/job/${encodeURIComponent(jobId)}/deliverable/file?hash=${encodeURIComponent(hash)}`,
+    {
+      headers: {
+        'x-arc-viewer': auth.viewer,
+        'x-arc-sig': auth.sig,
+        'x-arc-ts': String(auth.ts),
+      },
+    },
+  );
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j.error) message = j.error;
+    } catch {
+      // ignore — keep HTTP fallback
+    }
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return res.blob();
 }
 
 // Builds the canonical read-challenge message for a given jobId + timestamp.

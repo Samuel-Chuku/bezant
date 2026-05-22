@@ -152,6 +152,19 @@ export const jobCreatedEvent = {
   ],
 } as const;
 
+// JobFunded — emitted by fund(); carries the locked amount, not a hash.
+// Indexer treats the `amount` as the row's payload (amount_raw column);
+// hash_value stays empty for these rows.
+export const jobFundedEvent = {
+  type: 'event',
+  name: 'JobFunded',
+  inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true },
+    { name: 'client', type: 'address', indexed: true },
+    { name: 'amount', type: 'uint256' },
+  ],
+} as const;
+
 // Lifecycle events carrying the bytes32 commitments — indexer picks these up
 // so the frontend can show the on-chain hash without re-scanning logs.
 export const jobSubmittedEvent = {

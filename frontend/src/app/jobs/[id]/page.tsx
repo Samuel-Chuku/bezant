@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { keccak256, stringToBytes, type Hex } from 'viem';
+import { formatUnits, keccak256, stringToBytes, type Hex } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
 import {
@@ -14,11 +14,13 @@ import {
   buildSetBudgetUnsigned,
   buildSubmitUnsigned,
   getDeliverable,
+  getDeliverableFile,
   getJobEvents,
   getJobState,
   getOrCreateReadAuth,
   getUserByAddress,
   uploadDeliverableContent,
+  uploadDeliverableFile,
   type Deliverable,
   type DeliverableContentType,
   type JobEvent,
@@ -67,46 +69,168 @@ function userRoles(live: JobLiveState, address: string | undefined): JobRole[] {
   return roles;
 }
 
-// One-line lifecycle summary, tailored to the viewer's role. Rendered at
-// the top of the Actions panel so every viewer knows where the job stands.
-function describeCurrentStep(job: JobLiveState, status: string, roles: JobRole[]): string {
+// What's pending — a single sentence describing the next step, tailored to
+// the viewer's role. Pairs with the lifecycle timeline so we don't repeat
+// what's already happened; this only answers "what's blocking progress
+// right now?". Returns null for terminal states (Completed/Rejected) where
+// the timeline tells the whole story on its own.
+function describeCurrentStep(job: JobLiveState, status: string, roles: JobRole[]): string | null {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
   const isEvaluator = roles.includes('evaluator');
   const budgetSet = job.budget.usdc !== '0';
 
-  if (status === 'Completed') return `Complete. ${job.budget.usdc} USDC paid out.`;
-  if (status === 'Rejected') return 'Rejected. Funds refunded.';
+  if (status === 'Completed' || status === 'Rejected') return null;
 
   if (status === 'Expired') {
     if (job.status === 'Funded' || job.status === 'Submitted') {
-      return `Expired with ${job.budget.usdc} USDC locked — anyone can claim refund.`;
+      return `Anyone can claim the ${job.budget.usdc} USDC refund for the client.`;
     }
-    return isClient ? 'Expired. Cancel to clear it.' : 'Expired without funding.';
+    return isClient
+      ? 'Cancel this job to clear it, then post a fresh one with a longer deadline.'
+      : 'Waiting for the client to cancel or repost.';
   }
 
   if (status === 'Open' && !budgetSet) {
-    return isProvider ? 'Set your quote.' : 'Waiting on a quote.';
+    return isProvider
+      ? 'Set your quote so the client can fund the job.'
+      : 'Waiting for the provider to quote a price.';
   }
 
   if (status === 'Open' && budgetSet) {
-    if (isClient) return `Quoted ${job.budget.usdc} USDC. Fund to lock.`;
-    if (isProvider) return `Quoted ${job.budget.usdc} USDC. Waiting on client.`;
-    return `Quoted ${job.budget.usdc} USDC.`;
+    if (isClient) return `Fund the job to lock the ${job.budget.usdc} USDC and let work begin.`;
+    if (isProvider) return 'Quote sent — waiting for the client to fund the job.';
+    return 'Waiting for the client to fund the job.';
   }
 
   if (status === 'Funded') {
-    if (isProvider) return `${job.budget.usdc} USDC locked. Submit a deliverable.`;
-    if (isEvaluator) return `${job.budget.usdc} USDC locked. Provider to submit.`;
-    return `${job.budget.usdc} USDC locked.`;
+    return isProvider
+      ? 'Submit your deliverable so the evaluator can review and release the funds.'
+      : 'Waiting for the provider to submit a deliverable.';
   }
 
   if (status === 'Submitted') {
-    if (isEvaluator) return 'Deliverable submitted. Complete or reject.';
-    return 'Deliverable submitted. Awaiting review.';
+    if (isEvaluator) return 'Review the deliverable, then complete or reject.';
+    if (isProvider) return 'Waiting for the evaluator to review your submission.';
+    return 'Waiting for the evaluator to complete or reject.';
   }
 
   return `Status: ${status}.`;
+}
+
+// Compact relative-time formatter ("3m ago", "2h ago", "5d ago"). Beyond a
+// month, falls back to the locale date so we don't show "47 days ago".
+function timeAgo(iso: string): string {
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 30) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 86400 * 30) return `${Math.floor(seconds / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+type LifecycleRow = {
+  label: string;
+  actorAddr: string;
+  when?: string;
+  txHash?: string;
+};
+
+// Waiting-cue tint keyed off effective status. Mirrors the job-list page's
+// WAITING_TINT but with an Expired fallback (the detail page still surfaces
+// a waiting line for expired-with-funds-locked while lists go quiet).
+const LIFECYCLE_TINT: Record<string, { ping: string; solid: string; text: string }> = {
+  Open: { ping: 'bg-sky-400', solid: 'bg-sky-500', text: 'text-sky-300' },
+  Funded: { ping: 'bg-amber-400', solid: 'bg-amber-500', text: 'text-amber-300' },
+  Submitted: { ping: 'bg-violet-400', solid: 'bg-violet-500', text: 'text-violet-300' },
+  Expired: { ping: 'bg-neutral-500', solid: 'bg-neutral-600', text: 'text-neutral-400' },
+};
+const DEFAULT_LIFECYCLE_TINT = LIFECYCLE_TINT.Open;
+
+// Builds the ordered list of completed lifecycle steps. Sources:
+// - Created: jobs_index (createdAt on JobLiveState)
+// - Quoted: derived from job.budget > 0 (no event indexed today, no time)
+// - Funded: derived from on-chain status being Funded or beyond (no time)
+// - Submitted / Completed / Rejected: job_events table via getJobEvents
+// Terminal states (Completed / Rejected) append a value-summary suffix so
+// the timeline tells the whole story without a separate banner.
+function buildLifecycle(
+  job: JobLiveState,
+  events: JobEvent[],
+  status: string,
+): LifecycleRow[] {
+  const rows: LifecycleRow[] = [];
+
+  rows.push({
+    label: 'Created',
+    actorAddr: job.client,
+    when: job.createdAt?.indexedAt,
+    txHash: job.createdAt?.txHash,
+  });
+
+  if (job.budget.usdc !== '0') {
+    rows.push({
+      label: `Quoted ${job.budget.usdc} USDC`,
+      actorAddr: job.provider,
+    });
+  }
+
+  // Funded: prefer the indexed JobFunded event (timestamp + tx link).
+  // Fall back to the derived row from on-chain status when the indexer
+  // hasn't caught up — drops the timestamp but keeps the timeline coherent.
+  const fundedEvent = events.find((e) => e.eventType === 'Funded');
+  const fundedFromStatus =
+    job.status === 'Funded' ||
+    job.status === 'Submitted' ||
+    job.status === 'Completed' ||
+    job.status === 'Rejected';
+  if (fundedEvent) {
+    const amountUsdc = fundedEvent.amountRaw
+      ? formatUnits(BigInt(fundedEvent.amountRaw), 6)
+      : job.budget.usdc;
+    rows.push({
+      label: `Funded ${amountUsdc} USDC into escrow`,
+      actorAddr: fundedEvent.actor,
+      when: fundedEvent.indexedAt,
+      txHash: fundedEvent.txHash,
+    });
+  } else if (fundedFromStatus) {
+    rows.push({ label: `Funded ${job.budget.usdc} USDC into escrow`, actorAddr: job.client });
+  }
+
+  const submitted = events.find((e) => e.eventType === 'Submitted');
+  if (submitted) {
+    rows.push({
+      label: 'Submitted a deliverable',
+      actorAddr: submitted.actor,
+      when: submitted.indexedAt,
+      txHash: submitted.txHash,
+    });
+  }
+  const completed = events.find((e) => e.eventType === 'Completed');
+  if (completed) {
+    rows.push({
+      label: `Completed — ${job.budget.usdc} USDC released to provider`,
+      actorAddr: completed.actor,
+      when: completed.indexedAt,
+      txHash: completed.txHash,
+    });
+  }
+  const rejected = events.find((e) => e.eventType === 'Rejected');
+  if (rejected) {
+    rows.push({
+      label: `Rejected — funds refunded to client`,
+      actorAddr: rejected.actor,
+      when: rejected.indexedAt,
+      txHash: rejected.txHash,
+    });
+  }
+
+  // Note `status` is unused above but kept in the signature for future
+  // expiry-row handling once we index JobExpired / claimRefund.
+  void status;
+  return rows;
 }
 
 type ActionState =
@@ -114,6 +238,26 @@ type ActionState =
   | { status: 'busy'; label: string }
   | { status: 'error'; message: string }
   | { status: 'success'; txHash: string };
+
+// Read a File into a Uint8Array, compute keccak256 over the raw bytes, and
+// base64-encode in chunks (sidesteps the call-stack limit on big files).
+async function fileToBase64AndHash(file: File): Promise<{ base64: string; hash: Hex }> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const hash = keccak256(bytes);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return { base64: btoa(binary), hash };
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: jobId } = use(params);
@@ -132,12 +276,26 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [budgetInput, setBudgetInput] = useState('');
   const [deliverableType, setDeliverableType] = useState<DeliverableContentType>('url');
   const [deliverableInput, setDeliverableInput] = useState('');
+  const [deliverableFile, setDeliverableFile] = useState<File | null>(null);
   // After a chain-submit succeeds, hold the (hash, content) pair so the user
   // can retry the off-chain upload without re-pasting if the upload step fails.
-  const [pendingUpload, setPendingUpload] = useState<
-    | { jobId: string; hash: Hex; contentType: DeliverableContentType; content: string }
-    | null
-  >(null);
+  // For files we keep the precomputed base64 + metadata so the retry path
+  // never asks the user to re-pick the file.
+  type PendingTextUrl = {
+    jobId: string;
+    hash: Hex;
+    contentType: 'text' | 'url';
+    content: string;
+  };
+  type PendingFile = {
+    jobId: string;
+    hash: Hex;
+    contentType: 'file';
+    fileName: string;
+    mime: string;
+    fileBase64: string;
+  };
+  const [pendingUpload, setPendingUpload] = useState<PendingTextUrl | PendingFile | null>(null);
 
   const fetchJob = useCallback(async () => {
     setLoadingJob(true);
@@ -387,11 +545,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
             <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
               <h2 className="text-sm font-medium text-neutral-300">Actions</h2>
 
-              {currentStep && (
-                <p className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3 text-sm text-neutral-100">
-                  {currentStep}
-                </p>
-              )}
+              <LifecyclePanel
+                rows={buildLifecycle(job, events, status)}
+                waitingLine={currentStep}
+                effectiveStatus={status}
+                handlesByAddress={handlesByAddress}
+                youAddress={signer.address}
+              />
 
               {showReadOnlyNotice && (
                 <p className="mt-3 text-xs text-neutral-500">Read-only — you&apos;re not a party.</p>
@@ -501,7 +661,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   >
                     <div className="space-y-3">
                       <div className="flex gap-2 text-xs">
-                        {(['url', 'text'] as DeliverableContentType[]).map((t) => (
+                        {(['url', 'text', 'file'] as DeliverableContentType[]).map((t) => (
                           <label
                             key={t}
                             className={`cursor-pointer rounded-md border px-3 py-1.5 ${
@@ -518,11 +678,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                               onChange={() => setDeliverableType(t)}
                               className="sr-only"
                             />
-                            {t === 'url' ? 'URL' : 'Text'}
+                            {t === 'url' ? 'URL' : t === 'text' ? 'Text' : 'File'}
                           </label>
                         ))}
                       </div>
-                      {deliverableType === 'url' ? (
+                      {deliverableType === 'url' && (
                         <input
                           type="url"
                           value={deliverableInput}
@@ -530,7 +690,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                           placeholder="https://…"
                           className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
                         />
-                      ) : (
+                      )}
+                      {deliverableType === 'text' && (
                         <textarea
                           value={deliverableInput}
                           onChange={(e) => setDeliverableInput(e.target.value)}
@@ -539,48 +700,99 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                           className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
                         />
                       )}
+                      {deliverableType === 'file' && (
+                        <div className="space-y-2">
+                          <input
+                            type="file"
+                            onChange={(e) => setDeliverableFile(e.target.files?.[0] ?? null)}
+                            className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded-md file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-neutral-100 hover:file:bg-neutral-700"
+                          />
+                          {deliverableFile && (
+                            <p className="text-xs text-neutral-500">
+                              {deliverableFile.name} · {formatBytes(deliverableFile.size)}
+                            </p>
+                          )}
+                          <p className="text-xs text-neutral-600">Max 10 MB.</p>
+                        </div>
+                      )}
                       <div className="flex justify-end">
                         <button
                           type="button"
                           onClick={() => {
                             if (!guardDeadline('Submitting')) return;
                             if (!signer.isConnected) return;
-                            const content = deliverableInput.trim();
-                            if (!content) {
-                              setActionState({ status: 'error', message: 'Content is required.' });
-                              return;
-                            }
-                            const hash = keccak256(stringToBytes(content));
+
                             void (async () => {
-                              setActionState({ status: 'busy', label: 'Submitting on-chain…' });
                               try {
+                                let hash: Hex;
+                                let onchainTxHash: string;
+                                let upload: () => Promise<void>;
+                                let retry: PendingTextUrl | PendingFile;
+
+                                if (deliverableType === 'file') {
+                                  if (!deliverableFile) {
+                                    setActionState({ status: 'error', message: 'Pick a file first.' });
+                                    return;
+                                  }
+                                  if (deliverableFile.size > 10 * 1024 * 1024) {
+                                    setActionState({ status: 'error', message: 'File exceeds 10 MB.' });
+                                    return;
+                                  }
+                                  setActionState({ status: 'busy', label: 'Hashing file…' });
+                                  const { base64, hash: fileHash } = await fileToBase64AndHash(deliverableFile);
+                                  hash = fileHash;
+                                  const fileName = deliverableFile.name;
+                                  const mime = deliverableFile.type || 'application/octet-stream';
+                                  retry = { jobId, hash, contentType: 'file', fileName, mime, fileBase64: base64 };
+                                  upload = async () => {
+                                    await uploadDeliverableFile({
+                                      jobId,
+                                      fileName,
+                                      mime,
+                                      fileBase64: base64,
+                                      expectedHash: hash,
+                                      uploadedBy: signer.address,
+                                    });
+                                  };
+                                } else {
+                                  const content = deliverableInput.trim();
+                                  if (!content) {
+                                    setActionState({ status: 'error', message: 'Content is required.' });
+                                    return;
+                                  }
+                                  hash = keccak256(stringToBytes(content));
+                                  retry = { jobId, hash, contentType: deliverableType, content };
+                                  upload = async () => {
+                                    await uploadDeliverableContent({
+                                      jobId,
+                                      contentType: deliverableType,
+                                      content,
+                                      expectedHash: hash,
+                                      uploadedBy: signer.address,
+                                    });
+                                  };
+                                }
+
+                                setActionState({ status: 'busy', label: 'Submitting on-chain…' });
                                 const onchain = await sendUnsigned(
                                   'Submitting on-chain…',
                                   () => buildSubmitUnsigned(jobId, hash),
                                 );
+                                onchainTxHash = onchain.txHash;
+
                                 setActionState({ status: 'busy', label: 'Uploading content…' });
                                 try {
-                                  await uploadDeliverableContent({
-                                    jobId,
-                                    contentType: deliverableType,
-                                    content,
-                                    expectedHash: hash,
-                                    uploadedBy: signer.address,
-                                  });
+                                  await upload();
                                   setPendingUpload(null);
                                   setDeliverableInput('');
-                                  setActionState({ status: 'success', txHash: onchain.txHash });
+                                  setDeliverableFile(null);
+                                  setActionState({ status: 'success', txHash: onchainTxHash });
                                   await fetchJob();
                                 } catch (uploadErr) {
-                                  setPendingUpload({
-                                    jobId,
-                                    hash,
-                                    contentType: deliverableType,
-                                    content,
-                                  });
+                                  setPendingUpload(retry);
                                   setActionState({
                                     status: 'error',
-                                    message: `On-chain submit succeeded (tx ${onchain.txHash}) but content upload failed: ${
+                                    message: `On-chain submit succeeded (tx ${onchainTxHash}) but content upload failed: ${
                                       uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
                                     }. The hash is committed; use Retry upload below.`,
                                   });
@@ -594,7 +806,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                               }
                             })();
                           }}
-                          disabled={actionState.status === 'busy' || !deliverableInput.trim()}
+                          disabled={
+                            actionState.status === 'busy' ||
+                            (deliverableType === 'file' ? !deliverableFile : !deliverableInput.trim())
+                          }
                           className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
                         >
                           Submit
@@ -615,17 +830,29 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     <button
                       type="button"
                       onClick={() => {
-                        if (!signer.isConnected) return;
+                        if (!signer.isConnected || !pendingUpload) return;
+                        const retry = pendingUpload;
                         void (async () => {
                           setActionState({ status: 'busy', label: 'Uploading content…' });
                           try {
-                            await uploadDeliverableContent({
-                              jobId: pendingUpload.jobId,
-                              contentType: pendingUpload.contentType,
-                              content: pendingUpload.content,
-                              expectedHash: pendingUpload.hash,
-                              uploadedBy: signer.address,
-                            });
+                            if (retry.contentType === 'file') {
+                              await uploadDeliverableFile({
+                                jobId: retry.jobId,
+                                fileName: retry.fileName,
+                                mime: retry.mime,
+                                fileBase64: retry.fileBase64,
+                                expectedHash: retry.hash,
+                                uploadedBy: signer.address,
+                              });
+                            } else {
+                              await uploadDeliverableContent({
+                                jobId: retry.jobId,
+                                contentType: retry.contentType,
+                                content: retry.content,
+                                expectedHash: retry.hash,
+                                uploadedBy: signer.address,
+                              });
+                            }
                             setPendingUpload(null);
                             setActionState({ status: 'success', txHash: '0x' as Hex });
                             await fetchJob();
@@ -779,6 +1006,92 @@ function Mono({
   );
 }
 
+function LifecyclePanel({
+  rows,
+  waitingLine,
+  effectiveStatus,
+  handlesByAddress,
+  youAddress,
+}: {
+  rows: LifecycleRow[];
+  waitingLine: string | null;
+  effectiveStatus: string;
+  handlesByAddress: Record<string, string | null>;
+  youAddress?: string;
+}) {
+  const tint = LIFECYCLE_TINT[effectiveStatus] ?? DEFAULT_LIFECYCLE_TINT;
+  return (
+    <div className="mt-3 space-y-2.5 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+      {rows.map((row, i) => {
+        const handle = handlesByAddress[row.actorAddr.toLowerCase()] ?? null;
+        return (
+          <div key={i} className="flex items-start gap-2 text-sm">
+            <span className="mt-0.5 text-emerald-500">✓</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-neutral-100">{row.label}</p>
+              <p className="text-xs text-neutral-500">
+                by <Actor addr={row.actorAddr} handle={handle} you={youAddress} />
+                {row.when && <> · {timeAgo(row.when)}</>}
+                {row.txHash && (
+                  <a
+                    href={`https://testnet.arcscan.app/tx/${row.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-2 text-neutral-600 underline hover:text-neutral-400"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    view tx
+                  </a>
+                )}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+
+      {waitingLine && (
+        <div className="flex items-start gap-2 border-t border-neutral-800/60 pt-2.5 text-sm">
+          <span className="relative mt-1.5 flex h-2 w-2">
+            <span
+              className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${tint.ping}`}
+            />
+            <span
+              className={`relative inline-flex h-2 w-2 rounded-full ${tint.solid}`}
+            />
+          </span>
+          <p className={`animate-pulse ${tint.text}`}>{waitingLine}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Actor({
+  addr,
+  handle,
+  you,
+}: {
+  addr: string;
+  handle?: string | null;
+  you?: string;
+}) {
+  const isYou = !!you && addr.toLowerCase() === you.toLowerCase();
+  if (handle) {
+    return (
+      <span className="text-neutral-300">
+        @{handle}
+        {isYou && <span className="ml-1 text-neutral-500">(you)</span>}
+      </span>
+    );
+  }
+  return (
+    <span className="font-mono text-neutral-300">
+      {addr.slice(0, 6)}…{addr.slice(-4)}
+      {isYou && <span className="ml-1 text-neutral-500">(you)</span>}
+    </span>
+  );
+}
+
 function DeliverableContent({
   jobId,
   events,
@@ -800,13 +1113,25 @@ function DeliverableContent({
   const [loading, setLoading] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
 
+  // File downloads need their own state: the metadata alone can't be hashed
+  // against the on-chain commitment — we only know the commitment matches
+  // after fetching the bytes and recomputing client-side.
+  type FileState =
+    | { status: 'idle' }
+    | { status: 'downloading' }
+    | { status: 'verified' }
+    | { status: 'mismatch' }
+    | { status: 'error'; message: string };
+  const [fileState, setFileState] = useState<FileState>({ status: 'idle' });
+
   // The hash claimed on-chain; null until indexer catches up.
   const onchainHash = submittedEvent?.hashValue ?? null;
 
-  // Client-side hash verification: recompute and compare to the on-chain
-  // commitment. Falsy if content not yet loaded.
+  // Client-side hash verification for text/url. Files verify on download
+  // (see downloadAndVerify); the metadata view can't prove the bytes match.
   const hashMatches = useMemo(() => {
     if (!content || !onchainHash) return null;
+    if (content.contentType === 'file') return null;
     const recomputed = keccak256(stringToBytes(content.textContent));
     return recomputed.toLowerCase() === onchainHash.toLowerCase();
   }, [content, onchainHash]);
@@ -830,6 +1155,41 @@ function DeliverableContent({
       setLoading(false);
     }
   }, [jobId, signer, submittedEvent]);
+
+  const downloadAndVerify = useCallback(async () => {
+    if (
+      !signer.isConnected ||
+      !content ||
+      content.contentType !== 'file' ||
+      !submittedEvent ||
+      !onchainHash
+    ) {
+      return;
+    }
+    setFileState({ status: 'downloading' });
+    try {
+      const auth = await getOrCreateReadAuth(jobId, signer.address, signer.signMessage);
+      const blob = await getDeliverableFile(jobId, submittedEvent.hashValue, auth);
+      const buf = await blob.arrayBuffer();
+      const recomputed = keccak256(new Uint8Array(buf));
+      if (recomputed.toLowerCase() !== onchainHash.toLowerCase()) {
+        setFileState({ status: 'mismatch' });
+        return;
+      }
+      // Trigger browser download only after the hash matches.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = content.textContent;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setFileState({ status: 'verified' });
+    } catch (err) {
+      setFileState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  }, [content, jobId, signer, submittedEvent, onchainHash]);
 
   // On mount / when becoming a party: if a cached signature exists, auto-load.
   // Otherwise surface an explicit "Unlock" button so the user understands
@@ -893,20 +1253,39 @@ function DeliverableContent({
       {content && (
         <div className="mt-3 space-y-3">
           <div className="flex items-center gap-2 text-xs">
-            <span
-              className={`rounded-md border px-2 py-0.5 ${
-                hashMatches
-                  ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300'
-                  : 'border-red-900/60 bg-red-950/40 text-red-300'
-              }`}
-            >
-              {hashMatches ? '✓ Hash verified' : '✗ Hash mismatch'}
-            </span>
+            {content.contentType === 'file' ? (
+              <span
+                className={`rounded-md border px-2 py-0.5 ${
+                  fileState.status === 'verified'
+                    ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300'
+                    : fileState.status === 'mismatch'
+                      ? 'border-red-900/60 bg-red-950/40 text-red-300'
+                      : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+                }`}
+              >
+                {fileState.status === 'verified'
+                  ? '✓ Hash verified'
+                  : fileState.status === 'mismatch'
+                    ? '✗ Hash mismatch'
+                    : 'Unverified until download'}
+              </span>
+            ) : (
+              <span
+                className={`rounded-md border px-2 py-0.5 ${
+                  hashMatches
+                    ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300'
+                    : 'border-red-900/60 bg-red-950/40 text-red-300'
+                }`}
+              >
+                {hashMatches ? '✓ Hash verified' : '✗ Hash mismatch'}
+              </span>
+            )}
             <span className="text-neutral-500">
-              {content.contentType === 'url' ? 'URL' : 'Text'}
+              {content.contentType === 'url' ? 'URL' : content.contentType === 'text' ? 'Text' : 'File'}
             </span>
           </div>
-          {content.contentType === 'url' ? (
+
+          {content.contentType === 'url' && (
             <a
               href={content.textContent}
               target="_blank"
@@ -915,11 +1294,37 @@ function DeliverableContent({
             >
               {content.textContent}
             </a>
-          ) : (
+          )}
+
+          {content.contentType === 'text' && (
             <pre className="whitespace-pre-wrap rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-xs text-neutral-200">
               {content.textContent}
             </pre>
           )}
+
+          {content.contentType === 'file' && (
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-xs">
+              <p className="font-mono text-neutral-200 break-all">{content.textContent}</p>
+              <p className="mt-1 text-neutral-500">
+                {content.mime ?? 'application/octet-stream'}
+                {content.sizeBytes != null && ` · ${formatBytes(content.sizeBytes)}`}
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void downloadAndVerify()}
+                  disabled={fileState.status === 'downloading'}
+                  className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+                >
+                  {fileState.status === 'downloading' ? 'Downloading…' : 'Download & verify'}
+                </button>
+                {fileState.status === 'error' && (
+                  <span className="text-red-300">{fileState.message}</span>
+                )}
+              </div>
+            </div>
+          )}
+
           <p className="text-xs text-neutral-500">
             By <span className="font-mono">{content.uploadedBy.slice(0, 6)}…{content.uploadedBy.slice(-4)}</span>{' '}
             · {new Date(content.uploadedAt).toLocaleString()}
@@ -939,14 +1344,21 @@ function OnChainRecord({
   liveStatus: string;
   handlesByAddress: Record<string, string | null>;
 }) {
+  // This section is the "what hash was committed on-chain" view. Funded
+  // events carry an amount instead of a hash and show up in the lifecycle
+  // timeline above; filter them out here.
+  type HashEventType = 'Submitted' | 'Completed' | 'Rejected';
+  const hashEvents = events.filter(
+    (e): e is JobEvent & { eventType: HashEventType } => e.eventType !== 'Funded',
+  );
   // Jobs at Open/Funded have nothing to show. For Submitted/Completed/Rejected,
   // if no event row has indexed yet (~10s lag), show a soft hint instead of
   // hiding the section entirely.
   const expectsRecord =
     liveStatus === 'Submitted' || liveStatus === 'Completed' || liveStatus === 'Rejected';
-  if (events.length === 0 && !expectsRecord) return null;
+  if (hashEvents.length === 0 && !expectsRecord) return null;
 
-  const labels: Record<JobEvent['eventType'], { title: string; hashLabel: string }> = {
+  const labels: Record<HashEventType, { title: string; hashLabel: string }> = {
     Submitted: { title: 'Submitted', hashLabel: 'Deliverable hash' },
     Completed: { title: 'Completed', hashLabel: 'Reason hash' },
     Rejected: { title: 'Rejected', hashLabel: 'Reason hash' },
@@ -957,11 +1369,11 @@ function OnChainRecord({
       <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
         On-chain record
       </h3>
-      {events.length === 0 ? (
+      {hashEvents.length === 0 ? (
         <p className="mt-2 text-xs text-neutral-500">Indexing the event from chain…</p>
       ) : (
         <ul className="mt-2 space-y-3">
-          {events.map((e) => {
+          {hashEvents.map((e) => {
             const handle = handlesByAddress[e.actor.toLowerCase()];
             const { title, hashLabel } = labels[e.eventType];
             return (
