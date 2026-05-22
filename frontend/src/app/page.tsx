@@ -17,7 +17,7 @@ function shortAddress(address: string) {
 export default function Home() {
   const signer = useSigner();
   const { data: balance } = useBalance({ address: signer.address });
-  const { state: userState, claimHandle, linkAgentId } = useUserRecord();
+  const { state: userState, claimHandle, linkAgentId, registerAgent } = useUserRecord();
   const [handlePromptDismissed, setHandlePromptDismissed] = useState(false);
 
   const user = userState.status === 'ready' ? userState.user : null;
@@ -110,6 +110,25 @@ export default function Home() {
               <dt className="text-neutral-500">Address</dt>
               <dd className="font-mono text-xs text-neutral-200 break-all">{signer.address}</dd>
             </div>
+            {user?.agentId && (
+              <div>
+                <dt className="inline-flex items-center gap-1.5 text-neutral-500">
+                  Agent ID
+                  <AgentIdTooltip />
+                </dt>
+                <dd className="text-neutral-200">
+                  <Link
+                    href={`/reputation/agent/${encodeURIComponent(user.agentId)}`}
+                    className="inline-flex items-center gap-1 hover:text-neutral-100"
+                  >
+                    <span className="font-mono text-xs">#{user.agentId}</span>
+                    <span className="text-neutral-500" aria-hidden>
+                      ›
+                    </span>
+                  </Link>
+                </dd>
+              </div>
+            )}
             {balance && (
               <div className="sm:col-span-2">
                 <dt className="text-neutral-500">{balance.symbol} balance</dt>
@@ -166,6 +185,7 @@ export default function Home() {
           <AgentLinkCard
             currentAgentId={userState.user.agentId}
             onLink={(agentId) => linkAgentId(agentId)}
+            onRegister={() => registerAgent()}
           />
         </div>
       )}
@@ -178,5 +198,36 @@ export default function Home() {
         . Make sure the backend dev server is running.
       </footer>
     </main>
+  );
+}
+
+// Hoverable "?" with a small popover explaining the ERC-8004 agentId
+// concept and why it matters for arc-trade. Falls back to `title` for
+// touch / keyboard users since the hover popover isn't focusable.
+function AgentIdTooltip() {
+  return (
+    <span
+      className="group relative inline-block cursor-help"
+      tabIndex={0}
+      role="button"
+      aria-label="What is an Agent ID?"
+      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets arc-trade surface your reputation badge next to your name on every job."
+    >
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-700 text-[10px] text-neutral-500 group-hover:text-neutral-300">
+        ?
+      </span>
+      <span className="invisible absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-xs font-sans normal-case text-neutral-300 shadow-xl group-hover:visible group-focus:visible">
+        <span className="block font-medium text-neutral-100">What's an Agent ID?</span>
+        <span className="mt-1 block">
+          An ERC-8004 <span className="font-mono">agentId</span> is your portable,
+          ERC-721-backed identity. Reputation accrues to the ID, not your wallet —
+          your trust history follows you across apps and wallet rotations.
+        </span>
+        <span className="mt-2 block text-neutral-400">
+          Linking it surfaces your <span className="text-amber-300">★ score</span>{' '}
+          next to your name on every job in arc-trade.
+        </span>
+      </span>
+    </span>
   );
 }

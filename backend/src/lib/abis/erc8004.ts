@@ -75,9 +75,11 @@ export const reputationRegistryAbi = [
   },
 ] as const;
 
-// IdentityRegistry — only the ownership accessors we need to verify a user
-// is allowed to claim a given agentId. The registry is itself an ERC-721,
-// so ownerOf works alongside the agent-specific helpers.
+// IdentityRegistry — ownership accessors for the link verification path
+// plus the no-arg `register()` overload for M32 self-registration. The
+// registry is itself an ERC-721, so ownerOf works alongside the
+// agent-specific helpers, and registration mints a new token that emits
+// the standard ERC-721 Transfer event with `from = 0x0`.
 export const identityRegistryAbi = [
   {
     type: 'function',
@@ -96,4 +98,28 @@ export const identityRegistryAbi = [
     inputs: [{ name: 'agentId', type: 'uint256' }],
     outputs: [{ type: 'address' }],
   },
+  // The no-arg register() overload — simplest entrypoint. Caller becomes
+  // the owner of the newly-minted ERC-721 token; the agentId is assigned
+  // incrementally by the registry. We can't read the return value off a
+  // sent tx, so we parse the Transfer event from the receipt instead.
+  {
+    type: 'function',
+    name: 'register',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
 ] as const;
+
+// Standard ERC-721 Transfer event — used to extract the agentId from a
+// register() tx receipt. On mint, `from` is address(0) and `tokenId` is
+// the freshly-assigned agentId.
+export const erc721TransferEvent = {
+  type: 'event',
+  name: 'Transfer',
+  inputs: [
+    { name: 'from', type: 'address', indexed: true },
+    { name: 'to', type: 'address', indexed: true },
+    { name: 'tokenId', type: 'uint256', indexed: true },
+  ],
+} as const;

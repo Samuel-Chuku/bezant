@@ -1,10 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { Hex } from 'viem';
 import {
+  buildRegisterAgentUnsigned,
   claimHandle as claimHandleApi,
   getUserByAddress,
   linkAgentId as linkAgentIdApi,
+  parseRegistration,
   registerExternalUser,
   type UserRecord,
 } from '@/lib/api';
@@ -102,5 +105,32 @@ export function useUserRecord() {
     [state],
   );
 
-  return { state, claimHandle, linkAgentId };
+  // registerAgent mints a fresh ERC-8004 agentId for the connected wallet
+  // by calling IdentityRegistry.register(), then auto-links it via the
+  // existing PATCH route (whose on-chain ownership check passes trivially
+  // because the signer just minted the token).
+  const registerAgent = useCallback(async (): Promise<{ agentId: string }> => {
+    if (state.status !== 'ready' || state.user === null) {
+      throw new Error('Claim a handle first — agent registration links to your user record');
+    }
+    if (!signer.isConnected) {
+      throw new Error('Not connected');
+    }
+    const unsigned = await buildRegisterAgentUnsigned();
+    const sent = await signer.sendCall({
+      to: unsigned.to as Hex,
+      data: unsigned.data as Hex,
+      value: BigInt(unsigned.value),
+    });
+    const { txHash, status: txStatus } = await sent.wait();
+    if (txStatus !== 'success') {
+      throw new Error(`Registration tx ${txStatus}`);
+    }
+    const parsed = await parseRegistration(txHash);
+    const updated = await linkAgentIdApi(state.user.id, parsed.agentId);
+    setState({ status: 'ready', user: updated });
+    return { agentId: parsed.agentId };
+  }, [state, signer]);
+
+  return { state, claimHandle, linkAgentId, registerAgent };
 }

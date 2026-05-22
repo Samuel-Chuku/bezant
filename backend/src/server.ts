@@ -24,7 +24,11 @@ import {
 } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
 import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
-import { reputationRegistryAbi, identityRegistryAbi } from './lib/abis/erc8004.js';
+import {
+  reputationRegistryAbi,
+  identityRegistryAbi,
+  erc721TransferEvent,
+} from './lib/abis/erc8004.js';
 import {
   db,
   rowToUser,
@@ -1227,6 +1231,97 @@ app.get<{
       // page" — true whenever total exceeds what fits before+within the
       // current page. Frontend uses it to decide whether to show pager.
       truncated: total > slicedFeedback.length,
+    };
+  },
+);
+
+// ─── ERC-8004 agent self-registration (M32) ────────────────────────────────
+// Two routes. register-unsigned returns the calldata to mint a fresh
+// agentId; the frontend signs it with whichever wallet is connected.
+// parse-registration takes the resulting tx hash, fetches the receipt
+// server-side, and extracts the new agentId from the ERC-721 Transfer
+// event (from = 0x0). The frontend then links via the existing PATCH
+// route, whose on-chain ownership check passes trivially because the
+// caller just minted the token.
+
+app.post('/arc/identity/register-unsigned', async (_request, reply) => {
+  let identityRegistry: `0x${string}`;
+  try {
+    identityRegistry = await resolveIdentityRegistry();
+  } catch (err) {
+    return reply.code(502).send({
+      error: 'could not resolve IdentityRegistry from ReputationRegistry',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const data = encodeFunctionData({
+    abi: identityRegistryAbi,
+    functionName: 'register',
+    args: [],
+  });
+  return {
+    to: identityRegistry,
+    data,
+    value: '0x0',
+    chainId: ARC_TESTNET_CHAIN_ID,
+    identityRegistry,
+  };
+});
+
+app.post<{ Body: { txHash?: string } }>(
+  '/arc/identity/parse-registration',
+  async (request, reply) => {
+    const txHash = request.body?.txHash;
+    if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return reply.code(400).send({ error: 'txHash must be a 0x-prefixed 32-byte hex string' });
+    }
+    let identityRegistry: `0x${string}`;
+    try {
+      identityRegistry = await resolveIdentityRegistry();
+    } catch (err) {
+      return reply.code(502).send({
+        error: 'could not resolve IdentityRegistry from ReputationRegistry',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    let receipt: Awaited<ReturnType<typeof arcClient.getTransactionReceipt>>;
+    try {
+      receipt = await arcClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+    } catch (err) {
+      return reply.code(404).send({
+        error: 'transaction receipt not found (still pending?)',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if (receipt.status !== 'success') {
+      return reply.code(400).send({ error: 'transaction reverted; no agentId minted' });
+    }
+
+    // Find the mint Transfer (from = 0x0) emitted by the IdentityRegistry.
+    // A single register() call should emit exactly one such event; if
+    // multiple appear the first is returned.
+    const parsed = parseEventLogs({
+      abi: [erc721TransferEvent],
+      logs: receipt.logs,
+      eventName: 'Transfer',
+    });
+    const mint = parsed.find(
+      (entry) =>
+        entry.address.toLowerCase() === identityRegistry.toLowerCase() &&
+        entry.args.from === '0x0000000000000000000000000000000000000000',
+    );
+    if (!mint || !mint.args.tokenId || !mint.args.to) {
+      return reply.code(404).send({
+        error: 'no IdentityRegistry mint event found in this transaction',
+      });
+    }
+    return {
+      agentId: mint.args.tokenId.toString(),
+      to: mint.args.to,
+      identityRegistry,
+      txHash,
+      blockNumber: Number(receipt.blockNumber),
     };
   },
 );

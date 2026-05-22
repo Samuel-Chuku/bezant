@@ -71,6 +71,28 @@ export async function linkAgentId(
   );
 }
 
+// Self-registration flow (M32). Step 1 — get unsigned calldata for the
+// IdentityRegistry's no-arg `register()`. Frontend signs via useSigner.
+export async function buildRegisterAgentUnsigned(): Promise<UnsignedTx & {
+  identityRegistry: string;
+}> {
+  return jsonFetch('POST', '/arc/identity/register-unsigned');
+}
+
+// Step 2 — after the tx confirms, ask the backend to parse the receipt
+// and pull the freshly-minted agentId out of the ERC-721 Transfer event.
+// Centralizes log parsing so we don't have to handle the wagmi-vs-Circle
+// receipt-shape difference on the client.
+export async function parseRegistration(txHash: string): Promise<{
+  agentId: string;
+  to: string;
+  identityRegistry: string;
+  txHash: string;
+  blockNumber: number;
+}> {
+  return jsonFetch('POST', '/arc/identity/parse-registration', { txHash });
+}
+
 // Reputation reads — live view-call against the ReputationRegistry. Two
 // shapes: a cheap summary (used by the inline badge) and a full read that
 // adds a truncated feedback list (used by the reputation page).
