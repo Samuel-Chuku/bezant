@@ -253,10 +253,13 @@ export async function getJobState(jobId: string): Promise<JobLiveState> {
 
 export type JobEvent = {
   jobId: string;
-  eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded';
+  eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';
   hashValue: string;
-  // Set for Funded rows (uint256 USDC amount as decimal string); null otherwise.
+  // Set for Funded + Refunded rows (uint256 USDC amount as decimal string);
+  // null for hash-bearing rows.
   amountRaw: string | null;
+  // For Funded: the funder (client). For Refunded: the recipient (also
+  // client) — caller of claimRefund isn't recoverable from the event.
   actor: string;
   blockNumber: number;
   txHash: string;

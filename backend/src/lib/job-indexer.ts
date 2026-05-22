@@ -3,6 +3,7 @@ import { arcClient, ERC8183_ADDRESS } from './arc.js';
 import {
   jobCreatedEvent,
   jobFundedEvent,
+  jobRefundedEvent,
   jobSubmittedEvent,
   jobCompletedEvent,
   jobRejectedEvent,
@@ -86,8 +87,9 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
   while (from <= head) {
     const to = from + MAX_BLOCKS_PER_QUERY - 1n > head ? head : from + MAX_BLOCKS_PER_QUERY - 1n;
 
-    const [funded, submitted, completed, rejected] = await Promise.all([
+    const [funded, refunded, submitted, completed, rejected] = await Promise.all([
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobFundedEvent, fromBlock: from, toBlock: to }),
+      arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobRefundedEvent, fromBlock: from, toBlock: to }),
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobSubmittedEvent, fromBlock: from, toBlock: to }),
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobCompletedEvent, fromBlock: from, toBlock: to }),
       arcClient.getLogs({ address: ERC8183_ADDRESS, event: jobRejectedEvent, fromBlock: from, toBlock: to }),
@@ -98,6 +100,20 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
       if (!a.jobId || !a.client || a.amount == null) continue;
       const r = insertJobEvent.run(
         a.jobId.toString(), 'Funded', '', a.amount.toString(), a.client.toLowerCase(),
+        Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
+    for (const entry of refunded) {
+      const a = entry.args;
+      if (!a.jobId || !a.client || a.amount == null) continue;
+      // Refunded.client is the recipient. The actual caller of
+      // claimRefund() can be anyone (permissionless); we store the
+      // recipient as `actor` and rely on the row label in the UI to
+      // disambiguate. Recovering the actual caller would require an
+      // extra getTransaction() per event — not worth it for v1.
+      const r = insertJobEvent.run(
+        a.jobId.toString(), 'Refunded', '', a.amount.toString(), a.client.toLowerCase(),
         Number(entry.blockNumber), entry.transactionHash, entry.logIndex ?? 0,
       );
       if (r.changes > 0) inserted += 1;
@@ -138,17 +154,26 @@ async function pollLifecycleOnce(log: FastifyBaseLogger): Promise<void> {
 }
 
 export function startJobIndexer(log: FastifyBaseLogger): void {
-  // One-shot M30 backfill: when no Funded events are indexed yet, rewind the
-  // events cursor so the next poll re-scans the lookback window. Submitted/
-  // Completed/Rejected rows are PK-protected against duplicate inserts, so
-  // re-indexing those is a safe no-op. Skipped on fresh DBs (no cursor).
+  // One-shot backfill rewind: when any newly-added event type isn't yet in
+  // the local index, drop the cursor so the next poll re-scans the lookback
+  // window. All existing rows are PK-protected by (tx_hash, log_index) so
+  // re-indexing is a safe no-op. Two milestones have triggered this so far:
+  //   - M30 added JobFunded indexing
+  //   - M33 added Refunded indexing
+  // Skipped on fresh DBs (no cursor).
   const fundedExists = db
     .prepare("SELECT 1 FROM job_events WHERE event_type = 'Funded' LIMIT 1")
     .get();
+  const refundedExists = db
+    .prepare("SELECT 1 FROM job_events WHERE event_type = 'Refunded' LIMIT 1")
+    .get();
   const eventsCursor = getIndexerState(EVENTS_LAST_BLOCK_KEY);
-  if (!fundedExists && eventsCursor) {
+  if (eventsCursor && (!fundedExists || !refundedExists)) {
     db.prepare('DELETE FROM indexer_state WHERE key = ?').run(EVENTS_LAST_BLOCK_KEY);
-    log.info('rewinding job_events cursor to backfill historical JobFunded events');
+    log.info(
+      { fundedExists: !!fundedExists, refundedExists: !!refundedExists },
+      'rewinding job_events cursor to backfill historical Funded/Refunded events',
+    );
   }
 
   let running = false;

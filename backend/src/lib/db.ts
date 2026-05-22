@@ -247,7 +247,7 @@ export function rowToJobIndex(row: JobIndexRow): JobIndex {
   };
 }
 
-export type JobEventType = 'Submitted' | 'Completed' | 'Rejected' | 'Funded';
+export type JobEventType = 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';
 
 export type JobEventRow = {
   job_id: string;

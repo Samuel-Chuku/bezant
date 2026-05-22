@@ -139,7 +139,11 @@ function timeAgo(iso: string): string {
 
 type LifecycleRow = {
   label: string;
-  actorAddr: string;
+  // Optional — derived rows for actions with no indexed event (e.g. refund
+  // closed terminal state via claimRefund, which is permissionless and
+  // doesn't tell us the caller) can omit the actor entirely. Render skips
+  // the by-line for those rows.
+  actorAddr?: string;
   when?: string;
   txHash?: string;
 };
@@ -234,8 +238,28 @@ function buildLifecycle(
     });
   }
 
-  // Note `status` is unused above but kept in the signature for future
-  // expiry-row handling once we index JobExpired / claimRefund.
+  // Refund-claimed closes the story for jobs where the deadline lapsed and
+  // someone (anyone) called claimRefund. Prefer the indexed Refunded event
+  // (timestamp + tx link); fall back to a derived row when the indexer
+  // hasn't caught up. The event's `client` field is the recipient — caller
+  // identity isn't recoverable from the log, so the row label leans on
+  // "returned to client" rather than a misleading "by @client".
+  const refundedEvent = events.find((e) => e.eventType === 'Refunded');
+  if (refundedEvent) {
+    const amountUsdc = refundedEvent.amountRaw
+      ? formatUnits(BigInt(refundedEvent.amountRaw), 6)
+      : job.budget.usdc;
+    rows.push({
+      label: `Refund of ${amountUsdc} USDC returned to client (deadline passed)`,
+      when: refundedEvent.indexedAt,
+      txHash: refundedEvent.txHash,
+    });
+  } else if (job.status === 'Expired') {
+    rows.push({
+      label: `Refund of ${job.budget.usdc} USDC returned to client (deadline passed)`,
+    });
+  }
+
   void status;
   return rows;
 }
@@ -1093,27 +1117,41 @@ function LifecyclePanel({
   return (
     <div className="mt-3 space-y-2.5 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
       {rows.map((row, i) => {
-        const handle = handlesByAddress[row.actorAddr.toLowerCase()] ?? null;
+        const handle = row.actorAddr
+          ? (handlesByAddress[row.actorAddr.toLowerCase()] ?? null)
+          : null;
+        const hasMeta = !!row.actorAddr || !!row.when || !!row.txHash;
         return (
           <div key={i} className="flex items-start gap-2 text-sm">
             <span className="mt-0.5 text-emerald-500">✓</span>
             <div className="min-w-0 flex-1">
               <p className="text-neutral-100">{row.label}</p>
-              <p className="text-xs text-neutral-500">
-                by <Actor addr={row.actorAddr} handle={handle} you={youAddress} />
-                {row.when && <> · {timeAgo(row.when)}</>}
-                {row.txHash && (
-                  <a
-                    href={`https://testnet.arcscan.app/tx/${row.txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ml-2 text-neutral-600 underline hover:text-neutral-400"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    view tx
-                  </a>
-                )}
-              </p>
+              {hasMeta && (
+                <p className="text-xs text-neutral-500">
+                  {row.actorAddr && (
+                    <>
+                      by <Actor addr={row.actorAddr} handle={handle} you={youAddress} />
+                    </>
+                  )}
+                  {row.when && (
+                    <>
+                      {row.actorAddr ? ' · ' : ''}
+                      {timeAgo(row.when)}
+                    </>
+                  )}
+                  {row.txHash && (
+                    <a
+                      href={`https://testnet.arcscan.app/tx/${row.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-2 text-neutral-600 underline hover:text-neutral-400"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      view tx
+                    </a>
+                  )}
+                </p>
+              )}
             </div>
           </div>
         );
@@ -1415,11 +1453,14 @@ function OnChainRecord({
   handlesByAddress: Record<string, string | null>;
 }) {
   // This section is the "what hash was committed on-chain" view. Funded
-  // events carry an amount instead of a hash and show up in the lifecycle
-  // timeline above; filter them out here.
+  // and Refunded events carry an amount instead of a hash and show up in
+  // the lifecycle timeline above; filter them out here.
   type HashEventType = 'Submitted' | 'Completed' | 'Rejected';
   const hashEvents = events.filter(
-    (e): e is JobEvent & { eventType: HashEventType } => e.eventType !== 'Funded',
+    (e): e is JobEvent & { eventType: HashEventType } =>
+      e.eventType === 'Submitted' ||
+      e.eventType === 'Completed' ||
+      e.eventType === 'Rejected',
   );
   // Jobs at Open/Funded have nothing to show. For Submitted/Completed/Rejected,
   // if no event row has indexed yet (~10s lag), show a soft hint instead of

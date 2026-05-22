@@ -165,6 +165,21 @@ export const jobFundedEvent = {
   ],
 } as const;
 
+// Refunded — emitted when claimRefund() returns the locked budget to the
+// client after the deadline. `client` is the recipient (indexed); the
+// actual caller can be anyone (permissionless) so we record the recipient
+// in `actor` and rely on the label to disambiguate semantics. Same
+// payload shape as JobFunded — amount goes into amount_raw, hash empty.
+export const jobRefundedEvent = {
+  type: 'event',
+  name: 'Refunded',
+  inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true },
+    { name: 'client', type: 'address', indexed: true },
+    { name: 'amount', type: 'uint256' },
+  ],
+} as const;
+
 // Lifecycle events carrying the bytes32 commitments — indexer picks these up
 // so the frontend can show the on-chain hash without re-scanning logs.
 export const jobSubmittedEvent = {
