@@ -75,8 +75,8 @@ function userRoles(live: JobLiveState, address: string | undefined): JobRole[] {
 // What's pending — a single sentence describing the next step, tailored to
 // the viewer's role. Pairs with the lifecycle timeline so we don't repeat
 // what's already happened; this only answers "what's blocking progress
-// right now?". Returns null for terminal states (Completed/Rejected) where
-// the timeline tells the whole story on its own.
+// right now?". Returns null for terminal states (Completed/Rejected, and
+// on-chain Expired which means claimRefund already closed the job).
 function describeCurrentStep(job: JobLiveState, status: string, roles: JobRole[]): string | null {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
@@ -84,6 +84,10 @@ function describeCurrentStep(job: JobLiveState, status: string, roles: JobRole[]
   const budgetSet = job.budget.usdc !== '0';
 
   if (status === 'Completed' || status === 'Rejected') return null;
+  // On-chain Expired is reached only via claimRefund(); terminal, nothing
+  // for any role to do. (Soft-expired = deadline passed but on-chain still
+  // Funded/Submitted/Open is handled below.)
+  if (job.status === 'Expired') return null;
 
   if (status === 'Expired') {
     if (job.status === 'Funded' || job.status === 'Submitted') {
