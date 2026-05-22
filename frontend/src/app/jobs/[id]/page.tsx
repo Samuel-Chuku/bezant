@@ -3,8 +3,9 @@
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { formatUnits, keccak256, stringToBytes, type Hex } from 'viem';
-import { usePublicClient } from 'wagmi';
+import { useChainId, usePublicClient, useSwitchChain } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
+import { arcTestnet } from '@/lib/chains';
 import {
   buildApproveUnsigned,
   buildCompleteUnsigned,
@@ -293,7 +294,12 @@ function formatBytes(n: number): string {
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: jobId } = use(params);
   const signer = useSigner();
-  const publicClient = usePublicClient();
+  // Allowance + any other Arc reads must stay pinned to Arc even if the
+  // user just bridged and the wallet is sitting on Base / Sepolia / etc.
+  const publicClient = usePublicClient({ chainId: arcTestnet.id });
+  const wagmiChainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const isOffArc = signer.isConnected && signer.mode === 'external' && wagmiChainId !== arcTestnet.id;
   const [job, setJob] = useState<JobLiveState | null>(null);
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [loadingJob, setLoadingJob] = useState(false);
@@ -601,7 +607,25 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 <p className="mt-3 text-xs text-neutral-500">Read-only — you&apos;re not a party.</p>
               )}
 
-              <div className="mt-4 space-y-4">
+              {!showReadOnlyNotice && isOffArc && (
+                <div className="mt-4 rounded-xl border border-amber-700/40 bg-amber-950/20 p-3">
+                  <p className="text-sm text-amber-200">Switch to Arc to take action on this job.</p>
+                  <p className="mt-1 text-xs text-amber-200/70">
+                    Your wallet is on a different network — fund / submit / complete must be signed on Arc.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => switchChain({ chainId: arcTestnet.id })}
+                    className="mt-3 rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100"
+                  >
+                    Switch to Arc
+                  </button>
+                </div>
+              )}
+
+              <div
+                className={`mt-4 space-y-4 ${isOffArc ? 'pointer-events-none opacity-50' : ''}`}
+              >
                 {/* setBudget — provider only, while Open */}
                 {roles.includes('provider') && status === 'Open' && (
                   <ActionCard

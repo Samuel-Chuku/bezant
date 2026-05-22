@@ -8,6 +8,7 @@ import {
   useSendTransaction,
   useSignMessage,
 } from 'wagmi';
+import { arcTestnet } from '@/lib/chains';
 import { useCircleAccount } from './use-circle-account';
 
 export type SignerMode = 'external' | 'circle';
@@ -44,7 +45,10 @@ type DisconnectedState = {
 export function useSigner(): ConnectedState | DisconnectedState {
   // External (wagmi) — RainbowKit / MetaMask / Rabby / etc.
   const wagmi = useAccount();
-  const wagmiPublic = usePublicClient();
+  // Always wait for receipts on Arc — the bridge widget can switch the
+  // wagmi chain temporarily, but every tx we hand back here was meant for
+  // Arc. (Bridge txs go through Bridge Kit's own flow, not this signer.)
+  const wagmiPublic = usePublicClient({ chainId: arcTestnet.id });
   const { sendTransactionAsync } = useSendTransaction();
   const { signMessageAsync: wagmiSignMessageAsync } = useSignMessage();
   const { disconnect: wagmiDisconnect } = useDisconnect();
@@ -62,7 +66,15 @@ export function useSigner(): ConnectedState | DisconnectedState {
       mode: 'external',
       address: wagmi.address!,
       sendCall: async ({ to, data, value }) => {
-        const hash = await sendTransactionAsync({ to, data, value: value ?? 0n });
+        // Force Arc — wagmi will prompt a switch if the wallet is elsewhere
+        // (e.g. user just bridged and is still on Base). Page-level guards
+        // try to prevent the click, but this is belt-and-suspenders.
+        const hash = await sendTransactionAsync({
+          to,
+          data,
+          value: value ?? 0n,
+          chainId: arcTestnet.id,
+        });
         return {
           hash,
           wait: async () => {

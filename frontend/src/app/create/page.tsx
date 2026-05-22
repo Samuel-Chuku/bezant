@@ -6,6 +6,7 @@ import { parseEventLogs } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
 import { buildCreateJobUnsigned, resolveAddress } from '@/lib/api';
+import { arcTestnet } from '@/lib/chains';
 
 // Mirrors the on-chain JobCreated event from the AgenticCommerce contract.
 // Used to parse the jobId out of the tx receipt after a successful createJob.
@@ -38,7 +39,9 @@ type Submission =
 
 export default function CreateJobPage() {
   const signer = useSigner();
-  const publicClient = usePublicClient();
+  // Receipt parsing must read from Arc even if the wallet is currently on a
+  // bridge source chain (Sepolia / Base / Arbitrum / OP).
+  const publicClient = usePublicClient({ chainId: arcTestnet.id });
   const [description, setDescription] = useState('');
   const [providerInput, setProviderInput] = useState('');
   const [evaluatorInput, setEvaluatorInput] = useState('');
