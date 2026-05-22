@@ -67,96 +67,46 @@ function userRoles(live: JobLiveState, address: string | undefined): JobRole[] {
   return roles;
 }
 
-// Describes the job's current lifecycle position in plain language, plus
-// what's expected next from the user's perspective. Always rendered at the
-// top of the Actions panel — regardless of whether actions are available —
-// so the user always knows where they are in the flow.
-function describeCurrentStep(
-  job: JobLiveState,
-  status: string,
-  roles: JobRole[],
-): { summary: string; nextHint: string | null } {
+// One-line lifecycle summary, tailored to the viewer's role. Rendered at
+// the top of the Actions panel so every viewer knows where the job stands.
+function describeCurrentStep(job: JobLiveState, status: string, roles: JobRole[]): string {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
   const isEvaluator = roles.includes('evaluator');
   const budgetSet = job.budget.usdc !== '0';
 
-  if (status === 'Completed') {
-    return {
-      summary: `Job complete. ${job.budget.usdc} USDC released to the provider.`,
-      nextHint: null,
-    };
-  }
-
-  if (status === 'Rejected') {
-    return {
-      summary: 'Job rejected. Any locked funds were returned to the client.',
-      nextHint: null,
-    };
-  }
+  if (status === 'Completed') return `Complete. ${job.budget.usdc} USDC paid out.`;
+  if (status === 'Rejected') return 'Rejected. Funds refunded.';
 
   if (status === 'Expired') {
     if (job.status === 'Funded' || job.status === 'Submitted') {
-      return {
-        summary: `Deadline passed with ${job.budget.usdc} USDC still locked.`,
-        nextHint: isClient
-          ? 'Anyone (including you) can call claimRefund to return the funds.'
-          : 'Anyone can call claimRefund to return the funds to the client.',
-      };
+      return `Expired with ${job.budget.usdc} USDC locked — anyone can claim refund.`;
     }
-    return {
-      summary: 'Deadline passed before any funds were locked.',
-      nextHint: isClient
-        ? 'You can cancel this job to clean it up, then post a fresh one with a longer deadline.'
-        : 'Waiting for the client to cancel and post a new job.',
-    };
+    return isClient ? 'Expired. Cancel to clear it.' : 'Expired without funding.';
   }
 
   if (status === 'Open' && !budgetSet) {
-    return {
-      summary: 'Job posted. No quote yet.',
-      nextHint: isProvider
-        ? 'Set your budget below to quote a price.'
-        : isClient
-          ? 'Waiting for the provider to set a price. Once they do, you can fund.'
-          : 'Waiting for the provider to set a price, then for the client to fund.',
-    };
+    return isProvider ? 'Set your quote.' : 'Waiting on a quote.';
   }
 
   if (status === 'Open' && budgetSet) {
-    return {
-      summary: `Provider has quoted ${job.budget.usdc} USDC.`,
-      nextHint: isClient
-        ? 'Fund the job to lock the price, or wait if you want a re-quote.'
-        : isProvider
-          ? 'Waiting for the client to fund at this price. You can re-quote anytime.'
-          : 'Waiting for the client to fund.',
-    };
+    if (isClient) return `Quoted ${job.budget.usdc} USDC. Fund to lock.`;
+    if (isProvider) return `Quoted ${job.budget.usdc} USDC. Waiting on client.`;
+    return `Quoted ${job.budget.usdc} USDC.`;
   }
 
   if (status === 'Funded') {
-    return {
-      summary: `${job.budget.usdc} USDC locked in escrow.`,
-      nextHint: isProvider
-        ? 'Submit your deliverable so the evaluator can review and release the funds.'
-        : isEvaluator
-          ? 'Waiting for the provider to submit. You can reject early if needed.'
-          : 'Waiting for the provider to submit a deliverable.',
-    };
+    if (isProvider) return `${job.budget.usdc} USDC locked. Submit a deliverable.`;
+    if (isEvaluator) return `${job.budget.usdc} USDC locked. Provider to submit.`;
+    return `${job.budget.usdc} USDC locked.`;
   }
 
   if (status === 'Submitted') {
-    return {
-      summary: 'Provider has submitted a deliverable.',
-      nextHint: isEvaluator
-        ? 'Review and complete (release funds to provider) or reject (refund client).'
-        : isProvider
-          ? 'Waiting for the evaluator to review your submission.'
-          : 'Waiting for the evaluator to complete or reject.',
-    };
+    if (isEvaluator) return 'Deliverable submitted. Complete or reject.';
+    return 'Deliverable submitted. Awaiting review.';
   }
 
-  return { summary: `Status: ${status}.`, nextHint: null };
+  return `Status: ${status}.`;
 }
 
 type ActionState =
@@ -426,9 +376,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
           {!signer.isConnected && (
             <p className="mt-6 rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
-              Connect a wallet or sign in to act on this job.{' '}
+              Connect to act on this job.{' '}
               <Link href="/" className="underline">
-                Go to sign-in
+                Sign in
               </Link>
             </p>
           )}
@@ -438,21 +388,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               <h2 className="text-sm font-medium text-neutral-300">Actions</h2>
 
               {currentStep && (
-                <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
-                  <p className="text-sm text-neutral-100">{currentStep.summary}</p>
-                  {currentStep.nextHint && (
-                    <p className="mt-1 text-xs text-neutral-400">
-                      <span className="text-neutral-600">→</span> {currentStep.nextHint}
-                    </p>
-                  )}
-                </div>
+                <p className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3 text-sm text-neutral-100">
+                  {currentStep}
+                </p>
               )}
 
               {showReadOnlyNotice && (
-                <p className="mt-3 text-xs text-neutral-500">
-                  You aren&apos;t a party to this job (not client, provider, or evaluator).
-                  Read-only view.
-                </p>
+                <p className="mt-3 text-xs text-neutral-500">Read-only — you&apos;re not a party.</p>
               )}
 
               <div className="mt-4 space-y-4">
@@ -462,8 +404,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     title="Set or update your quote"
                     hint={
                       job.budget.usdc === '0'
-                        ? 'No quote set yet. Provide a price in USDC.'
-                        : `Current quote is ${job.budget.usdc} USDC. Re-quote any time while the job is Open.`
+                        ? 'Quote a price in USDC.'
+                        : `Current quote: ${job.budget.usdc} USDC. Re-quote any time.`
                     }
                   >
                     <div className="flex gap-2">
@@ -504,8 +446,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     title="Fund the job"
                     hint={
                       job.budget.usdc === '0'
-                        ? 'Waiting on the provider to set a quote. Once they do, you can fund.'
-                        : `Locks ${job.budget.usdc} USDC into escrow. Approves USDC if needed, then funds.`
+                        ? 'Waiting on the provider to quote.'
+                        : `Locks ${job.budget.usdc} USDC into escrow.`
                     }
                   >
                     <button
@@ -528,8 +470,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     title="Cancel job"
                     hint={
                       job.expiredAt.unix * 1000 <= Date.now()
-                        ? 'Deadline has passed. The reference contract has no extend-deadline function — cancelling closes the row so you can post a fresh job with a longer deadline.'
-                        : 'Closes the job before anyone funds it. No money has moved yet.'
+                        ? 'Closes an expired job so you can repost.'
+                        : 'Cancels before anyone funds it.'
                     }
                   >
                     <button
@@ -555,7 +497,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 {roles.includes('provider') && status === 'Funded' && (
                   <ActionCard
                     title="Submit deliverable"
-                    hint="Pick a type, then paste the content. We hash it client-side and commit the hash on-chain; the content goes to our backend, visible only to client / provider / evaluator."
+                    hint="Hash committed on-chain. Content visible to parties only."
                   >
                     <div className="space-y-3">
                       <div className="flex gap-2 text-xs">
@@ -667,8 +609,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     without re-signing on-chain. */}
                 {roles.includes('provider') && pendingUpload && pendingUpload.jobId === jobId && (
                   <ActionCard
-                    title="Retry deliverable content upload"
-                    hint={`The hash ${pendingUpload.hash.slice(0, 10)}… is already committed on-chain. Re-uploading the same content will satisfy the parties-only display.`}
+                    title="Retry upload"
+                    hint={`Hash ${pendingUpload.hash.slice(0, 10)}… already on-chain.`}
                   >
                     <button
                       type="button"
@@ -707,7 +649,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 {roles.includes('evaluator') && status === 'Submitted' && (
                   <ActionCard
                     title="Release funds to provider"
-                    hint="Approve the deliverable. Provider receives the budget (minus any platform/evaluator fees — currently 0)."
+                    hint="Pays out the budget."
                   >
                     <button
                       type="button"
@@ -730,7 +672,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   (status === 'Funded' || status === 'Submitted') && (
                     <ActionCard
                       title="Reject and refund the client"
-                      hint="Return the full budget to the client. No fees are skimmed on rejection."
+                      hint="Full budget returned to the client."
                     >
                       <button
                         type="button"
@@ -752,7 +694,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   (job.status === 'Funded' || job.status === 'Submitted') && (
                     <ActionCard
                       title="Claim refund (deadline passed)"
-                      hint="Anyone can trigger this. Funds go to the client regardless of who pays the gas."
+                      hint="Anyone can trigger; funds go to the client."
                     >
                       <button
                         type="button"
@@ -910,30 +852,24 @@ function DeliverableContent({
       <h2 className="text-sm font-medium text-neutral-300">Deliverable content</h2>
 
       {!signer.isConnected && (
-        <p className="mt-3 text-xs text-neutral-500">
-          Sign in or connect a wallet to view. Visible to client, provider, and evaluator only.
-        </p>
+        <p className="mt-3 text-xs text-neutral-500">Parties only. Connect to view.</p>
       )}
 
       {signer.isConnected && !isParty && (
-        <p className="mt-3 text-xs text-neutral-500">
-          You aren&apos;t a party to this job. The content is visible to client, provider, and evaluator only — but you can still verify the on-chain hash above.
-        </p>
+        <p className="mt-3 text-xs text-neutral-500">Parties only.</p>
       )}
 
       {signer.isConnected && isParty && needsUnlock && !content && (
-        <div className="mt-3">
-          <p className="text-xs text-neutral-400">
-            Your wallet will be asked to sign a short challenge so the server can confirm you&apos;re a party to this job. Signature is cached locally for ~24h.
-          </p>
+        <div className="mt-3 flex items-center gap-3">
           <button
             type="button"
             onClick={() => void loadContent()}
             disabled={loading}
-            className="mt-3 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+            className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
           >
-            {loading ? 'Waiting for signature…' : 'Unlock deliverable'}
+            {loading ? 'Waiting for signature…' : 'Unlock'}
           </button>
+          <span className="text-xs text-neutral-500">One sig, cached ~24h.</span>
         </div>
       )}
 
@@ -964,7 +900,7 @@ function DeliverableContent({
                   : 'border-red-900/60 bg-red-950/40 text-red-300'
               }`}
             >
-              {hashMatches ? '✓ Verified — matches on-chain hash' : '✗ Hash mismatch'}
+              {hashMatches ? '✓ Hash verified' : '✗ Hash mismatch'}
             </span>
             <span className="text-neutral-500">
               {content.contentType === 'url' ? 'URL' : 'Text'}
@@ -985,8 +921,8 @@ function DeliverableContent({
             </pre>
           )}
           <p className="text-xs text-neutral-500">
-            Uploaded <span className="font-mono">{content.uploadedBy.slice(0, 6)}…{content.uploadedBy.slice(-4)}</span>{' '}
-            at {new Date(content.uploadedAt).toLocaleString()}.
+            By <span className="font-mono">{content.uploadedBy.slice(0, 6)}…{content.uploadedBy.slice(-4)}</span>{' '}
+            · {new Date(content.uploadedAt).toLocaleString()}
           </p>
         </div>
       )}
