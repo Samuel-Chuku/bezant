@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   claimHandle as claimHandleApi,
   getUserByAddress,
+  linkAgentId as linkAgentIdApi,
   registerExternalUser,
   type UserRecord,
 } from '@/lib/api';
@@ -86,5 +87,20 @@ export function useUserRecord() {
     [state, signer],
   );
 
-  return { state, claimHandle };
+  // linkAgentId attaches (or detaches via null) an ERC-8004 agentId. Backend
+  // verifies on-chain that the signer's wallet is the agent owner or its
+  // explicitly-set agentWallet before persisting; throws on failure.
+  const linkAgentId = useCallback(
+    async (agentId: string | null) => {
+      if (state.status !== 'ready' || state.user === null) {
+        throw new Error('Claim a handle first — agentId links to your user record');
+      }
+      const updated = await linkAgentIdApi(state.user.id, agentId);
+      setState({ status: 'ready', user: updated });
+      return updated;
+    },
+    [state],
+  );
+
+  return { state, claimHandle, linkAgentId };
 }

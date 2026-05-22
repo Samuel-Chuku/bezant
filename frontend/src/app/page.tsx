@@ -8,6 +8,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { EmailSignIn } from '@/components/email-sign-in';
 import { HandlePrompt } from '@/components/handle-prompt';
+import { AgentLinkCard } from '@/components/agent-link-card';
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -16,7 +17,7 @@ function shortAddress(address: string) {
 export default function Home() {
   const signer = useSigner();
   const { data: balance } = useBalance({ address: signer.address });
-  const { state: userState, claimHandle } = useUserRecord();
+  const { state: userState, claimHandle, linkAgentId } = useUserRecord();
   const [handlePromptDismissed, setHandlePromptDismissed] = useState(false);
 
   const user = userState.status === 'ready' ? userState.user : null;
@@ -153,6 +154,18 @@ export default function Home() {
               setHandlePromptDismissed(true);
             }}
             onSkip={() => setHandlePromptDismissed(true)}
+          />
+        </div>
+      )}
+
+      {/* Show the agent-link card once the user actually has a backend
+          record (i.e. they've already claimed a handle). Linking before
+          that point would 404 — see the hook. */}
+      {signer.isConnected && userState.status === 'ready' && userState.user && (
+        <div className="mt-6">
+          <AgentLinkCard
+            currentAgentId={userState.user.agentId}
+            onLink={(agentId) => linkAgentId(agentId)}
           />
         </div>
       )}

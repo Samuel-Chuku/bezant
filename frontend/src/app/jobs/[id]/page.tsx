@@ -13,11 +13,13 @@ import {
   buildRejectUnsigned,
   buildSetBudgetUnsigned,
   buildSubmitUnsigned,
+  formatReputationValue,
   getDeliverable,
   getDeliverableFile,
   getJobEvents,
   getJobState,
   getOrCreateReadAuth,
+  getReputationSummary,
   getUserByAddress,
   uploadDeliverableContent,
   uploadDeliverableFile,
@@ -26,6 +28,7 @@ import {
   type JobEvent,
   type JobLiveState,
   type JobRole,
+  type ReputationSummary,
 } from '@/lib/api';
 import { ERC8183_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
 
@@ -271,6 +274,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   // Cache of address → handle (or null if not registered). Populated when the
   // job loads so client/provider/evaluator can render as "@handle" + address.
   const [handlesByAddress, setHandlesByAddress] = useState<Record<string, string | null>>({});
+  // Cache of address → linked ERC-8004 agentId (or null). Drives the
+  // ReputationBadge next to each party's address.
+  const [agentIdsByAddress, setAgentIdsByAddress] = useState<Record<string, string | null>>({});
 
   // Form inputs for actions that need them.
   const [budgetInput, setBudgetInput] = useState('');
@@ -315,8 +321,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     void fetchJob();
   }, [fetchJob]);
 
-  // Resolve handles for client/provider/evaluator when the job loads.
-  // Deduped + parallel; absent users cache as null so we don't re-query.
+  // Resolve handles + agentIds for client/provider/evaluator when the job
+  // loads. Deduped + parallel; absent users cache as null so we don't
+  // re-query. Pulls handle + agentId from the same UserRecord — one lookup
+  // covers both displays (handle chip + reputation badge).
   useEffect(() => {
     if (!job) return;
     const addresses = [job.client, job.provider, job.evaluator]
@@ -327,9 +335,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
       addresses.map(async (addr) => {
         try {
           const user = await getUserByAddress(addr);
-          return [addr, user?.handle ?? null] as const;
+          return [addr, user?.handle ?? null, user?.agentId ?? null] as const;
         } catch {
-          return [addr, null] as const;
+          return [addr, null, null] as const;
         }
       }),
     ).then((results) => {
@@ -337,6 +345,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
       setHandlesByAddress((prev) => {
         const next = { ...prev };
         for (const [addr, handle] of results) next[addr] = handle;
+        return next;
+      });
+      setAgentIdsByAddress((prev) => {
+        const next = { ...prev };
+        for (const [addr, , agentId] of results) next[addr] = agentId;
         return next;
       });
     });
@@ -492,6 +505,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     addr={job.client}
                     you={signer.address}
                     handle={handlesByAddress[job.client.toLowerCase()]}
+                    agentId={agentIdsByAddress[job.client.toLowerCase()]}
                   />
                 }
               />
@@ -502,6 +516,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     addr={job.provider}
                     you={signer.address}
                     handle={handlesByAddress[job.provider.toLowerCase()]}
+                    agentId={agentIdsByAddress[job.provider.toLowerCase()]}
                   />
                 }
               />
@@ -512,6 +527,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     addr={job.evaluator}
                     you={signer.address}
                     handle={handlesByAddress[job.evaluator.toLowerCase()]}
+                    agentId={agentIdsByAddress[job.evaluator.toLowerCase()]}
                   />
                 }
               />
@@ -979,14 +995,63 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function ReputationBadge({ agentId }: { agentId: string }) {
+  const [data, setData] = useState<ReputationSummary | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getReputationSummary(agentId)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
+
+  if (error) return null;
+  if (!data) {
+    return (
+      <Link
+        href={`/reputation/agent/${encodeURIComponent(agentId)}`}
+        onClick={(e) => e.stopPropagation()}
+        className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 not-italic font-sans text-neutral-500"
+      >
+        #{agentId}
+      </Link>
+    );
+  }
+  const formatted =
+    data.summary.count > 0
+      ? formatReputationValue(data.summary.value, data.summary.valueDecimals)
+      : null;
+  return (
+    <Link
+      href={`/reputation/agent/${encodeURIComponent(agentId)}`}
+      onClick={(e) => e.stopPropagation()}
+      className="ml-2 rounded bg-amber-950/40 px-1.5 py-0.5 not-italic font-sans text-amber-300 hover:bg-amber-900/40"
+      title={`agent #${agentId} · ${data.summary.count} feedback${data.summary.count === 1 ? '' : 's'}`}
+    >
+      {formatted ? `★ ${formatted}` : '★ —'}
+      <span className="ml-1 text-amber-500/80">({data.summary.count})</span>
+    </Link>
+  );
+}
+
 function Mono({
   addr,
   you,
   handle,
+  agentId,
 }: {
   addr: string;
   you?: string;
   handle?: string | null;
+  agentId?: string | null;
 }) {
   const isYou = you && addr.toLowerCase() === you.toLowerCase();
   return (
@@ -997,6 +1062,7 @@ function Mono({
           @{handle}
         </span>
       )}
+      {agentId && <ReputationBadge agentId={agentId} />}
       {isYou && (
         <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-300 font-sans">
           you

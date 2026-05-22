@@ -15,9 +15,16 @@ import {
 } from 'viem';
 import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
-import { arcClient, USDC_ADDRESS, ERC8183_ADDRESS, ARC_TESTNET_CHAIN_ID } from './lib/arc.js';
+import {
+  arcClient,
+  USDC_ADDRESS,
+  ERC8183_ADDRESS,
+  ERC8004_REPUTATION_ADDRESS,
+  ARC_TESTNET_CHAIN_ID,
+} from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
 import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
+import { reputationRegistryAbi, identityRegistryAbi } from './lib/abis/erc8004.js';
 import {
   db,
   rowToUser,
@@ -387,6 +394,116 @@ app.patch<{ Params: { id: string }; Body: { handle?: string | null } }>(
     const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
     return rowToUser(updated);
   }
+);
+
+// ─── ERC-8004 agent linking + reputation reads ─────────────────────────────
+// Users opt-in to surface their ERC-8004 reputation by linking an agentId
+// they own (verified on-chain via IdentityRegistry.ownerOf / getAgentWallet).
+// Reputation itself is fetched live — no indexing yet, view calls are cheap
+// enough on a single jobId-keyed page that caching can come later if needed.
+
+let cachedIdentityRegistry: `0x${string}` | null = null;
+async function resolveIdentityRegistry(): Promise<`0x${string}`> {
+  if (cachedIdentityRegistry) return cachedIdentityRegistry;
+  const envOverride = process.env.ARC_IDENTITY_REGISTRY_ADDRESS;
+  if (envOverride && /^0x[0-9a-fA-F]{40}$/.test(envOverride)) {
+    cachedIdentityRegistry = envOverride as `0x${string}`;
+    return cachedIdentityRegistry;
+  }
+  const addr = await arcClient.readContract({
+    address: ERC8004_REPUTATION_ADDRESS,
+    abi: reputationRegistryAbi,
+    functionName: 'getIdentityRegistry',
+  });
+  cachedIdentityRegistry = addr as `0x${string}`;
+  return cachedIdentityRegistry;
+}
+
+app.patch<{ Params: { id: string }; Body: { agentId?: string | null } }>(
+  '/users/:id/agent-id',
+  async (request, reply) => {
+    const id = request.params.id;
+    const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+    if (!existing) return reply.code(404).send({ error: 'user not found' });
+
+    const body = request.body ?? {};
+    if (!('agentId' in body)) return rowToUser(existing);
+
+    // null clears the link. Allowed any time — there's no squatting risk on
+    // unlink, and re-linking still requires the on-chain ownership check.
+    if (body.agentId === null) {
+      db.prepare('UPDATE users SET agent_id = NULL WHERE id = ?').run(id);
+      const cleared = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
+      return rowToUser(cleared);
+    }
+
+    if (typeof body.agentId !== 'string' || !/^\d+$/.test(body.agentId)) {
+      return reply.code(400).send({ error: 'agentId must be a numeric string (uint256)' });
+    }
+    const agentIdBig = BigInt(body.agentId);
+
+    // Ownership proof: caller's wallet must be either the ERC-721 owner of
+    // the agentId OR the explicitly-set agent wallet override. getAgentWallet
+    // returns address(0) when unset.
+    let identityRegistry: `0x${string}`;
+    try {
+      identityRegistry = await resolveIdentityRegistry();
+    } catch (err) {
+      return reply.code(502).send({
+        error: 'could not resolve IdentityRegistry from ReputationRegistry',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    const userAddr = existing.wallet_address.toLowerCase();
+    let owner = '0x0000000000000000000000000000000000000000' as `0x${string}`;
+    let agentWallet = '0x0000000000000000000000000000000000000000' as `0x${string}`;
+    try {
+      [owner, agentWallet] = await Promise.all([
+        arcClient.readContract({
+          address: identityRegistry,
+          abi: identityRegistryAbi,
+          functionName: 'ownerOf',
+          args: [agentIdBig],
+        }),
+        arcClient.readContract({
+          address: identityRegistry,
+          abi: identityRegistryAbi,
+          functionName: 'getAgentWallet',
+          args: [agentIdBig],
+        }),
+      ]);
+    } catch (err) {
+      return reply.code(404).send({
+        error: 'agentId not found on IdentityRegistry',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    const matchesOwner = owner.toLowerCase() === userAddr;
+    const matchesAgentWallet =
+      agentWallet !== '0x0000000000000000000000000000000000000000' &&
+      agentWallet.toLowerCase() === userAddr;
+    if (!matchesOwner && !matchesAgentWallet) {
+      return reply.code(403).send({
+        error: 'caller wallet is not the owner or agent-wallet for this agentId',
+        owner,
+        agentWallet,
+      });
+    }
+
+    // Prevent two distinct users from claiming the same agentId — first claim wins.
+    const conflict = db
+      .prepare('SELECT id FROM users WHERE agent_id = ? AND id != ?')
+      .get(body.agentId, id);
+    if (conflict) {
+      return reply.code(409).send({ error: `agentId already linked to another user` });
+    }
+
+    db.prepare('UPDATE users SET agent_id = ? WHERE id = ?').run(body.agentId, id);
+    const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
+    return rowToUser(updated);
+  },
 );
 
 app.get<{ Params: { handle: string } }>('/users/by-handle/:handle', async (request, reply) => {
@@ -931,6 +1048,188 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
       : null,
   };
 });
+
+// ─── ERC-8004 reputation reads ─────────────────────────────────────────────
+// Live view-calls to the ReputationRegistry. No indexing yet — view reads
+// are cheap on a per-agent basis. Two routes:
+//   - /summary: just getClients + getSummary. Used by the inline badge so
+//     multi-party job-detail views don't shred bandwidth.
+//   - full path: adds readAllFeedback for the reputation page; truncated
+//     to FEEDBACK_PAGE_DEFAULT (or ?limit=) most-recent entries, since
+//     readAllFeedback returns the entire history in one shot and some
+//     agents have thousands of entries.
+
+const FEEDBACK_PAGE_DEFAULT = 20;
+const FEEDBACK_PAGE_MAX = 500;
+
+async function readReputationSummary(agentIdStr: string) {
+  const agentIdBig = BigInt(agentIdStr);
+  const clients = await arcClient.readContract({
+    address: ERC8004_REPUTATION_ADDRESS,
+    abi: reputationRegistryAbi,
+    functionName: 'getClients',
+    args: [agentIdBig],
+  });
+  if (clients.length === 0) {
+    return {
+      agentId: agentIdStr,
+      summary: { count: 0, value: '0', valueDecimals: 0 },
+      clientsConsulted: [] as readonly `0x${string}`[],
+    };
+  }
+  const [count, summaryValue, summaryValueDecimals] = await arcClient.readContract({
+    address: ERC8004_REPUTATION_ADDRESS,
+    abi: reputationRegistryAbi,
+    functionName: 'getSummary',
+    args: [agentIdBig, clients, '', ''],
+  });
+  return {
+    agentId: agentIdStr,
+    summary: {
+      count: Number(count),
+      value: summaryValue.toString(),
+      valueDecimals: Number(summaryValueDecimals),
+    },
+    clientsConsulted: clients,
+  };
+}
+
+app.get<{ Params: { agentId: string } }>(
+  '/arc/reputation/agent/:agentId/summary',
+  async (request, reply) => {
+    if (!/^\d+$/.test(request.params.agentId)) {
+      return reply.code(400).send({ error: 'agentId must be a numeric string (uint256)' });
+    }
+    try {
+      return await readReputationSummary(request.params.agentId);
+    } catch (err) {
+      return reply.code(502).send({
+        error: 'failed to read reputation summary from ReputationRegistry',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+app.get<{
+  Params: { agentId: string };
+  Querystring: { limit?: string; offset?: string };
+}>(
+  '/arc/reputation/agent/:agentId',
+  async (request, reply) => {
+    if (!/^\d+$/.test(request.params.agentId)) {
+      return reply.code(400).send({ error: 'agentId must be a numeric string (uint256)' });
+    }
+    let limit = FEEDBACK_PAGE_DEFAULT;
+    if (request.query.limit !== undefined) {
+      if (!/^\d+$/.test(request.query.limit)) {
+        return reply.code(400).send({ error: 'limit must be a non-negative integer' });
+      }
+      limit = Math.min(Number(request.query.limit), FEEDBACK_PAGE_MAX);
+    }
+    let offset = 0;
+    if (request.query.offset !== undefined) {
+      if (!/^\d+$/.test(request.query.offset)) {
+        return reply.code(400).send({ error: 'offset must be a non-negative integer' });
+      }
+      offset = Number(request.query.offset);
+    }
+    const agentIdBig = BigInt(request.params.agentId);
+
+    let summaryResult: Awaited<ReturnType<typeof readReputationSummary>>;
+    try {
+      summaryResult = await readReputationSummary(request.params.agentId);
+    } catch (err) {
+      return reply.code(502).send({
+        error: 'failed to read reputation from ReputationRegistry',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    if (summaryResult.clientsConsulted.length === 0 || limit === 0) {
+      return {
+        ...summaryResult,
+        feedback: [],
+        totalFeedback: summaryResult.summary.count,
+        limit,
+        offset,
+        truncated: summaryResult.summary.count > 0,
+      };
+    }
+
+    let feedback: readonly [
+      readonly `0x${string}`[],
+      readonly bigint[],
+      readonly bigint[],
+      readonly number[],
+      readonly string[],
+      readonly string[],
+      readonly boolean[],
+    ];
+    try {
+      feedback = await arcClient.readContract({
+        address: ERC8004_REPUTATION_ADDRESS,
+        abi: reputationRegistryAbi,
+        functionName: 'readAllFeedback',
+        args: [agentIdBig, summaryResult.clientsConsulted, '', '', true],
+      });
+    } catch (err) {
+      return reply.code(502).send({
+        error: 'failed to read feedback from ReputationRegistry',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    const [
+      feedbackClients,
+      feedbackIndexes,
+      values,
+      valueDecimals,
+      tag1s,
+      tag2s,
+      revokedStatuses,
+    ] = feedback;
+    const total = feedbackClients.length;
+    // Newest-first pagination: page 0 covers indexes total-limit..total-1,
+    // page N skips that many entries before sampling backward. The spec
+    // doesn't formally pin ordering, but the reference impl appends, so
+    // trailing entries are the most recent in practice.
+    const endExclusive = Math.max(0, total - offset);
+    const startInclusive = Math.max(0, endExclusive - limit);
+    const slicedFeedback = [] as Array<{
+      clientAddress: string;
+      feedbackIndex: string;
+      value: string;
+      valueDecimals: number;
+      tag1: string;
+      tag2: string;
+      isRevoked: boolean;
+    }>;
+    for (let i = endExclusive - 1; i >= startInclusive; i -= 1) {
+      slicedFeedback.push({
+        clientAddress: feedbackClients[i],
+        feedbackIndex: feedbackIndexes[i].toString(),
+        value: values[i].toString(),
+        valueDecimals: Number(valueDecimals[i]),
+        tag1: tag1s[i],
+        tag2: tag2s[i],
+        isRevoked: revokedStatuses[i],
+      });
+    }
+
+    return {
+      ...summaryResult,
+      feedback: slicedFeedback,
+      totalFeedback: total,
+      limit,
+      offset,
+      // `truncated` is now "are there entries we didn't return on this
+      // page" — true whenever total exceeds what fits before+within the
+      // current page. Frontend uses it to decide whether to show pager.
+      truncated: total > slicedFeedback.length,
+    };
+  },
+);
 
 // Lifecycle events for a job (Submitted/Completed/Rejected). Surfaces the
 // on-chain bytes32 deliverable + reason hashes for any viewer; indexed via

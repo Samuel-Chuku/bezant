@@ -20,9 +20,21 @@ db.exec(`
     circle_wallet_id TEXT UNIQUE,
     wallet_address  TEXT NOT NULL UNIQUE,
     signing_mode    TEXT NOT NULL DEFAULT 'dev-controlled',
+    agent_id        TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+// Idempotent ALTER for pre-M31 databases — adds agent_id to users so each
+// account can link an ERC-8004 agentId after on-chain ownership check.
+// Stored as TEXT because uint256 doesn't fit in SQLite INTEGER.
+const userCols = db
+  .prepare("SELECT name FROM pragma_table_info('users')")
+  .all() as { name: string }[];
+const userColNames = new Set(userCols.map((c) => c.name));
+if (!userColNames.has('agent_id')) {
+  db.exec('ALTER TABLE users ADD COLUMN agent_id TEXT');
+}
 
 // One-shot migration: older deployments created `handle` as NOT NULL.
 // SQLite can't drop NOT NULL in place — recreate the table if needed.
@@ -86,6 +98,7 @@ export type UserRow = {
   circle_wallet_id: string | null;
   wallet_address: string;
   signing_mode: SigningMode;
+  agent_id: string | null;
   created_at: string;
 };
 
@@ -95,6 +108,7 @@ export type User = {
   circleWalletId: string | null;
   walletAddress: string;
   signingMode: SigningMode;
+  agentId: string | null;
   createdAt: string;
 };
 
@@ -105,6 +119,7 @@ export function rowToUser(row: UserRow): User {
     circleWalletId: row.circle_wallet_id,
     walletAddress: row.wallet_address,
     signingMode: row.signing_mode,
+    agentId: row.agent_id,
     createdAt: row.created_at,
   };
 }

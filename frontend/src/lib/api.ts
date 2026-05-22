@@ -5,6 +5,9 @@ export type UserRecord = {
   handle: string | null;
   walletAddress: string;
   signingMode: 'dev-controlled' | 'external' | 'circle-modular';
+  // ERC-8004 IdentityRegistry agentId (uint256 as string). null until the
+  // user links an agentId they own — verified on-chain at link time.
+  agentId: string | null;
   createdAt: string;
 };
 
@@ -52,6 +55,86 @@ export async function registerExternalUser(input: {
 
 export async function claimHandle(userId: string, handle: string): Promise<UserRecord> {
   return jsonFetch<UserRecord>('PATCH', `/users/${encodeURIComponent(userId)}`, { handle });
+}
+
+// Link an ERC-8004 agentId to a user. Backend verifies on-chain that the
+// user's wallet is the agent's owner (or its set agentWallet) before
+// persisting. Pass null to unlink.
+export async function linkAgentId(
+  userId: string,
+  agentId: string | null,
+): Promise<UserRecord> {
+  return jsonFetch<UserRecord>(
+    'PATCH',
+    `/users/${encodeURIComponent(userId)}/agent-id`,
+    { agentId },
+  );
+}
+
+// Reputation reads — live view-call against the ReputationRegistry. Two
+// shapes: a cheap summary (used by the inline badge) and a full read that
+// adds a truncated feedback list (used by the reputation page).
+export type ReputationFeedback = {
+  clientAddress: string;
+  feedbackIndex: string;
+  value: string;          // signed int128 as decimal string
+  valueDecimals: number;
+  tag1: string;
+  tag2: string;
+  isRevoked: boolean;
+};
+
+export type ReputationSummary = {
+  agentId: string;
+  summary: {
+    count: number;
+    value: string;        // signed int128 as decimal string
+    valueDecimals: number;
+  };
+  clientsConsulted: string[];
+};
+
+export type ReputationDetail = ReputationSummary & {
+  feedback: ReputationFeedback[];
+  totalFeedback: number;
+  limit: number;
+  offset: number;
+  truncated: boolean;
+};
+
+export async function getReputationSummary(agentId: string): Promise<ReputationSummary> {
+  return jsonFetch<ReputationSummary>(
+    'GET',
+    `/arc/reputation/agent/${encodeURIComponent(agentId)}/summary`,
+  );
+}
+
+export async function getReputation(
+  agentId: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<ReputationDetail> {
+  const params = new URLSearchParams();
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+  if (opts?.offset !== undefined) params.set('offset', String(opts.offset));
+  const qs = params.toString();
+  return jsonFetch<ReputationDetail>(
+    'GET',
+    `/arc/reputation/agent/${encodeURIComponent(agentId)}${qs ? `?${qs}` : ''}`,
+  );
+}
+
+// Format an int128 + uint8 decimals fixed-point value into a human-readable
+// string. The ERC-8004 spec leaves the convention to the reviewer (e.g.
+// 42 with decimals=1 → "4.2"; 8500 with decimals=2 → "85.00"). Negative
+// values are preserved.
+export function formatReputationValue(value: string, decimals: number): string {
+  if (decimals === 0) return value;
+  const negative = value.startsWith('-');
+  const raw = negative ? value.slice(1) : value;
+  const padded = raw.padStart(decimals + 1, '0');
+  const intPart = padded.slice(0, padded.length - decimals);
+  const fracPart = padded.slice(padded.length - decimals);
+  return `${negative ? '-' : ''}${intPart}.${fracPart}`;
 }
 
 export async function getUserByHandle(handle: string): Promise<UserRecord | null> {
