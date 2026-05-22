@@ -14,6 +14,14 @@ function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
+// String-level truncation (not rounding) so we never inflate the displayed
+// balance — wagmi gives us the formatted value as a string already.
+function truncateBalance(formatted: string, decimals = 3): string {
+  const [intPart, decimalPart] = formatted.split('.');
+  if (!decimalPart) return intPart;
+  return `${intPart}.${decimalPart.slice(0, decimals)}`;
+}
+
 export default function Home() {
   const signer = useSigner();
   const { data: balance } = useBalance({ address: signer.address });
@@ -110,8 +118,20 @@ export default function Home() {
               <dt className="text-neutral-500">Address</dt>
               <dd className="font-mono text-xs text-neutral-200 break-all">{signer.address}</dd>
             </div>
+            {/* Order matters: balance fills row 2 col 1, Agent ID fills
+                row 2 col 2 (via col-start-2 so it sticks to the right even
+                when no balance row exists). Balance falls back to full-
+                width if there's no agentId pinning the right column. */}
+            {balance && (
+              <div className={user?.agentId ? '' : 'sm:col-span-2'}>
+                <dt className="text-neutral-500">{balance.symbol} balance</dt>
+                <dd className="text-neutral-200">
+                  {truncateBalance(balance.formatted)} {balance.symbol}
+                </dd>
+              </div>
+            )}
             {user?.agentId && (
-              <div>
+              <div className="sm:col-start-2">
                 <dt className="inline-flex items-center gap-1.5 text-neutral-500">
                   Agent ID
                   <AgentIdTooltip />
@@ -126,14 +146,6 @@ export default function Home() {
                       ›
                     </span>
                   </Link>
-                </dd>
-              </div>
-            )}
-            {balance && (
-              <div className="sm:col-span-2">
-                <dt className="text-neutral-500">{balance.symbol} balance</dt>
-                <dd className="text-neutral-200">
-                  {balance.formatted} {balance.symbol}
                 </dd>
               </div>
             )}

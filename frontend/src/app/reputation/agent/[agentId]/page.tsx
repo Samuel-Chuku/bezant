@@ -88,10 +88,11 @@ export default function ReputationPage({
           ← back
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-          Reputation <span className="font-mono text-neutral-400">#{agentId}</span>
+          Agent <span className="font-mono text-neutral-400">#{agentId}</span>
         </h1>
         <p className="mt-2 text-sm text-neutral-400">
-          ERC-8004 feedback for this agent. Live view-call to the ReputationRegistry.
+          Portable ERC-8004 identity. Feedback below is this agent&apos;s reputation — it
+          accrues to the ID, not a wallet, so trust history travels across apps.
         </p>
       </header>
 
