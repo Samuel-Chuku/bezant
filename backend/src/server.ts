@@ -205,12 +205,52 @@ function requireSigner(
   return { circle_wallet_id: row.circle_wallet_id, wallet_address: row.wallet_address };
 }
 
-app.get('/health', async () => {
-  return {
-    status: 'ok',
+// Health probe: liveness vs readiness. Returns 200 when both dependencies
+// (SQLite + Arc RPC) respond; 503 when either is down so external monitors
+// can distinguish "process is running" from "process can actually serve".
+// Per-component status is always included so an alert can point to the
+// failing dependency directly.
+app.get('/health', async (_request, reply) => {
+  const dbStart = Date.now();
+  let dbStatus: { ok: boolean; latencyMs: number; error?: string };
+  try {
+    db.prepare('SELECT 1').get();
+    dbStatus = { ok: true, latencyMs: Date.now() - dbStart };
+  } catch (err) {
+    dbStatus = {
+      ok: false,
+      latencyMs: Date.now() - dbStart,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const rpcStart = Date.now();
+  let rpcStatus: { ok: boolean; latencyMs: number; blockNumber?: string; error?: string };
+  try {
+    const head = await arcClient.getBlockNumber();
+    rpcStatus = {
+      ok: true,
+      latencyMs: Date.now() - rpcStart,
+      blockNumber: head.toString(),
+    };
+  } catch (err) {
+    rpcStatus = {
+      ok: false,
+      latencyMs: Date.now() - rpcStart,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const overall = dbStatus.ok && rpcStatus.ok;
+  return reply.code(overall ? 200 : 503).send({
+    status: overall ? 'ok' : 'degraded',
     service: 'arc-trade-backend',
     operatorAddress: process.env.CIRCLE_OPERATOR_ADDRESS ?? null,
-  };
+    checks: {
+      db: dbStatus,
+      rpc: rpcStatus,
+    },
+  });
 });
 
 app.get('/version', async () => {

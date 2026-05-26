@@ -34,6 +34,7 @@ import {
 import { ERC8183_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
 import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/job-status';
 import { CountdownBanner } from '@/components/countdown';
+import { arcExplorerTxUrl } from '@/lib/explorers';
 
 // Minimal ABI fragment to read USDC allowance — saves a backend roundtrip.
 const erc20AllowanceAbi = [
@@ -1007,7 +1008,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   <p className="text-emerald-400 break-words">
                     ✓ Done.{' '}
                     <a
-                      href={`https://testnet.arcscan.app/tx/${actionState.txHash}`}
+                      href={arcExplorerTxUrl(actionState.txHash)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-mono underline"
@@ -1029,8 +1030,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 }
 
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
+  // Stack label above value under sm so long addresses + descriptions get
+  // the full width instead of being squeezed into the ~140px that's left
+  // after the 8rem label column on a phone.
   return (
-    <div className="grid grid-cols-[8rem_1fr] gap-2 text-sm">
+    <div className="grid grid-cols-1 gap-0.5 text-sm sm:grid-cols-[8rem_1fr] sm:gap-2">
       <dt className="text-neutral-500">{label}</dt>
       <dd className="text-neutral-200 break-words">{value}</dd>
     </div>
@@ -1155,7 +1159,7 @@ function LifecyclePanel({
                   )}
                   {row.txHash && (
                     <a
-                      href={`https://testnet.arcscan.app/tx/${row.txHash}`}
+                      href={arcExplorerTxUrl(row.txHash)}
                       target="_blank"
                       rel="noreferrer"
                       className="ml-2 text-neutral-600 underline hover:text-neutral-400"
@@ -1509,7 +1513,7 @@ function OnChainRecord({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-neutral-200">{title}</span>
                   <a
-                    href={`https://testnet.arcscan.app/tx/${e.txHash}`}
+                    href={arcExplorerTxUrl(e.txHash)}
                     target="_blank"
                     rel="noreferrer"
                     className="text-neutral-500 underline hover:text-neutral-300"
@@ -1518,7 +1522,7 @@ function OnChainRecord({
                   </a>
                 </div>
                 <dl className="mt-2 space-y-1">
-                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[7rem_1fr] sm:gap-2">
                     <dt className="text-neutral-500">By</dt>
                     <dd className="font-mono text-neutral-300 break-all">
                       {e.actor}
@@ -1529,11 +1533,11 @@ function OnChainRecord({
                       )}
                     </dd>
                   </div>
-                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[7rem_1fr] sm:gap-2">
                     <dt className="text-neutral-500">{hashLabel}</dt>
                     <dd className="font-mono text-neutral-300 break-all">{e.hashValue}</dd>
                   </div>
-                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[7rem_1fr] sm:gap-2">
                     <dt className="text-neutral-500">Block</dt>
                     <dd className="font-mono text-neutral-400">{e.blockNumber}</dd>
                   </div>

@@ -7,6 +7,7 @@ import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
 import { buildCreateJobUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
+import { arcExplorerTxUrl } from '@/lib/explorers';
 
 // Mirrors the on-chain JobCreated event from the AgenticCommerce contract.
 // Used to parse the jobId out of the tx receipt after a successful createJob.
@@ -244,7 +245,7 @@ export default function CreateJobPage() {
               <p className="mt-1 text-xs text-neutral-400">
                 Tx{' '}
                 <a
-                  href={`https://testnet.arcscan.app/tx/${submission.txHash}`}
+                  href={arcExplorerTxUrl(submission.txHash)}
                   target="_blank"
                   rel="noreferrer"
                   className="font-mono text-emerald-400 underline"

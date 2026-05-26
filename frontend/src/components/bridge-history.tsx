@@ -15,6 +15,7 @@ import {
 import type { BridgeRun } from '@/lib/bridge-run';
 import { getBridgeHistory, type BridgeHistoryRow as BackendRow } from '@/lib/api';
 import { CHAIN_REFRESH_EVENT } from '@/hooks/use-refresh-chain-data';
+import { arcExplorerTxUrl } from '@/lib/explorers';
 
 // Right-column transaction feed. Three layered sources:
 //   1. Live run state — what the user is doing right now (lifted from page).
@@ -161,7 +162,7 @@ function mergeRows(local: BridgeHistoryEntry[], backend: BackendRow[]): MergedRo
       status: 'success',
       timestampMs: new Date(r.indexedAt).getTime(),
       mintTxHash: r.txHash,
-      mintExplorerUrl: `https://testnet.arcscan.app/tx/${r.txHash}`,
+      mintExplorerUrl: arcExplorerTxUrl(r.txHash),
     });
   }
 

@@ -79,10 +79,13 @@ export function TopNav() {
 
           <div className="ml-auto flex items-center gap-2">
             {showSwitchCTA && (
+              // Hidden below sm to ease header crowding on phones; the mobile
+              // drawer carries its own Switch-to-Arc button so users on the
+              // wrong chain still have a clear escape hatch.
               <button
                 type="button"
                 onClick={() => switchChain({ chainId: arcTestnet.id })}
-                className="inline-flex items-center gap-1.5 rounded-md border border-amber-700/50 bg-amber-950/40 px-2.5 py-1 text-[11px] font-medium text-amber-200 transition hover:bg-amber-950/60"
+                className="hidden items-center gap-1.5 rounded-md border border-amber-700/50 bg-amber-950/40 px-2.5 py-1 text-[11px] font-medium text-amber-200 transition hover:bg-amber-950/60 sm:inline-flex"
               >
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
                 Switch to Arc →

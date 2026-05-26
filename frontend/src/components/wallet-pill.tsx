@@ -151,10 +151,12 @@ export function WalletPill() {
             {shortAddress(signer.address)}
           </span>
         )}
-        <span className="text-neutral-600" aria-hidden>
+        {/* Balance hides below sm to keep the pill compact on phones; the
+            drawer + balances panel surface it elsewhere when needed. */}
+        <span className="hidden text-neutral-600 sm:inline" aria-hidden>
           ·
         </span>
-        <span className="text-[11px] text-neutral-300">{balanceText}</span>
+        <span className="hidden text-[11px] text-neutral-300 sm:inline">{balanceText}</span>
         <span className="ml-1">
           <Avatar address={signer.address} size={26} />
         </span>
