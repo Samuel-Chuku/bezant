@@ -128,6 +128,13 @@ export function chainByKey(key: BridgeChain['key']): BridgeChain {
   return c;
 }
 
+// Resolve a CCTP V2 source domain (uint32 from MessageReceived) back to the
+// chain in BRIDGE_CHAINS. Returns null when we don't model that chain — the
+// caller should fall back to a generic "Unknown chain (domain N)" label.
+export function chainByCctpDomain(domain: number): BridgeChain | null {
+  return BRIDGE_CHAINS.find((c) => c.cctpDomain === domain) ?? null;
+}
+
 // CCTP step order — used by the progress UI even before any events arrive,
 // so users see the full sequence ahead of time.
 export const BRIDGE_STEP_ORDER = ['approve', 'burn', 'fetchAttestation', 'mint'] as const;

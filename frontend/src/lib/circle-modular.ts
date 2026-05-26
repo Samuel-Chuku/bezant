@@ -2,6 +2,7 @@ import { createPublicClient, type Hex } from 'viem';
 import {
   createBundlerClient,
   toWebAuthnAccount,
+  type P256Credential,
   type SmartAccount,
 } from 'viem/account-abstraction';
 import {
@@ -10,7 +11,6 @@ import {
   toPasskeyTransport,
   toWebAuthnCredential,
   WebAuthnMode,
-  type P256Credential,
 } from '@circle-fin/modular-wallets-core';
 import { arcTestnet } from './chains';
 

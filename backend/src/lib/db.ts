@@ -185,6 +185,27 @@ db.exec(`
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (job_id, hash)
   );
+
+  -- CCTP V2 inbound bridge arrivals on Arc. Indexed from USDC Transfer
+  -- events where from = 0x0 (mints), filtered to tx hashes that also
+  -- emit MessageReceived from the MessageTransmitter — so we only record
+  -- mints actually caused by a CCTP bridge (not faucets etc.).
+  -- source_domain comes from the joined MessageReceived event; NULL if
+  -- the join failed (defensive — shouldn't happen for valid bridges).
+  -- PK on (tx_hash, log_index) so re-indexing the same range is a no-op.
+  CREATE TABLE IF NOT EXISTS bridge_inbound_events (
+    recipient      TEXT NOT NULL,
+    amount_raw     TEXT NOT NULL,
+    source_domain  INTEGER,
+    nonce          TEXT,
+    block_number   INTEGER NOT NULL,
+    tx_hash        TEXT NOT NULL,
+    log_index      INTEGER NOT NULL,
+    indexed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tx_hash, log_index)
+  );
+  CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
+  CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);
 
 // Idempotent ALTER TABLE migration for pre-M28 databases that already have

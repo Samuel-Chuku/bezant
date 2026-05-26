@@ -340,6 +340,39 @@ export async function getNotificationFeed(
   );
 }
 
+// CCTP V2 inbound bridge history for an address. Served by the backend
+// bridge-indexer (USDC mints joined to MessageReceived). One row per
+// inbound mint; sorted newest-first server-side.
+export type BridgeHistoryRow = {
+  recipient: string;
+  amount: { raw: string; usdc: string };
+  sourceDomain: number | null;
+  nonce: string | null;
+  blockNumber: number;
+  txHash: string;
+  logIndex: number;
+  indexedAt: string;
+};
+
+export type BridgeHistoryResponse = {
+  address: string;
+  history: BridgeHistoryRow[];
+  count: number;
+};
+
+export async function getBridgeHistory(
+  address: string,
+  params: { limit?: number } = {},
+): Promise<BridgeHistoryResponse> {
+  const qs = new URLSearchParams();
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return jsonFetch<BridgeHistoryResponse>(
+    'GET',
+    `/bridge/history/${encodeURIComponent(address)}${suffix}`,
+  );
+}
+
 export type JobEvent = {
   jobId: string;
   eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';

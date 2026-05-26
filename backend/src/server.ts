@@ -13,7 +13,10 @@ import {
   stringToBytes,
   type Abi,
 } from 'viem';
-import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets';
+import {
+  initiateDeveloperControlledWalletsClient,
+  type Blockchain,
+} from '@circle-fin/developer-controlled-wallets';
 import pkg from '../package.json' with { type: 'json' };
 import {
   arcClient,
@@ -42,6 +45,7 @@ import {
   type DeliverableContentType,
 } from './lib/db.js';
 import { startJobIndexer } from './lib/job-indexer.js';
+import { startBridgeIndexer } from './lib/bridge-indexer.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -277,7 +281,10 @@ app.post<{ Body: { handle?: string } }>('/users', async (request, reply) => {
 
   const created = await circle.createWallets({
     walletSetId: CIRCLE_WALLET_SET_ID,
-    blockchains: ['ARC-TESTNET'],
+    // 'ARC-TESTNET' isn't in Circle's developer-controlled-wallets Blockchain
+    // enum yet (verified 2026-05-26), but the API accepts it at runtime —
+    // cast through unknown until the SDK catches up.
+    blockchains: ['ARC-TESTNET' as unknown as Blockchain],
     count: 1,
     accountType: 'EOA',
   });
@@ -1128,6 +1135,78 @@ app.get<{
   return { address, feed, total, limit, offset };
 });
 
+// CCTP V2 inbound bridge history for an address. Backed by bridge_inbound_events
+// which the bridge-indexer populates from USDC mints on Arc joined to
+// MessageTransmitter MessageReceived (so we only return mints actually caused
+// by a CCTP bridge). Replaces the localStorage cap-of-3 — surviving browser
+// clears and visible across devices for the same wallet.
+type BridgeHistoryRow = {
+  recipient: string;
+  amount: { raw: string; usdc: string };
+  sourceDomain: number | null;
+  nonce: string | null;
+  blockNumber: number;
+  txHash: string;
+  logIndex: number;
+  indexedAt: string;
+};
+
+const BRIDGE_HISTORY_DEFAULT = 20;
+const BRIDGE_HISTORY_MAX = 100;
+
+app.get<{
+  Params: { address: string };
+  Querystring: { limit?: string };
+}>('/bridge/history/:address', async (request, reply) => {
+  const address = request.params.address.toLowerCase();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    return reply
+      .code(400)
+      .send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
+  }
+  const limit = clampInt(
+    request.query.limit,
+    BRIDGE_HISTORY_DEFAULT,
+    1,
+    BRIDGE_HISTORY_MAX,
+  );
+
+  const rows = db
+    .prepare(
+      `SELECT recipient, amount_raw, source_domain, nonce, block_number, tx_hash, log_index, indexed_at
+       FROM bridge_inbound_events
+       WHERE recipient = ?
+       ORDER BY block_number DESC, log_index DESC
+       LIMIT ?`,
+    )
+    .all(address, limit) as Array<{
+    recipient: string;
+    amount_raw: string;
+    source_domain: number | null;
+    nonce: string | null;
+    block_number: number;
+    tx_hash: string;
+    log_index: number;
+    indexed_at: string;
+  }>;
+
+  const history: BridgeHistoryRow[] = rows.map((r) => ({
+    recipient: r.recipient,
+    amount: {
+      raw: r.amount_raw,
+      usdc: formatUnits(BigInt(r.amount_raw), 6),
+    },
+    sourceDomain: r.source_domain,
+    nonce: r.nonce,
+    blockNumber: r.block_number,
+    txHash: r.tx_hash,
+    logIndex: r.log_index,
+    indexedAt: r.indexed_at,
+  }));
+
+  return { address, history, count: history.length };
+});
+
 // Open-jobs marketplace. Lists every Open ERC-8183 job our indexer has
 // seen (this is the public reference contract, so it's the whole network
 // pre-wrapper, not just arc-trade-created jobs). Filters in-memory after a
@@ -1856,7 +1935,10 @@ const port = Number(process.env.PORT ?? 3001);
 
 app
   .listen({ port, host: '0.0.0.0' })
-  .then(() => startJobIndexer(app.log))
+  .then(() => {
+    startJobIndexer(app.log);
+    startBridgeIndexer(app.log);
+  })
   .catch((err) => {
     app.log.error(err);
     process.exit(1);
