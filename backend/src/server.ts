@@ -1004,6 +1004,111 @@ app.get<{ Params: { address: string } }>(
   },
 );
 
+// Open-jobs marketplace. Lists every Open ERC-8183 job our indexer has
+// seen (this is the public reference contract, so it's the whole network
+// pre-wrapper, not just arc-trade-created jobs). Filters in-memory after a
+// fan-out live read since status + budget aren't indexed on-chain.
+const MARKET_INDEX_CAP = 500;
+const MARKET_PAGE_DEFAULT = 20;
+const MARKET_PAGE_MAX = 50;
+
+type OpenJobEntry = {
+  jobId: string;
+  client: string;
+  provider: string;
+  evaluator: string;
+  description: string;
+  budget: { raw: string; usdc: string };
+  expiredAt: { unix: number; iso: string };
+  status: string;
+  hook: string;
+  createdAt: { blockNumber: number; txHash: string; indexedAt: string };
+};
+
+app.get<{
+  Querystring: { limit?: string; offset?: string; minBudget?: string; maxBudget?: string };
+}>('/jobs/open', async (request, reply) => {
+  const limit = clampInt(request.query.limit, MARKET_PAGE_DEFAULT, 1, MARKET_PAGE_MAX);
+  const offset = clampInt(request.query.offset, 0, 0, 100_000);
+
+  let minBudgetRaw: bigint | null = null;
+  let maxBudgetRaw: bigint | null = null;
+  try {
+    if (request.query.minBudget) minBudgetRaw = parseUnits(request.query.minBudget, 6);
+    if (request.query.maxBudget) maxBudgetRaw = parseUnits(request.query.maxBudget, 6);
+  } catch {
+    return reply.code(400).send({ error: 'minBudget/maxBudget must be numeric USDC strings' });
+  }
+
+  // Pull the most-recent N from the index. Older jobs (most likely terminal
+  // by now) are dropped — keeps the live-read fan-out bounded.
+  const indexRows = db
+    .prepare(
+      `SELECT * FROM jobs_index
+       ORDER BY block_number DESC
+       LIMIT ?`,
+    )
+    .all(MARKET_INDEX_CAP) as JobIndexRow[];
+
+  // Live-read budget + status for every candidate in parallel. ERC-8183
+  // doesn't emit a BudgetSet event, so we can't index this — see M30 note.
+  const liveStates = await Promise.allSettled(
+    indexRows.map((row) =>
+      arcClient.readContract({
+        address: ERC8183_ADDRESS,
+        abi: erc8183Abi,
+        functionName: 'getJob',
+        args: [BigInt(row.job_id)],
+      }),
+    ),
+  );
+
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const open: OpenJobEntry[] = [];
+
+  for (let i = 0; i < indexRows.length; i++) {
+    const row = indexRows[i];
+    const result = liveStates[i];
+    if (result.status !== 'fulfilled') continue;
+    const job = result.value;
+    const status = JOB_STATUS[job.status] ?? `Unknown(${job.status})`;
+    if (status !== 'Open') continue;
+    if (Number(job.expiredAt) <= nowUnix) continue;
+    if (minBudgetRaw !== null && job.budget < minBudgetRaw) continue;
+    if (maxBudgetRaw !== null && job.budget > maxBudgetRaw) continue;
+    open.push({
+      jobId: row.job_id,
+      client: job.client,
+      provider: job.provider,
+      evaluator: job.evaluator,
+      description: job.description,
+      budget: { raw: job.budget.toString(), usdc: formatUnits(job.budget, 6) },
+      expiredAt: {
+        unix: Number(job.expiredAt),
+        iso: new Date(Number(job.expiredAt) * 1000).toISOString(),
+      },
+      status,
+      hook: job.hook,
+      createdAt: {
+        blockNumber: row.block_number,
+        txHash: row.tx_hash,
+        indexedAt: row.indexed_at,
+      },
+    });
+  }
+
+  const total = open.length;
+  const jobs = open.slice(offset, offset + limit);
+  return { jobs, total, limit, offset, indexScanned: indexRows.length };
+});
+
+function clampInt(value: string | undefined, fallback: number, min: number, max: number): number {
+  if (value === undefined) return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
 app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply) => {
   const jobId = BigInt(request.params.id);
 

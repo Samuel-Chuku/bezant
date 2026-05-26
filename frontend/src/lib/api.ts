@@ -251,6 +251,45 @@ export async function getJobState(jobId: string): Promise<JobLiveState> {
   return jsonFetch<JobLiveState>('GET', `/arc/escrow/job/${encodeURIComponent(jobId)}`);
 }
 
+// Marketplace — all Open ERC-8183 jobs across the public reference contract
+// on Arc (not just arc-trade-created jobs). Paginated server-side; budget
+// filter is optional. Each row is JobIndexEntry-like + live status/budget
+// merged so the card can render without a second fetch.
+export type OpenJobEntry = {
+  jobId: string;
+  client: string;
+  provider: string;
+  evaluator: string;
+  description: string;
+  budget: { raw: string; usdc: string };
+  expiredAt: { unix: number; iso: string };
+  status: string;
+  hook: string;
+  createdAt: { blockNumber: number; txHash: string; indexedAt: string };
+};
+
+export type OpenJobsResponse = {
+  jobs: OpenJobEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  indexScanned: number;
+};
+
+export async function getOpenJobs(params: {
+  limit?: number;
+  offset?: number;
+  minBudget?: string;
+  maxBudget?: string;
+}): Promise<OpenJobsResponse> {
+  const qs = new URLSearchParams();
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.offset !== undefined) qs.set('offset', String(params.offset));
+  if (params.minBudget) qs.set('minBudget', params.minBudget);
+  if (params.maxBudget) qs.set('maxBudget', params.maxBudget);
+  return jsonFetch<OpenJobsResponse>('GET', `/jobs/open?${qs.toString()}`);
+}
+
 export type JobEvent = {
   jobId: string;
   eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';

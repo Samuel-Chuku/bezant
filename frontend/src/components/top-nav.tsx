@@ -13,8 +13,9 @@ import { WalletPill } from './wallet-pill';
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
+  { href: '/market', label: 'Market' },
   { href: '/create', label: 'Create' },
-  { href: '/jobs', label: 'Jobs' },
+  { href: '/jobs', label: 'My jobs' },
   { href: '/bridge', label: 'Bridge' },
   { href: '/reputation', label: 'Reputation' },
 ];
