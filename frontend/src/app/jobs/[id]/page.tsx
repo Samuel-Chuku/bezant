@@ -32,6 +32,8 @@ import {
   type ReputationSummary,
 } from '@/lib/api';
 import { ERC8183_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
+import { actionVerbForMe, describeCurrentStep } from '@/lib/job-status';
+import { CountdownBanner } from '@/components/countdown';
 
 // Minimal ABI fragment to read USDC allowance — saves a backend roundtrip.
 const erc20AllowanceAbi = [
@@ -73,58 +75,8 @@ function userRoles(live: JobLiveState, address: string | undefined): JobRole[] {
   return roles;
 }
 
-// What's pending — a single sentence describing the next step, tailored to
-// the viewer's role. Pairs with the lifecycle timeline so we don't repeat
-// what's already happened; this only answers "what's blocking progress
-// right now?". Returns null for terminal states (Completed/Rejected, and
-// on-chain Expired which means claimRefund already closed the job).
-function describeCurrentStep(job: JobLiveState, status: string, roles: JobRole[]): string | null {
-  const isClient = roles.includes('client');
-  const isProvider = roles.includes('provider');
-  const isEvaluator = roles.includes('evaluator');
-  const budgetSet = job.budget.usdc !== '0';
-
-  if (status === 'Completed' || status === 'Rejected') return null;
-  // On-chain Expired is reached only via claimRefund(); terminal, nothing
-  // for any role to do. (Soft-expired = deadline passed but on-chain still
-  // Funded/Submitted/Open is handled below.)
-  if (job.status === 'Expired') return null;
-
-  if (status === 'Expired') {
-    if (job.status === 'Funded' || job.status === 'Submitted') {
-      return `Anyone can claim the ${job.budget.usdc} USDC refund for the client.`;
-    }
-    return isClient
-      ? 'Cancel this job to clear it, then post a fresh one with a longer deadline.'
-      : 'Waiting for the client to cancel or repost.';
-  }
-
-  if (status === 'Open' && !budgetSet) {
-    return isProvider
-      ? 'Set your quote so the client can fund the job.'
-      : 'Waiting for the provider to quote a price.';
-  }
-
-  if (status === 'Open' && budgetSet) {
-    if (isClient) return `Fund the job to lock the ${job.budget.usdc} USDC and let work begin.`;
-    if (isProvider) return 'Quote sent — waiting for the client to fund the job.';
-    return 'Waiting for the client to fund the job.';
-  }
-
-  if (status === 'Funded') {
-    return isProvider
-      ? 'Submit your deliverable so the evaluator can review and release the funds.'
-      : 'Waiting for the provider to submit a deliverable.';
-  }
-
-  if (status === 'Submitted') {
-    if (isEvaluator) return 'Review the deliverable, then complete or reject.';
-    if (isProvider) return 'Waiting for the evaluator to review your submission.';
-    return 'Waiting for the evaluator to complete or reject.';
-  }
-
-  return `Status: ${status}.`;
-}
+// describeCurrentStep moved to lib/job-status.ts so the notifications feed
+// and other surfaces can derive the same sentences without duplication.
 
 // Compact relative-time formatter ("3m ago", "2h ago", "5d ago"). Beyond a
 // month, falls back to the locale date so we don't show "47 days ago".
@@ -524,14 +476,29 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
       {loadingJob && !job && <p className="text-sm text-neutral-500">Loading…</p>}
 
-      {job && (
+      {job && status && (
         <>
+          {/* Live countdown banner — sits above Details so the time-pressure
+              is the first thing the user sees. Hidden on terminal states
+              where no deadline matters. Label adapts to the connected user's
+              role: "Time to fund / submit / review / cancel" when it's their
+              turn, generic "Deadline" otherwise. */}
+          {status !== 'Completed' && status !== 'Rejected' && job.status !== 'Expired' && (
+            <CountdownBanner
+              unix={job.expiredAt.unix}
+              label={(() => {
+                const verb = actionVerbForMe(job, status, roles);
+                if (verb) return `Time to ${verb}`;
+                return status === 'Expired' ? 'Past deadline' : 'Deadline';
+              })()}
+            />
+          )}
+
           <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
             <h2 className="text-sm font-medium text-neutral-300">Details</h2>
             <dl className="mt-3 space-y-2 text-sm">
               <Detail label="Description" value={job.description || <em className="text-neutral-500">(none)</em>} />
               <Detail label="Budget" value={`${job.budget.usdc} USDC`} />
-              <Detail label="Deadline" value={new Date(job.expiredAt.iso).toLocaleString()} />
               <Detail
                 label="Client"
                 value={
@@ -621,6 +588,16 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     Switch to Arc
                   </button>
                 </div>
+              )}
+
+              {/* Coming-soon hint — when the client is staring at a Submitted
+                  job, surface that they'll soon be able to release directly
+                  (no evaluator wait) once our wrapper escrow ships. M36 just
+                  sets expectations; the actual contract function lands at M37. */}
+              {roles.includes('client') && status === 'Submitted' && !isOffArc && (
+                <p className="mt-3 text-[11px] italic text-neutral-500">
+                  Coming soon — direct client release (skip evaluator review) will land with arc-trade&apos;s wrapper escrow.
+                </p>
               )}
 
               <div

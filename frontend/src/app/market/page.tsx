@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { getOpenJobs, type OpenJobEntry, type OpenJobsResponse } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
+import { CountdownChip } from '@/components/countdown';
 
 const PAGE_SIZE = 20;
 
@@ -218,7 +219,6 @@ export default function MarketPage() {
 }
 
 function MarketCard({ job }: { job: OpenJobEntry }) {
-  const expiresIn = relativeFromNow(job.expiredAt.unix);
   return (
     <li className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition hover:border-neutral-700">
       <Link href={`/jobs/${encodeURIComponent(job.jobId)}`} className="block">
@@ -229,6 +229,7 @@ function MarketCard({ job }: { job: OpenJobEntry }) {
               <span className="rounded-md bg-sky-950/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
                 Open
               </span>
+              <CountdownChip unix={job.expiredAt.unix} />
             </div>
             <p className="mt-2 text-sm text-neutral-100 line-clamp-2">{job.description || '—'}</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
@@ -239,8 +240,6 @@ function MarketCard({ job }: { job: OpenJobEntry }) {
               <span>
                 Provider <span className="font-mono text-neutral-400">{shortAddress(job.provider)}</span>
               </span>
-              <span aria-hidden>·</span>
-              <span>expires {expiresIn}</span>
             </div>
           </div>
           <div className="text-right">
@@ -253,13 +252,3 @@ function MarketCard({ job }: { job: OpenJobEntry }) {
   );
 }
 
-function relativeFromNow(unixSec: number): string {
-  const diff = unixSec * 1000 - Date.now();
-  if (diff <= 0) return 'now';
-  const minutes = Math.round(diff / 60_000);
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  const days = Math.round(hours / 24);
-  return `in ${days}d`;
-}

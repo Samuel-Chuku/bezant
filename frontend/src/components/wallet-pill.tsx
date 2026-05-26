@@ -34,7 +34,8 @@ export function WalletPill() {
   const { data: balance } = useBalance({
     address: signer.isConnected ? signer.address : undefined,
     chainId: arcTestnet.id,
-    query: { enabled: signer.isConnected },
+    // Poll every 15s so post-bridge / post-fund deltas show without a reload.
+    query: { enabled: signer.isConnected, refetchInterval: 15_000 },
   });
 
   // Close any open popover on navigation.

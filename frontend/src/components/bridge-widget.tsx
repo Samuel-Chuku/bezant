@@ -6,6 +6,7 @@ import { useAccount, useBalance, useChainId, useSwitchChain } from 'wagmi';
 import { AppKit } from '@circle-fin/app-kit';
 import { createAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { useSigner } from '@/hooks/use-signer';
+import { useRefreshChainData } from '@/hooks/use-refresh-chain-data';
 import {
   BRIDGE_DESTINATION,
   BRIDGE_SOURCES,
@@ -53,6 +54,7 @@ export function BridgeWidget() {
   const [selectedKey, setSelectedKey] = useState<BridgeSource['key']>(BRIDGE_SOURCES[0].key);
   const [amount, setAmount] = useState('1.00');
   const [run, setRun] = useState<BridgeRun>(INITIAL_RUN);
+  const refreshChainData = useRefreshChainData();
 
   const activeSource = useMemo<BridgeSource>(() => {
     const byWallet = BRIDGE_SOURCES.find((s) => s.wagmiChainId === wagmiChainId);
@@ -66,7 +68,8 @@ export function BridgeWidget() {
     address: userAddr,
     token: activeSource.usdc,
     chainId: activeSource.wagmiChainId,
-    query: { enabled: !!userAddr },
+    // 15s polling so balance reflects the post-burn drop without a reload.
+    query: { enabled: !!userAddr, refetchInterval: 15_000 },
   });
 
   if (!signer.isConnected) {
@@ -137,6 +140,10 @@ export function BridgeWidget() {
             },
           },
         }));
+        // Refresh on each step success so source balance drops the moment
+        // the burn confirms (not 15s later), then destination balance rises
+        // the moment the mint confirms.
+        if (payload.values.state === 'success') refreshChainData();
       };
       kit.on('bridge.approve', recordStep('approve'));
       kit.on('bridge.burn', recordStep('burn'));
@@ -177,6 +184,9 @@ export function BridgeWidget() {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setRun((prev) => ({ ...prev, status: 'error', errorMessage: message }));
+      // A failed bridge may still have burned on the source chain before
+      // throwing — refresh so the dropped source balance is reflected.
+      refreshChainData();
       if (userAddr) {
         appendBridgeHistory(userAddr, {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -356,7 +366,7 @@ function ChainCard({
     address,
     token: source.usdc,
     chainId: source.wagmiChainId,
-    query: { enabled: !!address },
+    query: { enabled: !!address, refetchInterval: 15_000 },
   });
 
   const balanceText = isLoading ? '…' : balance ? truncateBalance(balance.formatted, 2) : '0';

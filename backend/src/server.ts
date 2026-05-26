@@ -1004,6 +1004,130 @@ app.get<{ Params: { address: string } }>(
   },
 );
 
+// Notifications feed for a given address — bundles, per job, the immutable
+// index row + live on-chain state + this job's events. Saves the frontend
+// from doing N×2 round-trips to render the bell. Paginated by recency.
+const FEED_PAGE_DEFAULT = 30;
+const FEED_PAGE_MAX = 100;
+
+type FeedRow = {
+  jobId: string;
+  roles: Array<'client' | 'provider' | 'evaluator'>;
+  index: {
+    client: string;
+    provider: string;
+    evaluator: string;
+    expiredAt: number;
+    blockNumber: number;
+    txHash: string;
+    indexedAt: string;
+  };
+  live: {
+    status: string;
+    budget: { raw: string; usdc: string };
+    expiredAt: { unix: number; iso: string };
+    description: string;
+  } | null;
+  events: ReturnType<typeof rowToJobEvent>[];
+};
+
+app.get<{
+  Params: { address: string };
+  Querystring: { limit?: string; offset?: string };
+}>('/jobs/by-address/:address/feed', async (request, reply) => {
+  const address = request.params.address.toLowerCase();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    return reply.code(400).send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
+  }
+  const limit = clampInt(request.query.limit, FEED_PAGE_DEFAULT, 1, FEED_PAGE_MAX);
+  const offset = clampInt(request.query.offset, 0, 0, 100_000);
+
+  // Newest jobs first — matches the bell's "what changed recently" framing.
+  const indexRows = db
+    .prepare(
+      `SELECT * FROM jobs_index
+       WHERE client = ? OR provider = ? OR evaluator = ?
+       ORDER BY block_number DESC`,
+    )
+    .all(address, address, address) as JobIndexRow[];
+
+  const total = indexRows.length;
+  const pageRows = indexRows.slice(offset, offset + limit);
+
+  // Live read + events fetched per job in parallel. Tolerates per-call
+  // failures — a single dead RPC shouldn't take the whole bell down.
+  const live = await Promise.allSettled(
+    pageRows.map((row) =>
+      arcClient.readContract({
+        address: ERC8183_ADDRESS,
+        abi: erc8183Abi,
+        functionName: 'getJob',
+        args: [BigInt(row.job_id)],
+      }),
+    ),
+  );
+
+  const eventsByJob = new Map<string, ReturnType<typeof rowToJobEvent>[]>();
+  if (pageRows.length > 0) {
+    const placeholders = pageRows.map(() => '?').join(',');
+    const eventRows = db
+      .prepare(
+        `SELECT * FROM job_events
+         WHERE job_id IN (${placeholders})
+         ORDER BY block_number ASC, log_index ASC`,
+      )
+      .all(...pageRows.map((r) => r.job_id)) as JobEventRow[];
+    for (const r of eventRows) {
+      const list = eventsByJob.get(r.job_id) ?? [];
+      list.push(rowToJobEvent(r));
+      eventsByJob.set(r.job_id, list);
+    }
+  }
+
+  const feed: FeedRow[] = pageRows.map((row, i) => {
+    const base = rowToJobIndex(row);
+    const roles: FeedRow['roles'] = [];
+    if (base.client === address) roles.push('client');
+    if (base.provider === address) roles.push('provider');
+    if (base.evaluator === address) roles.push('evaluator');
+
+    const result = live[i];
+    const liveData =
+      result.status === 'fulfilled'
+        ? {
+            status: JOB_STATUS[result.value.status] ?? `Unknown(${result.value.status})`,
+            budget: {
+              raw: result.value.budget.toString(),
+              usdc: formatUnits(result.value.budget, 6),
+            },
+            expiredAt: {
+              unix: Number(result.value.expiredAt),
+              iso: new Date(Number(result.value.expiredAt) * 1000).toISOString(),
+            },
+            description: result.value.description,
+          }
+        : null;
+
+    return {
+      jobId: base.jobId,
+      roles,
+      index: {
+        client: base.client,
+        provider: base.provider,
+        evaluator: base.evaluator,
+        expiredAt: base.expiredAt,
+        blockNumber: base.blockNumber,
+        txHash: base.txHash,
+        indexedAt: base.indexedAt,
+      },
+      live: liveData,
+      events: eventsByJob.get(base.jobId) ?? [],
+    };
+  });
+
+  return { address, feed, total, limit, offset };
+});
+
 // Open-jobs marketplace. Lists every Open ERC-8183 job our indexer has
 // seen (this is the public reference contract, so it's the whole network
 // pre-wrapper, not just arc-trade-created jobs). Filters in-memory after a

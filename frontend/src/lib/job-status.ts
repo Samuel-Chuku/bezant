@@ -1,0 +1,114 @@
+// Role-aware "what should happen next" for a job. Single source of truth
+// for both the job-detail page's waiting cue and the notifications feed —
+// derives the directive sentence and whether the *connected user* is the
+// one being asked to act.
+import type { JobLiveState, JobRole } from './api';
+
+// Returns a directive/waiting sentence for the connected user, or null when
+// the job is terminal. Mirrors the lifecycle the reference contract enforces;
+// `status` is the effective status (soft-Expired included), `job.status` is
+// the raw on-chain enum value.
+export function describeCurrentStep(
+  job: JobLiveState,
+  status: string,
+  roles: JobRole[],
+): string | null {
+  const isClient = roles.includes('client');
+  const isProvider = roles.includes('provider');
+  const isEvaluator = roles.includes('evaluator');
+  const budgetSet = job.budget.usdc !== '0';
+
+  if (status === 'Completed' || status === 'Rejected') return null;
+  // On-chain Expired is reached only via claimRefund(); terminal.
+  if (job.status === 'Expired') return null;
+
+  if (status === 'Expired') {
+    if (job.status === 'Funded' || job.status === 'Submitted') {
+      return `Anyone can claim the ${job.budget.usdc} USDC refund for the client.`;
+    }
+    return isClient
+      ? 'Cancel this job to clear it, then post a fresh one with a longer deadline.'
+      : 'Waiting for the client to cancel or repost.';
+  }
+
+  if (status === 'Open' && !budgetSet) {
+    return isProvider
+      ? 'Set your quote so the client can fund the job.'
+      : 'Waiting for the provider to quote a price.';
+  }
+
+  if (status === 'Open' && budgetSet) {
+    if (isClient) return `Fund the job to lock the ${job.budget.usdc} USDC and let work begin.`;
+    if (isProvider) return 'Quote sent — waiting for the client to fund the job.';
+    return 'Waiting for the client to fund the job.';
+  }
+
+  if (status === 'Funded') {
+    return isProvider
+      ? 'Submit your deliverable so the evaluator can review and release the funds.'
+      : 'Waiting for the provider to submit a deliverable.';
+  }
+
+  if (status === 'Submitted') {
+    if (isEvaluator) return 'Review the deliverable, then complete or reject.';
+    if (isProvider) return 'Waiting for the evaluator to review your submission.';
+    return 'Waiting for the evaluator to complete or reject.';
+  }
+
+  return `Status: ${status}.`;
+}
+
+// True when the directive in describeCurrentStep is *for the connected user*
+// — i.e., they're the one being asked to act, not just observing someone
+// else's turn. Used by the notifications feed to flag "action required" rows
+// and by other surfaces (e.g., countdown urgency label) to swap "waiting"
+// vs "act now" language.
+//
+// We branch by the same (status, role) tuples as describeCurrentStep rather
+// than scraping the returned sentence — keeps the two in lock-step without
+// fragile string matching.
+export function isActionRequiredByMe(
+  job: JobLiveState,
+  status: string,
+  roles: JobRole[],
+): boolean {
+  const isClient = roles.includes('client');
+  const isProvider = roles.includes('provider');
+  const isEvaluator = roles.includes('evaluator');
+  const budgetSet = job.budget.usdc !== '0';
+
+  if (status === 'Completed' || status === 'Rejected') return false;
+  if (job.status === 'Expired') return false;
+
+  if (status === 'Expired') {
+    // Anyone can claim the refund on behalf of the client; only the client
+    // sees this as "their action" — non-clients can technically call it too
+    // but it's not their job. Surface this only to client.
+    if (job.status === 'Funded' || job.status === 'Submitted') return isClient;
+    return isClient;
+  }
+  if (status === 'Open' && !budgetSet) return isProvider;
+  if (status === 'Open' && budgetSet) return isClient;
+  if (status === 'Funded') return isProvider;
+  if (status === 'Submitted') return isEvaluator;
+
+  return false;
+}
+
+// Short action label for the countdown banner ("Time to {verb}…"). Returns
+// null on terminal states or "waiting for someone else" branches — callers
+// fall back to a generic deadline label.
+export function actionVerbForMe(
+  job: JobLiveState,
+  status: string,
+  roles: JobRole[],
+): string | null {
+  if (!isActionRequiredByMe(job, status, roles)) return null;
+  const budgetSet = job.budget.usdc !== '0';
+  if (status === 'Expired') return 'cancel and repost';
+  if (status === 'Open' && !budgetSet) return 'set your quote';
+  if (status === 'Open' && budgetSet) return 'fund the job';
+  if (status === 'Funded') return 'submit the deliverable';
+  if (status === 'Submitted') return 'review the deliverable';
+  return null;
+}

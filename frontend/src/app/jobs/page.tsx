@@ -10,6 +10,7 @@ import {
   type JobLiveState,
   type JobRole,
 } from '@/lib/api';
+import { CountdownChip } from '@/components/countdown';
 
 type EnrichedJob = JobIndexEntry & {
   live: JobLiveState | null;
@@ -286,6 +287,12 @@ function JobCard({ job }: { job: EnrichedJob }) {
             >
               {status}
             </span>
+            {/* Countdown chip — at-a-glance urgency for non-terminal jobs.
+                Terminal states (Completed/Rejected) don't have a meaningful
+                deadline anymore. */}
+            {status !== 'Completed' && status !== 'Rejected' && job.live?.status !== 'Expired' && (
+              <CountdownChip unix={job.live?.expiredAt.unix ?? job.expiredAt} />
+            )}
           </div>
           {job.live?.description && (
             <p className="mt-2 truncate text-sm text-neutral-200">{job.live.description}</p>

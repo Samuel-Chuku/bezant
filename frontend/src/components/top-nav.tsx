@@ -9,6 +9,7 @@ import { arcTestnet } from '@/lib/chains';
 import { shortAddress } from '@/lib/format';
 import { ArcLogo } from './arc-logo';
 import { MobileDrawer, type NavItem } from './mobile-drawer';
+import { NotificationsBell } from './notifications-bell';
 import { WalletPill } from './wallet-pill';
 
 const NAV_ITEMS: NavItem[] = [
@@ -87,6 +88,7 @@ export function TopNav() {
                 Switch to Arc →
               </button>
             )}
+            <NotificationsBell />
             <WalletPill />
           </div>
         </div>

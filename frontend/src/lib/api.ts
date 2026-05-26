@@ -290,6 +290,56 @@ export async function getOpenJobs(params: {
   return jsonFetch<OpenJobsResponse>('GET', `/jobs/open?${qs.toString()}`);
 }
 
+// Notifications feed. Per-job bundle: index row + live state + events array.
+// The frontend derives action/event/deadline notifications from these rows
+// (see hooks/use-notifications.ts) rather than the backend pre-shaping them,
+// because the action/deadline-bucket logic is role-sensitive and easier to
+// keep in sync with the job-detail page when both consume from lib/job-status.
+export type FeedJobLive = {
+  status: string;
+  budget: { raw: string; usdc: string };
+  expiredAt: { unix: number; iso: string };
+  description: string;
+};
+
+export type FeedRow = {
+  jobId: string;
+  roles: JobRole[];
+  index: {
+    client: string;
+    provider: string;
+    evaluator: string;
+    expiredAt: number;
+    blockNumber: number;
+    txHash: string;
+    indexedAt: string;
+  };
+  live: FeedJobLive | null;
+  events: JobEvent[];
+};
+
+export type NotificationFeedResponse = {
+  address: string;
+  feed: FeedRow[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function getNotificationFeed(
+  address: string,
+  params: { limit?: number; offset?: number } = {},
+): Promise<NotificationFeedResponse> {
+  const qs = new URLSearchParams();
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.offset !== undefined) qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return jsonFetch<NotificationFeedResponse>(
+    'GET',
+    `/jobs/by-address/${encodeURIComponent(address)}/feed${suffix}`,
+  );
+}
+
 export type JobEvent = {
   jobId: string;
   eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';

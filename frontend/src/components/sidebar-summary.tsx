@@ -184,7 +184,13 @@ function BalanceRow({
   token?: Address;
   accent?: 'emerald';
 }) {
-  const { data, isLoading } = useBalance({ address, chainId, token });
+  // Poll so balances update post-bridge / post-fund without a manual reload.
+  const { data, isLoading } = useBalance({
+    address,
+    chainId,
+    token,
+    query: { refetchInterval: 15_000 },
+  });
   const formatted = isLoading ? '…' : data ? truncateBalance(data.formatted, 2) : '0';
   const has = !!data && Number(data.formatted) > 0;
 

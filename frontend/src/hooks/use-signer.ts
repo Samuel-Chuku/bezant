@@ -10,6 +10,7 @@ import {
 } from 'wagmi';
 import { arcTestnet } from '@/lib/chains';
 import { useCircleAccount } from './use-circle-account';
+import { useRefreshChainData } from './use-refresh-chain-data';
 
 export type SignerMode = 'external' | 'circle';
 
@@ -56,6 +57,9 @@ export function useSigner(): ConnectedState | DisconnectedState {
   // Circle Modular Wallets — passkey-backed smart account.
   const circle = useCircleAccount();
 
+  // Snappy balance + allowance refresh after every tx — beats the 15s poll.
+  const refreshChainData = useRefreshChainData();
+
   const wagmiActive = wagmi.isConnected && wagmi.address;
   const circleActive = circle.state.status === 'connected';
 
@@ -80,6 +84,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
           wait: async () => {
             if (!wagmiPublic) throw new Error('No wagmi public client available');
             const receipt = await wagmiPublic.waitForTransactionReceipt({ hash });
+            refreshChainData();
             return { txHash: hash, status: receipt.status };
           },
         };
@@ -109,6 +114,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
           hash: userOpHash,
           wait: async () => {
             const receipt = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
+            refreshChainData();
             return {
               txHash: receipt.receipt.transactionHash,
               status: receipt.success ? 'success' : 'reverted',
