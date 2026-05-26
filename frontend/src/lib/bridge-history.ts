@@ -9,6 +9,10 @@ export type BridgeHistoryEntry = {
   timestamp: number;
   sourceKey: BridgeSource['key'];
   sourceFullName: string;
+  // Destination metadata — older entries (pre-any-to-any) may lack these;
+  // readers should default to Arc when reading legacy rows.
+  destinationKey?: BridgeSource['key'];
+  destinationFullName?: string;
   amount: string;
   status: 'success' | 'error';
   mintTxHash?: string;

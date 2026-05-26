@@ -27,7 +27,10 @@ type Pos = { x: number; y: number };
 export function SidebarSummary() {
   const pathname = usePathname();
   const signer = useSigner();
-  const showSources = pathname?.startsWith('/bridge') ?? false;
+  // The /bridge page renders its own larger, static balances panel inline —
+  // suppress the floating widget there so they don't double up.
+  const onBridgePage = pathname?.startsWith('/bridge') ?? false;
+  const showSources = onBridgePage;
 
   const [pos, setPos] = useState<Pos | null>(null);
   const dragRef = useRef<
@@ -88,6 +91,7 @@ export function SidebarSummary() {
   );
 
   if (!signer.isConnected) return null;
+  if (onBridgePage) return null;
 
   // Inline style only takes effect when `position: fixed` is active (lg+).
   // Below lg the static layout ignores left/top and the widget renders

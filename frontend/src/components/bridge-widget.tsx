@@ -1,123 +1,149 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import type { Address } from 'viem';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, useBalance, useChainId, useSwitchChain } from 'wagmi';
 import { AppKit } from '@circle-fin/app-kit';
 import { createAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { useSigner } from '@/hooks/use-signer';
 import { useRefreshChainData } from '@/hooks/use-refresh-chain-data';
+import { ChainLogo } from '@/components/chain-logo';
 import {
-  BRIDGE_DESTINATION,
-  BRIDGE_SOURCES,
-  BRIDGE_STEP_LABELS,
-  BRIDGE_STEP_ORDER,
+  BRIDGE_CHAINS,
+  DEFAULT_DESTINATION_KEY,
   USDC_FAUCET_URL,
-  type BridgeSource,
+  chainByKey,
+  type BridgeChain,
   type BridgeStepName,
 } from '@/lib/bridge';
 import { appendBridgeHistory } from '@/lib/bridge-history';
-import { shortAddress, shortHash, truncateBalance } from '@/lib/format';
+import { shortAddress, truncateBalance } from '@/lib/format';
+import type { BridgeRun, StepState } from '@/lib/bridge-run';
 
-type StepState = 'pending' | 'success' | 'error' | 'noop';
-
-type StepStatus = {
-  state: StepState;
-  txHash?: string;
-  explorerUrl?: string;
-  errorMessage?: string;
-};
-
-type BridgeRun = {
-  status: 'idle' | 'running' | 'success' | 'error';
-  steps: Partial<Record<BridgeStepName, StepStatus>>;
-  errorMessage?: string;
-};
-
-const INITIAL_RUN: BridgeRun = { status: 'idle', steps: {} };
-
-// Per-chain visual data lives here (not in lib/bridge.ts) since it's pure
-// presentation. Keyed by BridgeSource['key'].
-const CHAIN_VISUAL: Record<BridgeSource['key'], { brand: string; initial: string }> = {
-  sepolia: { brand: '#627EEA', initial: 'E' },
-  optimismSepolia: { brand: '#FF0420', initial: 'O' },
-  arbitrumSepolia: { brand: '#28A0F0', initial: 'A' },
-  baseSepolia: { brand: '#0052FF', initial: 'B' },
-};
-
-export function BridgeWidget() {
+// Any-to-any bridging across the chains in BRIDGE_CHAINS. Default destination
+// is Arc — that's the focal chain. Source defaults to the wallet's current
+// chain (or Ethereum Sepolia if it's not a supported source).
+//
+// Source = Arc is gated on Circle passkey wallet — injected wallets struggle
+// with Arc's USDC-as-native gas model right now.
+export function BridgeWidget({
+  run,
+  onRunChange,
+}: {
+  run: BridgeRun;
+  onRunChange: (updater: (prev: BridgeRun) => BridgeRun) => void;
+}) {
   const signer = useSigner();
   const wagmiChainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { connector } = useAccount();
-
-  const [selectedKey, setSelectedKey] = useState<BridgeSource['key']>(BRIDGE_SOURCES[0].key);
-  const [amount, setAmount] = useState('1.00');
-  const [run, setRun] = useState<BridgeRun>(INITIAL_RUN);
   const refreshChainData = useRefreshChainData();
 
-  const activeSource = useMemo<BridgeSource>(() => {
-    const byWallet = BRIDGE_SOURCES.find((s) => s.wagmiChainId === wagmiChainId);
-    return byWallet ?? BRIDGE_SOURCES.find((s) => s.key === selectedKey) ?? BRIDGE_SOURCES[0];
-  }, [wagmiChainId, selectedKey]);
+  const [sourceKey, setSourceKey] = useState<BridgeChain['key']>('sepolia');
+  const [destKey, setDestKey] = useState<BridgeChain['key']>(DEFAULT_DESTINATION_KEY);
+  const [amount, setAmount] = useState('1.00');
 
-  const walletOnActiveChain = activeSource.wagmiChainId === wagmiChainId;
+  // Track the wallet's current chain only on first render so we don't reset
+  // the user's manual source selection every time wagmi reports a switch.
+  const initialSyncDone = useRef(false);
+  useEffect(() => {
+    if (initialSyncDone.current) return;
+    if (!wagmiChainId) return;
+    const match = BRIDGE_CHAINS.find((c) => c.wagmiChainId === wagmiChainId);
+    if (match) setSourceKey(match.key);
+    initialSyncDone.current = true;
+  }, [wagmiChainId]);
+
+  const source = useMemo(() => chainByKey(sourceKey), [sourceKey]);
+  const destination = useMemo(() => chainByKey(destKey), [destKey]);
+
+  const walletOnSourceChain = source.wagmiChainId === wagmiChainId;
   const userAddr = signer.isConnected ? signer.address : undefined;
 
-  const { data: activeBalance } = useBalance({
+  const { data: sourceBalance } = useBalance({
     address: userAddr,
-    token: activeSource.usdc,
-    chainId: activeSource.wagmiChainId,
-    // 15s polling so balance reflects the post-burn drop without a reload.
+    token: source.usdcIsNative ? undefined : source.usdc,
+    chainId: source.wagmiChainId,
     query: { enabled: !!userAddr, refetchInterval: 15_000 },
   });
+
+  // From-Arc requires a Circle wallet; everything else requires external.
+  const requiresCircleWallet = source.arcOnly;
+  const requiresExternalWallet = !source.arcOnly;
+  const walletMismatch =
+    signer.isConnected &&
+    ((requiresCircleWallet && signer.mode !== 'circle') ||
+      (requiresExternalWallet && signer.mode !== 'external'));
+
+  const sameChain = source.key === destination.key;
 
   if (!signer.isConnected) {
     return (
       <Shell>
         <p className="text-sm text-neutral-400">
-          Connect a wallet to bridge USDC into Arc from another testnet.
-        </p>
-      </Shell>
-    );
-  }
-  if (signer.mode === 'circle') {
-    return (
-      <Shell>
-        <p className="text-sm text-neutral-300">
-          Bridging in needs a wallet that holds USDC on another chain. Your
-          passkey account only exists on Arc.
-        </p>
-        <p className="mt-2 text-xs text-neutral-500">
-          Connect MetaMask or Rabby with funds on Sepolia, Base Sepolia, OP
-          Sepolia, or Arbitrum Sepolia.
+          Connect a wallet to bridge USDC.
         </p>
       </Shell>
     );
   }
 
-  const canSubmit =
-    run.status !== 'running' &&
-    walletOnActiveChain &&
-    Number(amount) > 0 &&
-    !!connector &&
-    !!activeBalance &&
-    Number(amount) <= Number(activeBalance.formatted);
+  const handleSelectSource = (next: BridgeChain) => {
+    setSourceKey(next.key);
+    // If the new source matches the destination, bump the destination off it.
+    if (next.key === destKey) {
+      const alt = BRIDGE_CHAINS.find((c) => c.key !== next.key);
+      if (alt) setDestKey(alt.key);
+    }
+    // Switch wallet chain when it's possible (external wallets only).
+    if (signer.mode === 'external' && next.wagmiChainId !== wagmiChainId) {
+      switchChain({ chainId: next.wagmiChainId });
+    }
+  };
 
-  const handleSelect = (source: BridgeSource) => {
-    setSelectedKey(source.key);
-    if (source.wagmiChainId !== wagmiChainId) {
-      switchChain({ chainId: source.wagmiChainId });
+  const handleSelectDestination = (next: BridgeChain) => {
+    setDestKey(next.key);
+    if (next.key === sourceKey) {
+      const alt = BRIDGE_CHAINS.find((c) => c.key !== next.key);
+      if (alt) setSourceKey(alt.key);
+    }
+  };
+
+  const handleSwap = () => {
+    setSourceKey(destKey);
+    setDestKey(sourceKey);
+    if (signer.mode === 'external') {
+      const next = chainByKey(destKey);
+      if (next.wagmiChainId !== wagmiChainId) {
+        switchChain({ chainId: next.wagmiChainId });
+      }
     }
   };
 
   const handleMax = () => {
-    if (activeBalance) setAmount(truncateBalance(activeBalance.formatted, 6));
+    if (sourceBalance) setAmount(truncateBalance(sourceBalance.formatted, 6));
   };
 
+  const canSubmit =
+    !sameChain &&
+    !walletMismatch &&
+    run.status !== 'running' &&
+    (signer.mode === 'circle' || walletOnSourceChain) &&
+    Number(amount) > 0 &&
+    !!connector &&
+    !!sourceBalance &&
+    Number(amount) <= Number(sourceBalance.formatted);
+
   const handleBridge = async () => {
-    if (!connector || !walletOnActiveChain || !userAddr) return;
-    setRun({ status: 'running', steps: {} });
+    if (!connector || !userAddr) return;
+    if (signer.mode === 'external' && !walletOnSourceChain) return;
+    onRunChange(() => ({
+      status: 'running',
+      steps: {},
+      sourceKey: source.key,
+      sourceFullName: source.fullName,
+      destinationKey: destination.key,
+      destinationFullName: destination.fullName,
+      amount,
+    }));
     try {
       const provider = await connector.getProvider();
       const adapter = await createAdapterFromProvider({
@@ -128,7 +154,7 @@ export function BridgeWidget() {
       const recordStep = (name: BridgeStepName) => (payload: { values: {
         state: StepState; txHash?: string; explorerUrl?: string; errorMessage?: string;
       } }) => {
-        setRun((prev) => ({
+        onRunChange((prev) => ({
           ...prev,
           steps: {
             ...prev.steps,
@@ -140,9 +166,6 @@ export function BridgeWidget() {
             },
           },
         }));
-        // Refresh on each step success so source balance drops the moment
-        // the burn confirms (not 15s later), then destination balance rises
-        // the moment the mint confirms.
         if (payload.values.state === 'success') refreshChainData();
       };
       kit.on('bridge.approve', recordStep('approve'));
@@ -152,9 +175,9 @@ export function BridgeWidget() {
 
       const result = await kit.bridge({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        from: { adapter, chain: activeSource.bridgeChain as any },
+        from: { adapter, chain: source.bridgeChain as any },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        to: { adapter, chain: BRIDGE_DESTINATION as any },
+        to: { adapter, chain: destination.bridgeChain as any },
         amount,
       });
 
@@ -162,19 +185,19 @@ export function BridgeWidget() {
       const errorStep = result.steps.find((s) => s.state === 'error');
       const finalStatus = result.state === 'success' ? 'success' : 'error';
 
-      setRun((prev) => ({
+      onRunChange((prev) => ({
         ...prev,
         status: finalStatus,
         errorMessage: finalStatus === 'error' ? errorStep?.errorMessage ?? 'Bridge failed' : undefined,
       }));
 
-      // Persist to localStorage history (capped at 3). We save both
-      // success and error rows so the user can see recent attempts.
       appendBridgeHistory(userAddr, {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         timestamp: Date.now(),
-        sourceKey: activeSource.key,
-        sourceFullName: activeSource.fullName,
+        sourceKey: source.key,
+        sourceFullName: source.fullName,
+        destinationKey: destination.key,
+        destinationFullName: destination.fullName,
         amount,
         status: finalStatus,
         mintTxHash: mintStep?.txHash,
@@ -183,16 +206,16 @@ export function BridgeWidget() {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setRun((prev) => ({ ...prev, status: 'error', errorMessage: message }));
-      // A failed bridge may still have burned on the source chain before
-      // throwing — refresh so the dropped source balance is reflected.
+      onRunChange((prev) => ({ ...prev, status: 'error', errorMessage: message }));
       refreshChainData();
       if (userAddr) {
         appendBridgeHistory(userAddr, {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           timestamp: Date.now(),
-          sourceKey: activeSource.key,
-          sourceFullName: activeSource.fullName,
+          sourceKey: source.key,
+          sourceFullName: source.fullName,
+          destinationKey: destination.key,
+          destinationFullName: destination.fullName,
           amount,
           status: 'error',
           errorMessage: message,
@@ -203,62 +226,114 @@ export function BridgeWidget() {
 
   return (
     <Shell>
-      <div>
-        <div className="text-xs uppercase tracking-wide text-neutral-500">Source chain</div>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {BRIDGE_SOURCES.map((source) => (
-            <ChainCard
-              key={source.key}
-              source={source}
-              address={userAddr}
-              active={activeSource.key === source.key}
-              disabled={run.status === 'running'}
-              onSelect={handleSelect}
-            />
-          ))}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
+        <ChainPicker
+          label="From"
+          value={source}
+          options={BRIDGE_CHAINS}
+          excludeKey={destKey}
+          balance={sourceBalance?.formatted}
+          onSelect={handleSelectSource}
+          disabled={run.status === 'running'}
+        />
+        <button
+          type="button"
+          onClick={handleSwap}
+          disabled={run.status === 'running'}
+          aria-label="Swap source and destination"
+          title="Swap source and destination"
+          className="mt-6 flex h-11 w-11 items-center justify-center self-center rounded-full border border-neutral-800 bg-neutral-950/60 text-neutral-400 transition hover:border-neutral-700 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3 4 7l4 4" />
+            <path d="M4 7h16" />
+            <path d="m16 21 4-4-4-4" />
+            <path d="M20 17H4" />
+          </svg>
+        </button>
+        <ChainPicker
+          label="To"
+          value={destination}
+          options={BRIDGE_CHAINS}
+          excludeKey={sourceKey}
+          highlight={destination.key === DEFAULT_DESTINATION_KEY}
+          onSelect={handleSelectDestination}
+          disabled={run.status === 'running'}
+        />
+      </div>
+
+      {sameChain && (
+        <p className="mt-3 text-sm text-amber-400">
+          Source and destination can&apos;t be the same chain.
+        </p>
+      )}
+
+      {!sameChain && walletMismatch && requiresCircleWallet && (
+        <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
+          Bridging out of Arc currently requires a Circle passkey wallet — Arc&apos;s
+          USDC-as-native model isn&apos;t smooth on injected wallets yet. Disconnect MetaMask
+          and sign in with passkey to send USDC off Arc.
         </div>
-        {!walletOnActiveChain && (
-          <p className="mt-2 text-xs text-amber-400">
-            Your wallet is on a different network. Click {activeSource.fullName} to switch.
-          </p>
-        )}
-      </div>
+      )}
 
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-neutral-500">
-        <a
-          href={activeSource.gasFaucetUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-neutral-300"
-        >
-          Get {activeSource.gasSymbol} for gas ↗
-        </a>
-        <span aria-hidden>·</span>
-        <a
-          href={USDC_FAUCET_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-neutral-300"
-        >
-          Get test USDC ↗
-        </a>
-      </div>
+      {!sameChain && source.arcOnly && !walletMismatch && !connector && (
+        <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
+          Bridging out of Arc via passkey wallet isn&apos;t wired through this widget yet.
+          Coming soon — the Circle Modular Wallet adapter needs to be plumbed into
+          Bridge Kit before this can submit.
+        </div>
+      )}
 
-      <div className="mt-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-wide text-neutral-500">
+      {!sameChain && walletMismatch && requiresExternalWallet && (
+        <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
+          Bridging into {destination.shortName} needs an injected wallet (MetaMask /
+          Rabby) holding USDC on {source.fullName}.
+        </div>
+      )}
+
+      {!sameChain && !walletMismatch && signer.mode === 'external' && !walletOnSourceChain && (
+        <p className="mt-3 text-sm text-amber-400">
+          Your wallet is on a different network. Click {source.fullName} to switch.
+        </p>
+      )}
+
+      {!source.arcOnly && (
+        <div className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-neutral-500">
+          <a
+            href={source.gasFaucetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-neutral-300"
+          >
+            Get {source.gasSymbol} for gas ↗
+          </a>
+          <span aria-hidden>·</span>
+          <a
+            href={USDC_FAUCET_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-neutral-300"
+          >
+            Get test USDC ↗
+          </a>
+        </div>
+      )}
+
+      <div className="mt-6">
+        <div className="flex items-center justify-between text-[13px] uppercase tracking-wide text-neutral-500">
           <span>Amount</span>
-          {activeBalance && Number(activeBalance.formatted) > 0 && (
+          {sourceBalance && Number(sourceBalance.formatted) > 0 && (
             <button
               type="button"
               onClick={handleMax}
               disabled={run.status === 'running'}
-              className="text-xs uppercase tracking-wide text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+              className="text-[13px] uppercase tracking-wide text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
             >
               Max
             </button>
           )}
         </div>
-        <div className="mt-2 flex items-center rounded-lg border border-neutral-800 bg-neutral-950/40 focus-within:border-neutral-600">
+        <div className="mt-2.5 flex items-center rounded-lg border border-neutral-800 bg-neutral-950/40 focus-within:border-neutral-600">
           <input
             type="text"
             inputMode="decimal"
@@ -266,14 +341,14 @@ export function BridgeWidget() {
             onChange={(e) => setAmount(e.target.value)}
             disabled={run.status === 'running'}
             placeholder="0.00"
-            className="flex-1 bg-transparent px-3 py-2.5 text-base text-neutral-100 placeholder:text-neutral-700 focus:outline-none disabled:opacity-50"
+            className="flex-1 bg-transparent px-3.5 py-3 text-lg text-neutral-100 placeholder:text-neutral-700 focus:outline-none disabled:opacity-50"
           />
-          <span className="pr-3 text-xs text-neutral-500">USDC</span>
+          <span className="pr-3.5 text-sm text-neutral-500">USDC</span>
         </div>
       </div>
 
-      <p className="mt-3 text-xs text-neutral-500">
-        Bridges to Arc as{' '}
+      <p className="mt-3.5 text-sm text-neutral-500">
+        Receives on {destination.shortName} as{' '}
         <span className="font-mono text-neutral-300">{shortAddress(signer.address)}</span>
       </p>
 
@@ -281,145 +356,124 @@ export function BridgeWidget() {
         type="button"
         disabled={!canSubmit}
         onClick={handleBridge}
-        className="mt-4 w-full rounded-lg bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+        className="mt-5 w-full rounded-lg bg-neutral-100 px-4 py-3 text-base font-medium text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
       >
-        {run.status === 'running' ? 'Bridging…' : `Bridge from ${activeSource.fullName}`}
+        {run.status === 'running'
+          ? 'Bridging…'
+          : `Bridge ${source.shortName} → ${destination.shortName}`}
       </button>
-
-      {run.status !== 'idle' && (
-        <div className="mt-5 border-t border-neutral-800 pt-4">
-          <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-neutral-900">
-            <div
-              className={`h-full transition-all duration-500 ${
-                run.status === 'error' ? 'bg-red-500' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${computeProgress(run)}%` }}
-            />
-          </div>
-          <ul className="space-y-1.5">
-            {BRIDGE_STEP_ORDER.map((name) => {
-              const step = run.steps[name];
-              return (
-                <li key={name} className="flex items-start gap-2 text-xs">
-                  <StepIcon state={step?.state} running={run.status === 'running' && !step} />
-                  <div className="flex-1">
-                    <div className="text-neutral-200">{BRIDGE_STEP_LABELS[name]}</div>
-                    {step?.txHash && step.explorerUrl && (
-                      <a
-                        href={step.explorerUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono text-[10px] text-neutral-500 hover:text-neutral-300"
-                      >
-                        {shortHash(step.txHash)} ↗
-                      </a>
-                    )}
-                    {step?.state === 'error' && step.errorMessage && (
-                      <div className="text-[11px] text-red-400">{step.errorMessage}</div>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {run.status === 'success' && (
-            <p className="mt-3 text-xs text-emerald-400">Done. USDC should land on Arc shortly.</p>
-          )}
-          {run.status === 'error' && run.errorMessage && (
-            <p className="mt-3 text-xs text-red-400">{run.errorMessage}</p>
-          )}
-          {(run.status === 'success' || run.status === 'error') && (
-            <button
-              type="button"
-              onClick={() => setRun(INITIAL_RUN)}
-              className="mt-3 text-xs text-neutral-500 hover:text-neutral-300"
-            >
-              Reset
-            </button>
-          )}
-        </div>
-      )}
     </Shell>
   );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">{children}</section>
+    <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-7">{children}</section>
   );
 }
 
-function ChainCard({
-  source,
-  address,
-  active,
+function ChainPicker({
+  label,
+  value,
+  options,
+  excludeKey,
+  balance,
+  highlight,
   disabled,
   onSelect,
 }: {
-  source: BridgeSource;
-  address: Address | undefined;
-  active: boolean;
-  disabled: boolean;
-  onSelect: (s: BridgeSource) => void;
+  label: string;
+  value: BridgeChain;
+  options: BridgeChain[];
+  excludeKey: BridgeChain['key'];
+  balance?: string;
+  highlight?: boolean;
+  disabled?: boolean;
+  onSelect: (next: BridgeChain) => void;
 }) {
-  const { data: balance, isLoading } = useBalance({
-    address,
-    token: source.usdc,
-    chainId: source.wagmiChainId,
-    query: { enabled: !!address, refetchInterval: 15_000 },
-  });
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-  const balanceText = isLoading ? '…' : balance ? truncateBalance(balance.formatted, 2) : '0';
-  const hasBalance = !!balance && Number(balance.formatted) > 0;
-  const visual = CHAIN_VISUAL[source.key];
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onSelect(source)}
-      className={[
-        'flex items-center gap-3 rounded-xl border bg-neutral-950/40 p-3 text-left transition',
-        active
-          ? 'border-l-2 border-l-emerald-500 border-y-neutral-800 border-r-neutral-800 bg-emerald-950/20'
-          : 'border-neutral-800 hover:border-neutral-700',
-        disabled ? 'cursor-not-allowed opacity-60' : '',
-      ].join(' ')}
-    >
-      {/* Ringed circle icon — brand color as the ring only, not a solid
-          fill. Distinguishes our cards from the reference design. */}
-      <div
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border-2 bg-neutral-950 text-xs font-semibold text-neutral-100"
-        style={{ borderColor: visual.brand }}
+    <div ref={ref} className="relative">
+      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className={[
+          'flex w-full items-center gap-3 rounded-xl border bg-neutral-950/40 p-3.5 text-left transition',
+          highlight
+            ? 'border-emerald-500/40 bg-emerald-950/20 hover:border-emerald-400/60'
+            : 'border-neutral-800 hover:border-neutral-700',
+          disabled ? 'cursor-not-allowed opacity-60' : '',
+        ].join(' ')}
       >
-        {visual.initial}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm text-neutral-100">{source.shortName}</div>
-        <div className="text-[10px] text-neutral-500">Sepolia · CCTP domain {source.cctpDomain}</div>
-      </div>
-      <div className={`text-right font-mono text-xs ${hasBalance ? 'text-neutral-200' : 'text-neutral-600'}`}>
-        {balanceText}
-        <span className="ml-1 text-neutral-500">USDC</span>
-      </div>
-    </button>
+        <ChainLogo sourceKey={value.key} className="h-10 w-10 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-base text-neutral-100">{value.shortName}</div>
+          <div className="truncate text-[11px] text-neutral-500">
+            {balance !== undefined ? `${truncateBalance(balance, 2)} USDC` : value.fullName}
+          </div>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-neutral-500" aria-hidden>
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 z-20 mt-1.5 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-xl">
+          {options.map((opt) => {
+            const isDisabled = opt.key === excludeKey;
+            const isActive = opt.key === value.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => {
+                  onSelect(opt);
+                  setOpen(false);
+                }}
+                className={[
+                  'flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-base transition',
+                  isActive ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-200',
+                  isDisabled
+                    ? 'cursor-not-allowed opacity-40'
+                    : 'hover:bg-neutral-900',
+                ].join(' ')}
+              >
+                <ChainLogo sourceKey={opt.key} className="h-7 w-7 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate">{opt.shortName}</div>
+                  <div className="truncate text-[11px] text-neutral-500">{opt.fullName}</div>
+                </div>
+                {opt.arcOnly && (
+                  <span className="rounded bg-emerald-950/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
+                    home
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
-}
-
-function StepIcon({ state, running }: { state?: StepState; running: boolean }) {
-  if (state === 'success') return <span className="mt-[2px] text-emerald-400">✓</span>;
-  if (state === 'error') return <span className="mt-[2px] text-red-400">×</span>;
-  if (state === 'pending' || running) {
-    return (
-      <span className="mt-[5px] inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
-    );
-  }
-  return <span className="mt-[5px] inline-block h-2 w-2 rounded-full border border-neutral-700" />;
-}
-
-function computeProgress(run: BridgeRun): number {
-  if (run.status === 'idle') return 0;
-  const total = BRIDGE_STEP_ORDER.length;
-  const done = BRIDGE_STEP_ORDER.filter((n) => run.steps[n]?.state === 'success').length;
-  return Math.round((done / total) * 100);
 }

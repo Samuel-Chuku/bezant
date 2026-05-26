@@ -12,6 +12,7 @@ import {
 import { describeCurrentStep, isActionRequiredByMe } from '@/lib/job-status';
 import { loadReadKeys, markReadKeys } from '@/lib/notifications-read';
 import { useSigner } from './use-signer';
+import { CHAIN_REFRESH_EVENT } from './use-refresh-chain-data';
 
 export type NotificationKind = 'action' | 'status' | 'event' | 'deadline';
 
@@ -71,6 +72,26 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
   for (const row of rows) {
     if (!row.live) continue;
     const status = effectiveStatus(row.live);
+
+    // Events fire regardless of terminal status — provider needs to see the
+    // Completed event ("Client released payment") when their job settles,
+    // not have it silently dropped because the row is now terminal.
+    for (const ev of row.events) {
+      if (ev.actor.toLowerCase() === me) continue;
+      const summary = formatEventSummary(ev, row);
+      items.push({
+        key: `job:${row.jobId}:event:${ev.txHash}:${ev.logIndex}`,
+        jobId: row.jobId,
+        kind: 'event',
+        summary,
+        whenMs: new Date(ev.indexedAt).getTime(),
+        whenIso: ev.indexedAt,
+        read: false,
+      });
+    }
+
+    // Status, action, and deadline items only make sense while the job is
+    // still in flight — once it's terminal there's nothing left to do.
     if (isTerminal(status)) continue;
 
     const liveJob: JobLiveState = {
@@ -91,10 +112,10 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
     };
     const roles = row.roles as JobRole[];
 
-    // 1. Status/action item — always emit one for any non-terminal job
-    //    the user is party to so the bell isn't silent on in-flight jobs
-    //    you're just waiting on. Kind flips to 'action' when it's your
-    //    turn so the visual weight (and unread count) reflects urgency.
+    // Status/action item — always emit one for any non-terminal job the
+    // user is party to so the bell isn't silent on in-flight jobs you're
+    // just waiting on. Kind flips to 'action' when it's your turn so the
+    // visual weight (and unread count) reflects urgency.
     const sentence = describeCurrentStep(liveJob, status, roles);
     const isMine = isActionRequiredByMe(liveJob, status, roles);
     if (sentence) {
@@ -109,22 +130,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
       });
     }
 
-    // 2. Event items — exclude the user's own actions.
-    for (const ev of row.events) {
-      if (ev.actor.toLowerCase() === me) continue;
-      const summary = formatEventSummary(ev, row);
-      items.push({
-        key: `job:${row.jobId}:event:${ev.txHash}:${ev.logIndex}`,
-        jobId: row.jobId,
-        kind: 'event',
-        summary,
-        whenMs: new Date(ev.indexedAt).getTime(),
-        whenIso: ev.indexedAt,
-        read: false,
-      });
-    }
-
-    // 3. Deadline buckets — only for the role whose action is pending.
+    // Deadline buckets — only for the role whose action is pending.
     if (isMine) {
       const remainingMs = row.live.expiredAt.unix * 1000 - nowMs;
       const bucket = bucketFor(remainingMs);
@@ -212,16 +218,28 @@ export function useNotifications() {
     }
   }, [address]);
 
-  // Initial fetch + poll + refetch on window focus.
+  // Initial fetch + poll + refetch on window focus + refetch on tx settle.
+  // The tx-settle event fires before the backend indexer has necessarily
+  // caught up to the new block, so we kick a short burst (now, +2s, +5s)
+  // to land the counter-party event without waiting on the 30s poll.
   useEffect(() => {
     void fetchFeed();
     if (!address) return;
     const id = setInterval(() => void fetchFeed(), POLL_MS);
     const onFocus = () => void fetchFeed();
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const onChainRefresh = () => {
+      void fetchFeed();
+      timeouts.push(setTimeout(() => void fetchFeed(), 2_000));
+      timeouts.push(setTimeout(() => void fetchFeed(), 5_000));
+    };
     window.addEventListener('focus', onFocus);
+    window.addEventListener(CHAIN_REFRESH_EVENT, onChainRefresh);
     return () => {
       clearInterval(id);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener(CHAIN_REFRESH_EVENT, onChainRefresh);
+      for (const t of timeouts) clearTimeout(t);
     };
   }, [address, fetchFeed]);
 

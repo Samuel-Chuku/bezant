@@ -20,6 +20,11 @@ import { useQueryClient } from '@tanstack/react-query';
  *   - components/bridge-widget.tsx → after kit.bridge() settles. Bridge Kit
  *     bypasses useSigner, so it needs the explicit call.
  */
+// Window event broadcast on every refresh — listeners outside react-query
+// (e.g. the notifications feed which is plain fetch + useState) can hook in
+// without us having to migrate them. See use-notifications.ts.
+export const CHAIN_REFRESH_EVENT = 'arc-trade:chain-refresh';
+
 export function useRefreshChainData() {
   const qc = useQueryClient();
   return useCallback(() => {
@@ -29,5 +34,8 @@ export function useRefreshChainData() {
     qc.invalidateQueries({ queryKey: ['balance'] });
     qc.invalidateQueries({ queryKey: ['readContract'] });
     qc.invalidateQueries({ queryKey: ['readContracts'] });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(CHAIN_REFRESH_EVENT));
+    }
   }, [qc]);
 }
