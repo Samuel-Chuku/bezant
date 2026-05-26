@@ -34,15 +34,19 @@ export function BridgeBalancesPanel() {
 }
 
 function BalanceRow({ chain, address }: { chain: BridgeChain; address: Address }) {
+  // Skip wagmi balance fetch for chains we can't query (Solana is non-EVM,
+  // and any comingSoon chain shouldn't render a live balance).
+  const wagmiQueryable = chain.wagmiChainId !== undefined && !chain.comingSoon;
   const { data, isLoading } = useBalance({
     address,
     chainId: chain.wagmiChainId,
     token: chain.usdcIsNative ? undefined : chain.usdc,
-    query: { refetchInterval: 15_000 },
+    query: { enabled: wagmiQueryable, refetchInterval: 15_000 },
   });
   const formatted = isLoading ? '…' : data ? truncateBalance(data.formatted, 2) : '0';
   const has = !!data && Number(data.formatted) > 0;
   const isArc = chain.arcOnly;
+  const isSoon = chain.comingSoon;
 
   return (
     <li
@@ -51,6 +55,7 @@ function BalanceRow({ chain, address }: { chain: BridgeChain; address: Address }
         isArc
           ? 'border border-emerald-900/40 bg-emerald-950/20'
           : 'hover:bg-neutral-900/60',
+        isSoon ? 'opacity-60' : '',
       ].join(' ')}
     >
       <ChainLogo sourceKey={chain.key} className="h-9 w-9 flex-shrink-0" />
@@ -62,9 +67,15 @@ function BalanceRow({ chain, address }: { chain: BridgeChain; address: Address }
           {isArc ? 'home chain' : `CCTP domain ${chain.cctpDomain}`}
         </div>
       </div>
-      <div className={`text-right font-mono text-base ${has ? 'text-neutral-100' : 'text-neutral-600'}`}>
-        {formatted} <span className="text-[11px] text-neutral-500">USDC</span>
-      </div>
+      {isSoon ? (
+        <span className="rounded bg-amber-950/40 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+          Soon
+        </span>
+      ) : (
+        <div className={`text-right font-mono text-base ${has ? 'text-neutral-100' : 'text-neutral-600'}`}>
+          {formatted} <span className="text-[11px] text-neutral-500">USDC</span>
+        </div>
+      )}
     </li>
   );
 }

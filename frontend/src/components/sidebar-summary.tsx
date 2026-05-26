@@ -162,6 +162,9 @@ export function SidebarSummary() {
 }
 
 function SourceBalanceRow({ source, address }: { source: BridgeSource; address: Address }) {
+  // BRIDGE_SOURCES filters out chains without a wagmi id, so this is always
+  // defined at runtime. Narrow the type for the BalanceRow contract.
+  if (source.wagmiChainId === undefined) return null;
   return (
     <BalanceRow
       label={source.fullName}

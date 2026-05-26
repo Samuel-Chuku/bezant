@@ -72,6 +72,28 @@ export function BaseLogo({ className }: Props) {
   );
 }
 
+export function SolanaLogo({ className }: Props) {
+  // Three diagonal bars on Solana's purple→teal gradient. The brand mark
+  // looks like three angled stripes nested inside a rounded square.
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
+      <defs>
+        <linearGradient id="solana-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#9945FF" />
+          <stop offset="50%" stopColor="#19FB9B" />
+          <stop offset="100%" stopColor="#14F195" />
+        </linearGradient>
+      </defs>
+      <circle cx="16" cy="16" r="16" fill="#0B0B12" />
+      <g fill="url(#solana-grad)">
+        <path d="M9 11.5l2-2h12.5l-2 2H9z" />
+        <path d="M9 16l2-2h12.5l-2 2H9z" />
+        <path d="M9 20.5l2-2h12.5l-2 2H9z" />
+      </g>
+    </svg>
+  );
+}
+
 export function ArcChainBadge({ className }: Props) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
@@ -102,5 +124,7 @@ export function ChainLogo({
       return <BaseLogo className={className} />;
     case 'arcTestnet':
       return <ArcChainBadge className={className} />;
+    case 'solanaDevnet':
+      return <SolanaLogo className={className} />;
   }
 }

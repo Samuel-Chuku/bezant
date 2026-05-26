@@ -87,7 +87,7 @@ export function WalletPill() {
     );
   }
 
-  const balanceText = balance ? `${truncateBalance(balance.formatted, 2)} USDC` : '— USDC';
+  const balanceText = balance ? `${truncateBalance(balance.formatted, 2)} USDC` : '… USDC';
 
   const handleClick = () => {
     if (signer.mode === 'external') {

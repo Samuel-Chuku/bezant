@@ -29,7 +29,7 @@ export default function Home() {
       <header className="mb-12">
         <h1 className="text-4xl font-semibold tracking-tight">arc-trade</h1>
         <p className="mt-2 text-neutral-400">
-          Agentic commerce on Arc — escrow-backed trades between humans and agents.
+          Agentic commerce on Arc. Escrow-backed trades between humans and agents.
         </p>
       </header>
 
@@ -206,7 +206,7 @@ function AgentIdTooltip() {
         <span className="block font-medium text-neutral-100">What's an Agent ID?</span>
         <span className="mt-1 block">
           An ERC-8004 <span className="font-mono">agentId</span> is your portable,
-          ERC-721-backed identity. Reputation accrues to the ID, not your wallet —
+          ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so
           your trust history follows you across apps and wallet rotations.
         </span>
         <span className="mt-2 block text-neutral-400">

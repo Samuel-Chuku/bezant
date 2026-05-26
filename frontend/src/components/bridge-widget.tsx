@@ -56,23 +56,35 @@ export function BridgeWidget({
   const source = useMemo(() => chainByKey(sourceKey), [sourceKey]);
   const destination = useMemo(() => chainByKey(destKey), [destKey]);
 
-  const walletOnSourceChain = source.wagmiChainId === wagmiChainId;
+  const sourceHasWagmi = source.wagmiChainId !== undefined;
+  const walletOnSourceChain = sourceHasWagmi && source.wagmiChainId === wagmiChainId;
   const userAddr = signer.isConnected ? signer.address : undefined;
 
+  // Skip useBalance entirely for chains we can't query via wagmi (Solana, or
+  // any chain we've flagged as coming soon).
+  const balanceEnabled = !!userAddr && sourceHasWagmi && !source.comingSoon;
   const { data: sourceBalance } = useBalance({
     address: userAddr,
     token: source.usdcIsNative ? undefined : source.usdc,
     chainId: source.wagmiChainId,
-    query: { enabled: !!userAddr, refetchInterval: 15_000 },
+    query: { enabled: balanceEnabled, refetchInterval: 15_000 },
   });
 
-  // From-Arc requires a Circle wallet; everything else requires external.
-  const requiresCircleWallet = source.arcOnly;
-  const requiresExternalWallet = !source.arcOnly;
+  // Outbound from a coming-soon chain (Solana, or Arc until the Modular
+  // Wallet adapter ships) or inbound to a coming-soon chain blocks submit.
+  // These take priority over wallet-mismatch messaging since the chain
+  // itself isn't ready.
+  const outboundComingSoon = source.outboundComingSoon;
+  const destinationComingSoon = destination.comingSoon;
+
+  // For supported sources, the user needs an injected wallet on the right
+  // network. Once outbound-from-Arc ships, this gate will also accept
+  // signer.mode === 'circle' for source = Arc.
   const walletMismatch =
     signer.isConnected &&
-    ((requiresCircleWallet && signer.mode !== 'circle') ||
-      (requiresExternalWallet && signer.mode !== 'external'));
+    !outboundComingSoon &&
+    !destinationComingSoon &&
+    signer.mode !== 'external';
 
   const sameChain = source.key === destination.key;
 
@@ -88,13 +100,17 @@ export function BridgeWidget({
 
   const handleSelectSource = (next: BridgeChain) => {
     setSourceKey(next.key);
-    // If the new source matches the destination, bump the destination off it.
     if (next.key === destKey) {
       const alt = BRIDGE_CHAINS.find((c) => c.key !== next.key);
       if (alt) setDestKey(alt.key);
     }
-    // Switch wallet chain when it's possible (external wallets only).
-    if (signer.mode === 'external' && next.wagmiChainId !== wagmiChainId) {
+    // Only prompt a wallet switch when the target chain is EVM and we have
+    // an injected wallet to switch.
+    if (
+      signer.mode === 'external' &&
+      next.wagmiChainId !== undefined &&
+      next.wagmiChainId !== wagmiChainId
+    ) {
       switchChain({ chainId: next.wagmiChainId });
     }
   };
@@ -112,7 +128,7 @@ export function BridgeWidget({
     setDestKey(sourceKey);
     if (signer.mode === 'external') {
       const next = chainByKey(destKey);
-      if (next.wagmiChainId !== wagmiChainId) {
+      if (next.wagmiChainId !== undefined && next.wagmiChainId !== wagmiChainId) {
         switchChain({ chainId: next.wagmiChainId });
       }
     }
@@ -124,9 +140,11 @@ export function BridgeWidget({
 
   const canSubmit =
     !sameChain &&
+    !outboundComingSoon &&
+    !destinationComingSoon &&
     !walletMismatch &&
     run.status !== 'running' &&
-    (signer.mode === 'circle' || walletOnSourceChain) &&
+    walletOnSourceChain &&
     Number(amount) > 0 &&
     !!connector &&
     !!sourceBalance &&
@@ -268,36 +286,32 @@ export function BridgeWidget({
         </p>
       )}
 
-      {!sameChain && walletMismatch && requiresCircleWallet && (
+      {!sameChain && outboundComingSoon && (
         <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
-          Bridging out of Arc currently requires a Circle passkey wallet — Arc&apos;s
-          USDC-as-native model isn&apos;t smooth on injected wallets yet. Disconnect MetaMask
-          and sign in with passkey to send USDC off Arc.
+          Bridging out of {source.shortName} is coming soon. For now you can only bridge into Arc.
         </div>
       )}
 
-      {!sameChain && source.arcOnly && !walletMismatch && !connector && (
+      {!sameChain && !outboundComingSoon && destinationComingSoon && (
         <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
-          Bridging out of Arc via passkey wallet isn&apos;t wired through this widget yet.
-          Coming soon — the Circle Modular Wallet adapter needs to be plumbed into
-          Bridge Kit before this can submit.
+          {destination.shortName} support is coming soon. Pick a different destination for now.
         </div>
       )}
 
-      {!sameChain && walletMismatch && requiresExternalWallet && (
+      {!sameChain && !outboundComingSoon && !destinationComingSoon && walletMismatch && (
         <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
-          Bridging into {destination.shortName} needs an injected wallet (MetaMask /
-          Rabby) holding USDC on {source.fullName}.
+          Bridging into {destination.shortName} needs an injected wallet (MetaMask, Rabby)
+          holding USDC on {source.fullName}.
         </div>
       )}
 
-      {!sameChain && !walletMismatch && signer.mode === 'external' && !walletOnSourceChain && (
+      {!sameChain && !outboundComingSoon && !destinationComingSoon && !walletMismatch && signer.mode === 'external' && !walletOnSourceChain && (
         <p className="mt-3 text-sm text-amber-400">
           Your wallet is on a different network. Click {source.fullName} to switch.
         </p>
       )}
 
-      {!source.arcOnly && (
+      {!source.arcOnly && !source.comingSoon && (
         <div className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-neutral-500">
           <a
             href={source.gasFaucetUrl}
@@ -360,7 +374,9 @@ export function BridgeWidget({
       >
         {run.status === 'running'
           ? 'Bridging…'
-          : `Bridge ${source.shortName} → ${destination.shortName}`}
+          : outboundComingSoon || destinationComingSoon
+            ? 'Coming soon'
+            : `Bridge ${source.shortName} → ${destination.shortName}`}
       </button>
     </Shell>
   );
@@ -429,7 +445,11 @@ function ChainPicker({
         <div className="min-w-0 flex-1">
           <div className="truncate text-base text-neutral-100">{value.shortName}</div>
           <div className="truncate text-[11px] text-neutral-500">
-            {balance !== undefined ? `${truncateBalance(balance, 2)} USDC` : value.fullName}
+            {value.comingSoon
+              ? 'Coming soon'
+              : balance !== undefined
+                ? `${truncateBalance(balance, 2)} USDC`
+                : value.fullName}
           </div>
         </div>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-neutral-500" aria-hidden>
@@ -467,6 +487,11 @@ function ChainPicker({
                 {opt.arcOnly && (
                   <span className="rounded bg-emerald-950/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
                     home
+                  </span>
+                )}
+                {opt.comingSoon && (
+                  <span className="rounded bg-amber-950/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+                    soon
                   </span>
                 )}
               </button>

@@ -30,8 +30,8 @@ export function HandlePrompt({ onClaim, onSkip }: HandlePromptProps) {
     <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
       <h3 className="font-medium">Want to claim a handle?</h3>
       <p className="mt-1 text-sm text-neutral-400">
-        Pick a short name people can use to find or address you. It's optional — you can keep
-        trading just with your wallet address — but a handle gives you a few things:
+        Pick a short name people can use to find or address you. It&apos;s optional. You can keep
+        trading just with your wallet address, but a handle gives you a few things:
       </p>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-neutral-400">
         <li>Other users can post jobs to you by handle instead of a 0x address.</li>
@@ -39,7 +39,7 @@ export function HandlePrompt({ onClaim, onSkip }: HandlePromptProps) {
         <li>You're easier to recognize in trade history and on-chain logs.</li>
       </ul>
       <p className="mt-3 text-xs text-amber-400/80">
-        Handles are <strong>permanent once claimed</strong> — choose carefully. You can't rename or
+        Handles are <strong>permanent once claimed</strong>. Choose carefully. You can&apos;t rename or
         release one later.
       </p>
 

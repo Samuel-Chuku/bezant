@@ -108,8 +108,8 @@ export function AgentLinkCard({
 
       <div className="mt-4 border-t border-neutral-800/60 pt-4">
         <p className="text-xs text-neutral-500">
-          Don&apos;t have one yet? Register a fresh agent for your wallet in
-          one click — single on-chain transaction, then auto-linked.
+          Don&apos;t have one yet? Register a fresh agent for your wallet in one
+          click. One on-chain transaction, then it&apos;s auto-linked.
         </p>
         <button
           type="button"

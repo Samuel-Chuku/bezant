@@ -96,7 +96,7 @@ export function useUserRecord() {
   const linkAgentId = useCallback(
     async (agentId: string | null) => {
       if (state.status !== 'ready' || state.user === null) {
-        throw new Error('Claim a handle first — agentId links to your user record');
+        throw new Error('Claim a handle first. AgentId links to your user record.');
       }
       const updated = await linkAgentIdApi(state.user.id, agentId);
       setState({ status: 'ready', user: updated });
@@ -111,7 +111,7 @@ export function useUserRecord() {
   // because the signer just minted the token).
   const registerAgent = useCallback(async (): Promise<{ agentId: string }> => {
     if (state.status !== 'ready' || state.user === null) {
-      throw new Error('Claim a handle first — agent registration links to your user record');
+      throw new Error('Claim a handle first. Agent registration links to your user record.');
     }
     if (!signer.isConnected) {
       throw new Error('Not connected');

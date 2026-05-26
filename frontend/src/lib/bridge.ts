@@ -11,33 +11,45 @@ import type { Address } from 'viem';
 import { arcTestnet, USDC_ADDRESS as ARC_USDC } from './chains';
 
 export type BridgeChain = {
-  key: 'sepolia' | 'optimismSepolia' | 'arbitrumSepolia' | 'baseSepolia' | 'arcTestnet';
+  key:
+    | 'sepolia'
+    | 'optimismSepolia'
+    | 'arbitrumSepolia'
+    | 'baseSepolia'
+    | 'arcTestnet'
+    | 'solanaDevnet';
   // Short name for the chain card (e.g. "Ethereum", "Base").
   shortName: string;
   // Full display name used in copy ("Ethereum Sepolia").
   fullName: string;
-  // wagmi chain id for switchChain + useBalance.
-  wagmiChainId: number;
+  // wagmi chain id for switchChain + useBalance. Optional because non-EVM
+  // chains (Solana) don't have one.
+  wagmiChainId?: number;
   // Bridge Kit chain identifier string (matches the BridgeChain enum).
   bridgeChain: string;
-  // CCTP V2 domain ID — surfaced in the chain card subtitle.
+  // CCTP V2 domain ID, shown in the chain card subtitle.
   cctpDomain: number;
-  // USDC ERC-20 contract address. On Arc USDC is the native gas token, so we
-  // also use useBalance(... no token) — the precompile address still works
-  // here for ERC-20 calls if needed.
+  // USDC ERC-20 contract address. On Arc USDC is the native gas token.
+  // Solana USDC is an SPL mint, not ERC-20, but we keep the field populated
+  // for display consistency.
   usdc: Address;
   // True when USDC is the native gas token (Arc). Tells useBalance not to
   // pass `token`, since the L1 native USDC balance is what we want.
   usdcIsNative: boolean;
-  // Native gas token symbol on this chain (used in the "Get X for gas" link).
+  // Native gas token symbol on this chain.
   gasSymbol: string;
-  // Faucet URL for the native gas token on this chain. Empty for Arc — user
-  // is already on Arc when bridging out, so no out-of-chain faucet is needed.
+  // Faucet URL for the native gas token.
   gasFaucetUrl: string;
-  // When true, bridging OUT of this chain requires a Circle passkey wallet —
-  // injected EVM wallets don't smoothly handle Arc's USDC-as-native model yet.
-  // Set on Arc only.
+  // True for Arc, the home chain. Used for "home" styling on the balances
+  // panel and the destination chip default.
   arcOnly: boolean;
+  // Chain is coming soon. Pickable so users know it's planned, but submit
+  // is blocked and balances are not fetched.
+  comingSoon: boolean;
+  // Bridging OUT of this chain is coming soon. True for Arc today
+  // (Modular Wallet adapter not yet wired into Bridge Kit) and for Solana
+  // (non-EVM signing path not built).
+  outboundComingSoon: boolean;
 };
 
 // Back-compat alias — some files still reference BridgeSource. New code
@@ -60,6 +72,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     gasSymbol: 'USDC',
     gasFaucetUrl: '',
     arcOnly: true,
+    comingSoon: false,
+    outboundComingSoon: true,
   },
   {
     key: 'sepolia',
@@ -73,6 +87,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     gasSymbol: 'ETH',
     gasFaucetUrl: 'https://www.alchemy.com/faucets/ethereum-sepolia',
     arcOnly: false,
+    comingSoon: false,
+    outboundComingSoon: false,
   },
   {
     key: 'optimismSepolia',
@@ -86,6 +102,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     gasSymbol: 'ETH',
     gasFaucetUrl: 'https://www.alchemy.com/faucets/optimism-sepolia',
     arcOnly: false,
+    comingSoon: false,
+    outboundComingSoon: false,
   },
   {
     key: 'arbitrumSepolia',
@@ -99,6 +117,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     gasSymbol: 'ETH',
     gasFaucetUrl: 'https://www.alchemy.com/faucets/arbitrum-sepolia',
     arcOnly: false,
+    comingSoon: false,
+    outboundComingSoon: false,
   },
   {
     key: 'baseSepolia',
@@ -112,15 +132,39 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     gasSymbol: 'ETH',
     gasFaucetUrl: 'https://www.alchemy.com/faucets/base-sepolia',
     arcOnly: false,
+    comingSoon: false,
+    outboundComingSoon: false,
+  },
+  {
+    key: 'solanaDevnet',
+    shortName: 'Solana',
+    fullName: 'Solana Devnet',
+    // No wagmi chain id — Solana is non-EVM. Code that touches wagmi must
+    // guard on this being undefined.
+    wagmiChainId: undefined,
+    bridgeChain: 'Solana_Devnet',
+    cctpDomain: 5,
+    // Solana USDC is an SPL mint, not ERC-20. Address kept as a placeholder
+    // so the type stays uniform; nothing reads it while comingSoon is true.
+    usdc: '0x0000000000000000000000000000000000000000',
+    usdcIsNative: false,
+    gasSymbol: 'SOL',
+    gasFaucetUrl: 'https://faucet.solana.com/',
+    arcOnly: false,
+    comingSoon: true,
+    outboundComingSoon: true,
   },
 ];
 
 // Default destination — Arc is the focal chain of arc-trade.
 export const DEFAULT_DESTINATION_KEY: BridgeChain['key'] = 'arcTestnet';
 
-// Source-chain subset used by panels that only want non-Arc chains (the
-// bridge balances panel still shows Arc separately).
-export const BRIDGE_SOURCES: BridgeChain[] = BRIDGE_CHAINS.filter((c) => !c.arcOnly);
+// Source-chain subset used by panels that only want the actually-queryable
+// EVM chains (excludes Arc as home + Solana / any comingSoon chain since
+// those don't have wagmi IDs to drive useBalance / switchChain).
+export const BRIDGE_SOURCES: BridgeChain[] = BRIDGE_CHAINS.filter(
+  (c) => !c.arcOnly && !c.comingSoon,
+);
 
 export function chainByKey(key: BridgeChain['key']): BridgeChain {
   const c = BRIDGE_CHAINS.find((x) => x.key === key);
