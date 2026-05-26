@@ -32,7 +32,7 @@ import {
   type ReputationSummary,
 } from '@/lib/api';
 import { ERC8183_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
-import { actionVerbForMe, describeCurrentStep } from '@/lib/job-status';
+import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/job-status';
 import { CountdownBanner } from '@/components/countdown';
 
 // Minimal ABI fragment to read USDC allowance — saves a backend roundtrip.
@@ -54,13 +54,16 @@ const STATUS_TINT: Record<string, string> = {
   Funded: 'bg-amber-950/40 text-amber-300 border-amber-900/60',
   Submitted: 'bg-violet-950/40 text-violet-300 border-violet-900/60',
   Completed: 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60',
+  Cancelled: 'bg-neutral-900 text-neutral-400 border-neutral-800',
   Rejected: 'bg-red-950/40 text-red-300 border-red-900/60',
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
 };
 
 function effectiveStatus(live: JobLiveState, nowMs: number): string {
   const raw = live.status;
-  if (raw === 'Completed' || raw === 'Rejected' || raw === 'Expired') return raw;
+  if (raw === 'Completed' || raw === 'Rejected' || raw === 'Expired') {
+    return displayStatus(live, raw);
+  }
   if (live.expiredAt.unix * 1000 < nowMs) return 'Expired';
   return raw;
 }
@@ -144,11 +147,17 @@ function buildLifecycle(
   // Fall back to the derived row from on-chain status when the indexer
   // hasn't caught up — drops the timestamp but keeps the timeline coherent.
   const fundedEvent = events.find((e) => e.eventType === 'Funded');
+  // A cancelled-from-Open job hits status Rejected without ever being
+  // Funded, so exclude that case from the fallback. Detect it by checking
+  // whether the indexed Rejected event was emitted by the client.
+  const rejectedEv = events.find((e) => e.eventType === 'Rejected');
+  const wasClientCancellation =
+    !!rejectedEv && rejectedEv.actor.toLowerCase() === job.client.toLowerCase();
   const fundedFromStatus =
     job.status === 'Funded' ||
     job.status === 'Submitted' ||
     job.status === 'Completed' ||
-    job.status === 'Rejected';
+    (job.status === 'Rejected' && !wasClientCancellation);
   if (fundedEvent) {
     const amountUsdc = fundedEvent.amountRaw
       ? formatUnits(BigInt(fundedEvent.amountRaw), 6)
@@ -175,19 +184,23 @@ function buildLifecycle(
   const completed = events.find((e) => e.eventType === 'Completed');
   if (completed) {
     rows.push({
-      label: `Completed — ${job.budget.usdc} USDC released to provider`,
+      label: `Completed. ${job.budget.usdc} USDC released to provider.`,
       actorAddr: completed.actor,
       when: completed.indexedAt,
       txHash: completed.txHash,
     });
   }
-  const rejected = events.find((e) => e.eventType === 'Rejected');
-  if (rejected) {
+  if (rejectedEv) {
+    // Same reject() function powers both client-cancellation (job was
+    // never funded) and evaluator-rejection (after a submission). Label
+    // based on the actor so the timeline reads correctly.
     rows.push({
-      label: `Rejected — funds refunded to client`,
-      actorAddr: rejected.actor,
-      when: rejected.indexedAt,
-      txHash: rejected.txHash,
+      label: wasClientCancellation
+        ? `Cancelled by client. No funds were locked.`
+        : `Rejected. Funds refunded to client.`,
+      actorAddr: rejectedEv.actor,
+      when: rejectedEv.indexedAt,
+      txHash: rejectedEv.txHash,
     });
   }
 
@@ -389,7 +402,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     if (job.expiredAt.unix * 1000 > Date.now()) return true;
     setActionState({
       status: 'error',
-      message: `Deadline has passed. ${actionVerb} now would leave this job in an unrecoverable state — the client needs to cancel and post a fresh job with a longer deadline.`,
+      message: `Deadline has passed. ${actionVerb} now would leave this job in an unrecoverable state. The client needs to cancel and post a fresh job with a longer deadline.`,
     });
     return false;
   };
@@ -571,14 +584,14 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               />
 
               {showReadOnlyNotice && (
-                <p className="mt-3 text-xs text-neutral-500">Read-only — you&apos;re not a party.</p>
+                <p className="mt-3 text-xs text-neutral-500">Read-only. You&apos;re not a party on this job.</p>
               )}
 
               {!showReadOnlyNotice && isOffArc && (
                 <div className="mt-4 rounded-xl border border-amber-700/40 bg-amber-950/20 p-3">
                   <p className="text-sm text-amber-200">Switch to Arc to take action on this job.</p>
                   <p className="mt-1 text-xs text-amber-200/70">
-                    Your wallet is on a different network — fund / submit / complete must be signed on Arc.
+                    Your wallet is on a different network. Fund, submit, and complete must be signed on Arc.
                   </p>
                   <button
                     type="button"
@@ -596,7 +609,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   sets expectations; the actual contract function lands at M37. */}
               {roles.includes('client') && status === 'Submitted' && !isOffArc && (
                 <p className="mt-3 text-[11px] italic text-neutral-500">
-                  Coming soon — direct client release (skip evaluator review) will land with arc-trade&apos;s wrapper escrow.
+                  Coming soon: direct client release (skip evaluator review) will land with arc-trade&apos;s wrapper escrow.
                 </p>
               )}
 
@@ -1065,7 +1078,7 @@ function ReputationBadge({ agentId }: { agentId: string }) {
       className="ml-2 rounded bg-amber-950/40 px-1.5 py-0.5 not-italic font-sans text-amber-300 hover:bg-amber-900/40"
       title={`agent #${agentId} · ${data.summary.count} feedback${data.summary.count === 1 ? '' : 's'}`}
     >
-      {formatted ? `★ ${formatted}` : '★ —'}
+      {formatted ? `★ ${formatted}` : '★ new'}
       <span className="ml-1 text-amber-500/80">({data.summary.count})</span>
     </Link>
   );

@@ -73,12 +73,26 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
     if (!row.live) continue;
     const status = effectiveStatus(row.live);
 
-    // Events fire regardless of terminal status — provider needs to see the
-    // Completed event ("Client released payment") when their job settles,
+    // Events fire regardless of terminal status: the provider needs to see
+    // the Completed event ("Client released payment") when their job settles,
     // not have it silently dropped because the row is now terminal.
+    //
+    // Self-authored events are normally suppressed (you don't need a bell
+    // alert for actions you just performed). Terminal events are the
+    // exception: the cancellation / completion / refund is the closing
+    // confirmation the user wants visible globally, even if they took the
+    // action themselves. The summary swaps to "You ..." so it reads as a
+    // confirmation rather than counter-party news.
+    const TERMINAL_EVENT_TYPES = new Set([
+      'Completed',
+      'Rejected',
+      'Refunded',
+    ]);
     for (const ev of row.events) {
-      if (ev.actor.toLowerCase() === me) continue;
-      const summary = formatEventSummary(ev, row);
+      const isSelf = ev.actor.toLowerCase() === me;
+      const isTerminalEvent = TERMINAL_EVENT_TYPES.has(ev.eventType);
+      if (isSelf && !isTerminalEvent) continue;
+      const summary = formatEventSummary(ev, row, isSelf);
       items.push({
         key: `job:${row.jobId}:event:${ev.txHash}:${ev.logIndex}`,
         jobId: row.jobId,
@@ -123,14 +137,14 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
         key: `job:${row.jobId}:status:${status}:${roles.sort().join('+')}`,
         jobId: row.jobId,
         kind: isMine ? 'action' : 'status',
-        summary: `#${row.jobId} — ${sentence}`,
+        summary: `Job #${row.jobId}: ${sentence}`,
         whenMs: row.live.expiredAt.unix * 1000,
         whenIso: row.live.expiredAt.iso,
         read: false,
       });
     }
 
-    // Deadline buckets — only for the role whose action is pending.
+    // Deadline buckets, only for the role whose action is pending.
     if (isMine) {
       const remainingMs = row.live.expiredAt.unix * 1000 - nowMs;
       const bucket = bucketFor(remainingMs);
@@ -139,7 +153,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
           key: `job:${row.jobId}:deadline:${bucket.key}`,
           jobId: row.jobId,
           kind: 'deadline',
-          summary: `#${row.jobId} — ${bucket.label}`,
+          summary: `Job #${row.jobId}: ${bucket.label}.`,
           whenMs: row.live.expiredAt.unix * 1000,
           whenIso: row.live.expiredAt.iso,
           read: false,
@@ -153,28 +167,41 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
   return items;
 }
 
-function formatEventSummary(ev: JobEvent, row: FeedRow): string {
+function formatEventSummary(ev: JobEvent, row: FeedRow, isSelf: boolean): string {
   const actorShort = `${ev.actor.slice(0, 6)}…${ev.actor.slice(-4)}`;
-  const role = (() => {
-    const a = ev.actor.toLowerCase();
-    if (a === row.index.client.toLowerCase()) return 'Client';
-    if (a === row.index.provider.toLowerCase()) return 'Provider';
-    if (a === row.index.evaluator.toLowerCase()) return 'Evaluator';
-    return actorShort;
-  })();
+  const subject = isSelf
+    ? 'You'
+    : (() => {
+        const a = ev.actor.toLowerCase();
+        if (a === row.index.client.toLowerCase()) return 'Client';
+        if (a === row.index.provider.toLowerCase()) return 'Provider';
+        if (a === row.index.evaluator.toLowerCase()) return 'Evaluator';
+        return actorShort;
+      })();
+  // Slightly different phrasing when subject is "You" so the sentence flows
+  // (e.g. "You released payment" not "You released payment on..." mid-sentence).
   switch (ev.eventType) {
     case 'Funded':
-      return `#${row.jobId} — ${role} funded the job`;
+      return `${subject} funded job #${row.jobId}.`;
     case 'Submitted':
-      return `#${row.jobId} — ${role} submitted the deliverable`;
+      return `${subject} submitted the deliverable on job #${row.jobId}.`;
     case 'Completed':
-      return `#${row.jobId} — ${role} released payment`;
-    case 'Rejected':
-      return `#${row.jobId} — ${role} rejected the deliverable`;
+      return `${subject} released payment on job #${row.jobId}.`;
+    case 'Rejected': {
+      // Client rejecting their own job is a cancellation; surface that.
+      const actorIsClient =
+        ev.actor.toLowerCase() === row.index.client.toLowerCase();
+      if (actorIsClient) {
+        return isSelf
+          ? `You cancelled job #${row.jobId}.`
+          : `Client cancelled job #${row.jobId}.`;
+      }
+      return `${subject} rejected the deliverable on job #${row.jobId}.`;
+    }
     case 'Refunded':
-      return `#${row.jobId} — refund returned to client`;
+      return `Refund returned to client on job #${row.jobId}.`;
     default:
-      return `#${row.jobId} — ${ev.eventType}`;
+      return `Job #${row.jobId}: ${ev.eventType}.`;
   }
 }
 

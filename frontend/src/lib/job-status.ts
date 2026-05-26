@@ -39,7 +39,7 @@ export function describeCurrentStep(
 
   if (status === 'Open' && budgetSet) {
     if (isClient) return `Fund the job to lock the ${job.budget.usdc} USDC and let work begin.`;
-    if (isProvider) return 'Quote sent — waiting for the client to fund the job.';
+    if (isProvider) return 'Quote sent. Waiting for the client to fund the job.';
     return 'Waiting for the client to fund the job.';
   }
 
@@ -95,8 +95,23 @@ export function isActionRequiredByMe(
   return false;
 }
 
+// Display status that distinguishes a client cancellation from an evaluator
+// rejection. The ERC-8183 reference contract has a single reject() function
+// for both, so the raw on-chain status is "Rejected" in both cases. Compare
+// the indexed terminationActor with job.client to recover the semantic case.
+// Falls back to the raw status when terminationActor isn't available yet
+// (~10s window while the indexer catches up).
+export function displayStatus(job: JobLiveState, status: string): string {
+  if (status !== 'Rejected') return status;
+  if (!job.terminationActor) return status;
+  if (job.terminationActor.toLowerCase() === job.client.toLowerCase()) {
+    return 'Cancelled';
+  }
+  return status;
+}
+
 // Short action label for the countdown banner ("Time to {verb}…"). Returns
-// null on terminal states or "waiting for someone else" branches — callers
+// null on terminal states or "waiting for someone else" branches; callers
 // fall back to a generic deadline label.
 export function actionVerbForMe(
   job: JobLiveState,

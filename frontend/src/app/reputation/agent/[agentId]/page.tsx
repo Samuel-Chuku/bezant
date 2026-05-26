@@ -9,6 +9,7 @@ import {
   type ReputationDetail,
   type UserRecord,
 } from '@/lib/api';
+import { ErrorBanner, Skeleton } from '@/components/async-state';
 
 const PAGE_SIZE = 20;
 
@@ -91,18 +92,27 @@ export default function ReputationPage({
           Agent <span className="font-mono text-neutral-400">#{agentId}</span>
         </h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Portable ERC-8004 identity. Feedback below is this agent&apos;s reputation — it
+          Portable ERC-8004 identity. Feedback below is this agent&apos;s reputation. It
           accrues to the ID, not a wallet, so trust history travels across apps.
         </p>
       </header>
 
       {error && (
-        <p className="rounded-lg border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-400">
-          {error}
-        </p>
+        <ErrorBanner
+          title="Couldn't load reputation"
+          message={error}
+          onRetry={() => void fetchData()}
+        />
       )}
 
-      {loading && !data && <p className="text-sm text-neutral-500">Loading…</p>}
+      {loading && !data && (
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+        </div>
+      )}
 
       {data && (
         <>
@@ -115,7 +125,7 @@ export default function ReputationPage({
               </p>
             ) : (
               <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                <Stat label="Aggregate value" value={summaryValue ?? '—'} mono />
+                <Stat label="Aggregate value" value={summaryValue ?? 'n/a'} mono />
                 <Stat label="Feedback count" value={String(data.summary.count)} mono />
                 <Stat
                   label="Unique clients"

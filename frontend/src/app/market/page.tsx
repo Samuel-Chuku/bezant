@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getOpenJobs, type OpenJobEntry, type OpenJobsResponse } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { CountdownChip } from '@/components/countdown';
+import { ErrorBanner, ListItemSkeleton } from '@/components/async-state';
 
 const PAGE_SIZE = 20;
 
@@ -78,7 +79,7 @@ export default function MarketPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight">Market</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Every Open ERC-8183 job on Arc Testnet our indexer has seen — including jobs created
+          Every Open ERC-8183 job on Arc Testnet our indexer has seen, including jobs created
           outside arc-trade. Showing the most recent first.
         </p>
       </header>
@@ -136,11 +137,20 @@ export default function MarketPage() {
       {/* Results */}
       <section className="mt-6">
         {state.status === 'loading' && (
-          <p className="text-sm text-neutral-500">Reading on-chain state…</p>
+          <ul className="space-y-3">
+            <ListItemSkeleton />
+            <ListItemSkeleton />
+            <ListItemSkeleton />
+            <ListItemSkeleton />
+          </ul>
         )}
 
         {state.status === 'error' && (
-          <p className="text-sm text-red-400">Couldn&apos;t load the market: {state.message}</p>
+          <ErrorBanner
+            title="Couldn't load the market"
+            message={state.message}
+            onRetry={() => void fetchPage()}
+          />
         )}
 
         {state.status === 'ready' && state.data.jobs.length === 0 && (
@@ -153,7 +163,7 @@ export default function MarketPage() {
             <p className="mt-2 text-xs text-neutral-500">
               {appliedMin || appliedMax
                 ? 'Try widening the budget range.'
-                : 'Create the first one — providers will see it here.'}
+                : 'Create the first one. Providers will see it here.'}
             </p>
             {(appliedMin || appliedMax) ? (
               <button
@@ -231,7 +241,7 @@ function MarketCard({ job }: { job: OpenJobEntry }) {
               </span>
               <CountdownChip unix={job.expiredAt.unix} />
             </div>
-            <p className="mt-2 text-sm text-neutral-100 line-clamp-2">{job.description || '—'}</p>
+            <p className="mt-2 text-sm text-neutral-100 line-clamp-2">{job.description || 'No description'}</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
               <span>
                 Client <span className="font-mono text-neutral-400">{shortAddress(job.client)}</span>

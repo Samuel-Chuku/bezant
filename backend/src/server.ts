@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, statSync, createReadStream } from 'node:fs';
 import { resolve, join } from 'node:path';
-import Fastify, { type FastifyReply } from 'fastify';
+import Fastify, { type FastifyError, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import {
   encodeFunctionData,
@@ -124,6 +124,22 @@ const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
 app.register(cors, {
   origin: corsOrigins,
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+});
+
+// Single error handler so every error response is shaped { error: string },
+// matching the convention used by per-route reply.code(...).send({error}).
+// Without this, unhandled throws and schema-validation errors return
+// Fastify's default { statusCode, error, message } shape, forcing callers to
+// parse two shapes. With this, the frontend's jsonFetch sees one shape.
+app.setErrorHandler((err: FastifyError, request, reply) => {
+  const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+  // Log full error for ops; respond with a clean message for the client.
+  if (status >= 500) {
+    request.log.error({ err }, 'unhandled error');
+  } else {
+    request.log.info({ err }, 'client error');
+  }
+  reply.code(status).send({ error: err.message || 'Internal Server Error' });
 });
 
 // Ensure the operator wallet has a corresponding user row so the escrow routes
@@ -1335,6 +1351,26 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
     | { block_number: number; tx_hash: string; indexed_at: string }
     | undefined;
 
+  // For terminal states (Completed / Rejected) include the actor address
+  // from job_events so the frontend can disambiguate semantic cases like
+  // "client cancelled an Open job" (label as Cancelled) vs. "evaluator
+  // rejected a Submitted deliverable" (label as Rejected). Both emit the
+  // same Rejected event on the reference contract.
+  const status = JOB_STATUS[job.status] ?? `Unknown(${job.status})`;
+  let terminationActor: string | null = null;
+  if (status === 'Rejected' || status === 'Completed') {
+    const eventType = status; // 'Rejected' or 'Completed'
+    const row = db
+      .prepare(
+        `SELECT actor FROM job_events
+         WHERE job_id = ? AND event_type = ?
+         ORDER BY block_number DESC, log_index DESC
+         LIMIT 1`,
+      )
+      .get(request.params.id, eventType) as { actor: string } | undefined;
+    if (row) terminationActor = row.actor;
+  }
+
   return {
     id: job.id.toString(),
     client: job.client,
@@ -1349,8 +1385,9 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
       unix: Number(job.expiredAt),
       iso: new Date(Number(job.expiredAt) * 1000).toISOString(),
     },
-    status: JOB_STATUS[job.status] ?? `Unknown(${job.status})`,
+    status,
     hook: job.hook,
+    terminationActor,
     createdAt: createdRow
       ? {
           blockNumber: createdRow.block_number,

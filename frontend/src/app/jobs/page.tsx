@@ -11,6 +11,8 @@ import {
   type JobRole,
 } from '@/lib/api';
 import { CountdownChip } from '@/components/countdown';
+import { displayStatus } from '@/lib/job-status';
+import { ErrorBanner, ListItemSkeleton } from '@/components/async-state';
 
 type EnrichedJob = JobIndexEntry & {
   live: JobLiveState | null;
@@ -26,12 +28,14 @@ type EnrichedJob = JobIndexEntry & {
 function effectiveStatus(job: EnrichedJob, nowMs: number): string {
   if (!job.live) return 'Loading…';
   const raw = job.live.status;
-  if (raw === 'Completed' || raw === 'Rejected' || raw === 'Expired') return raw;
+  if (raw === 'Completed' || raw === 'Rejected' || raw === 'Expired') {
+    return displayStatus(job.live, raw);
+  }
   if (job.live.expiredAt.unix * 1000 < nowMs) return 'Expired';
   return raw;
 }
 
-const STATUS_OPTIONS = ['All', 'Open', 'Funded', 'Submitted', 'Completed', 'Rejected', 'Expired'] as const;
+const STATUS_OPTIONS = ['All', 'Open', 'Funded', 'Submitted', 'Completed', 'Cancelled', 'Rejected', 'Expired'] as const;
 type StatusFilter = (typeof STATUS_OPTIONS)[number];
 
 const SORT_OPTIONS = [
@@ -53,6 +57,9 @@ const STATUS_TINT: Record<string, string> = {
   Funded: 'bg-amber-950/40 text-amber-300 border-amber-900/60',
   Submitted: 'bg-violet-950/40 text-violet-300 border-violet-900/60',
   Completed: 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60',
+  // Cancelled is a client-cancelled-before-funding case; softer than Rejected
+  // since no work was rejected, just an unfunded job withdrawn.
+  Cancelled: 'bg-neutral-900 text-neutral-400 border-neutral-800',
   Rejected: 'bg-red-950/40 text-red-300 border-red-900/60',
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
 };
@@ -194,18 +201,28 @@ export default function MyJobsPage() {
           </div>
 
           {error && (
-            <p className="rounded-lg border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-400">
-              {error}
-            </p>
+            <ErrorBanner
+              title="Couldn't load your jobs"
+              message={error}
+              onRetry={() => void fetchJobs()}
+            />
           )}
 
-          {!error && jobs.length === 0 && !loading && (
+          {!error && loading && jobs.length === 0 && (
+            <ul className="space-y-3">
+              <ListItemSkeleton />
+              <ListItemSkeleton />
+              <ListItemSkeleton />
+            </ul>
+          )}
+
+          {!error && !loading && jobs.length === 0 && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-8 text-center">
               <p className="text-neutral-300">No jobs yet.</p>
               <p className="mt-2 text-xs text-neutral-500">
                 Either you haven&apos;t posted any jobs, or you&apos;re not yet listed as a
-                provider/evaluator on someone else&apos;s. The indexer catches new jobs within ~10s
-                — try Refresh after posting.
+                provider/evaluator on someone else&apos;s. The indexer catches new jobs within ~10s.
+                Try Refresh after posting.
               </p>
               <Link
                 href="/create"
@@ -301,7 +318,7 @@ function JobCard({ job }: { job: EnrichedJob }) {
             <span>
               Budget:{' '}
               <span className="text-neutral-300">
-                {job.live ? `${job.live.budget.usdc} USDC` : '—'}
+                {job.live ? `${job.live.budget.usdc} USDC` : '…'}
               </span>
             </span>
             <span>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { AgentLinkCard } from '@/components/agent-link-card';
+import { Skeleton } from '@/components/async-state';
 
 // Index route — sends the user to their own reputation page when their
 // address has an agentId linked. Otherwise renders the linking prompt or
@@ -48,15 +49,18 @@ export default function ReputationIndexPage() {
       )}
 
       {signer.isConnected && userState.status === 'loading' && (
-        <p className="text-sm text-neutral-500">Looking up your account…</p>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
+        </div>
       )}
 
       {signer.isConnected && userState.status === 'ready' && !linkedAgentId && (
         <section className="space-y-6">
           <p className="text-sm text-neutral-300">
-            You haven&apos;t linked an ERC-8004 agent yet. Link an existing
-            one or register a new agent below — your reputation will surface
-            here once linked.
+            You haven&apos;t linked an ERC-8004 agent yet. Link an existing one
+            or register a new agent below. Your reputation will surface here
+            once linked.
           </p>
           <AgentLinkCard
             currentAgentId={null}

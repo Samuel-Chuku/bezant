@@ -25,15 +25,32 @@ async function jsonFetch<T>(method: string, path: string, body?: unknown): Promi
     parsed = text;
   }
   if (!res.ok) {
-    const message =
-      parsed && typeof parsed === 'object' && 'error' in parsed
-        ? String((parsed as { error: unknown }).error)
-        : `HTTP ${res.status}`;
+    const message = extractErrorMessage(parsed, res.status);
     const err = new Error(message) as Error & { status?: number };
     err.status = res.status;
     throw err;
   }
   return parsed as T;
+}
+
+// Backend convention is { error: string }. Fastify's auto-thrown errors use
+// { statusCode, error, message } where `error` is the status reason ("Bad
+// Request") and `message` is the actual cause. Prefer message when present
+// so the user sees the real reason, falling back to error, falling back to
+// the status code.
+function extractErrorMessage(parsed: unknown, status: number): string {
+  if (parsed && typeof parsed === 'object') {
+    const p = parsed as { error?: unknown; message?: unknown };
+    if (typeof p.message === 'string' && p.message.length > 0) return p.message;
+    if (typeof p.error === 'string' && p.error.length > 0) return p.error;
+  }
+  return `HTTP ${status}`;
+}
+
+// Type guard for callers that want to branch on HTTP status without losing
+// the type. Lets pages render 404s differently from 5xx, etc.
+export function isApiError(err: unknown): err is Error & { status: number } {
+  return err instanceof Error && typeof (err as { status?: unknown }).status === 'number';
 }
 
 export async function getUserByAddress(address: string): Promise<UserRecord | null> {
@@ -242,6 +259,11 @@ export type JobLiveState = {
   expiredAt: { unix: number; iso: string };
   status: 'Open' | 'Funded' | 'Submitted' | 'Completed' | 'Rejected' | 'Expired' | string;
   hook: string;
+  // Address of the actor who emitted the terminal-state event (Completed
+  // or Rejected). null otherwise (in-flight) or if the indexer hasn't
+  // caught up. Used to distinguish "client cancelled" from "evaluator
+  // rejected" since the contract emits the same Rejected event for both.
+  terminationActor?: string | null;
   // Creation metadata from the local jobs_index. null if the indexer hasn't
   // caught up to the JobCreated event yet (~10s after creation).
   createdAt: { blockNumber: number; txHash: string; indexedAt: string } | null;
