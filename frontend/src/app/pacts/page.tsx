@@ -4,34 +4,34 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSigner } from '@/hooks/use-signer';
 import {
-  getJobsByAddress,
-  getJobState,
-  type JobIndexEntry,
-  type JobLiveState,
-  type JobRole,
+  getPactsByAddress,
+  getPactState,
+  type PactIndexEntry,
+  type PactLiveState,
+  type PactRole,
 } from '@/lib/api';
 import { CountdownChip } from '@/components/countdown';
-import { displayStatus } from '@/lib/job-status';
+import { displayStatus } from '@/lib/pact-status';
 import { ErrorBanner, ListItemSkeleton } from '@/components/async-state';
 
-type EnrichedJob = JobIndexEntry & {
-  live: JobLiveState | null;
+type EnrichedPact = PactIndexEntry & {
+  live: PactLiveState | null;
   error?: string;
 };
 
 // On-chain status only transitions to "Expired" when someone calls claimRefund
-// (or "Rejected" via reject). A job past its deadline that nobody has acted on
+// (or "Rejected" via reject). A pact past its deadline that nobody has acted on
 // stays in its prior status (Open / Funded / Submitted). For users that's
 // confusing — they want "past deadline" to read as Expired. We compute an
 // effective status here for display + filtering. Terminal statuses are passed
 // through unchanged.
-function effectiveStatus(job: EnrichedJob, nowMs: number): string {
-  if (!job.live) return 'Loading…';
-  const raw = job.live.status;
+function effectiveStatus(pact: EnrichedPact, nowMs: number): string {
+  if (!pact.live) return 'Loading…';
+  const raw = pact.live.status;
   if (raw === 'Completed' || raw === 'Rejected' || raw === 'Expired') {
-    return displayStatus(job.live, raw);
+    return displayStatus(pact.live, raw);
   }
-  if (job.live.expiredAt.unix * 1000 < nowMs) return 'Expired';
+  if (pact.live.expiredAt.unix * 1000 < nowMs) return 'Expired';
   return raw;
 }
 
@@ -46,7 +46,7 @@ const SORT_OPTIONS = [
 ] as const;
 type SortKey = (typeof SORT_OPTIONS)[number]['key'];
 
-const ROLE_LABEL: Record<JobRole, string> = {
+const ROLE_LABEL: Record<PactRole, string> = {
   client: 'Client',
   provider: 'Provider',
   evaluator: 'Evaluator',
@@ -58,7 +58,7 @@ const STATUS_TINT: Record<string, string> = {
   Submitted: 'bg-violet-950/40 text-violet-300 border-violet-900/60',
   Completed: 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60',
   // Cancelled is a client-cancelled-before-funding case; softer than Rejected
-  // since no work was rejected, just an unfunded job withdrawn.
+  // since no work was rejected, just an unfunded pact withdrawn.
   Cancelled: 'bg-neutral-900 text-neutral-400 border-neutral-800',
   Rejected: 'bg-red-950/40 text-red-300 border-red-900/60',
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
@@ -76,38 +76,38 @@ const WAITING_TINT: Record<'Open' | 'Funded' | 'Submitted', {
   Submitted: { ping: 'bg-violet-400', solid: 'bg-violet-500', text: 'text-violet-300' },
 };
 
-export default function MyJobsPage() {
+export default function MyPactsPage() {
   const signer = useSigner();
-  const [jobs, setJobs] = useState<EnrichedJob[]>([]);
+  const [pacts, setPacts] = useState<EnrichedPact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [sortKey, setSortKey] = useState<SortKey>('date_desc');
 
-  const fetchJobs = useCallback(async () => {
+  const fetchPacts = useCallback(async () => {
     if (!signer.isConnected) return;
     setLoading(true);
     setError(null);
     try {
-      const index = await getJobsByAddress(signer.address.toLowerCase());
+      const index = await getPactsByAddress(signer.address.toLowerCase());
       // Set the base list immediately so the UI shows skeletons while we enrich.
-      setJobs(index.map((entry) => ({ ...entry, live: null })));
+      setPacts(index.map((entry) => ({ ...entry, live: null })));
       // Enrich each with live on-chain state in parallel.
       const enriched = await Promise.all(
         index.map(async (entry) => {
           try {
-            const live = await getJobState(entry.jobId);
-            return { ...entry, live } as EnrichedJob;
+            const live = await getPactState(entry.pactId);
+            return { ...entry, live } as EnrichedPact;
           } catch (err) {
             return {
               ...entry,
               live: null,
               error: err instanceof Error ? err.message : String(err),
-            } as EnrichedJob;
+            } as EnrichedPact;
           }
         }),
       );
-      setJobs(enriched);
+      setPacts(enriched);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -116,12 +116,12 @@ export default function MyJobsPage() {
   }, [signer.isConnected, signer.address]);
 
   useEffect(() => {
-    void fetchJobs();
-  }, [fetchJobs]);
+    void fetchPacts();
+  }, [fetchPacts]);
 
-  const visibleJobs = useMemo(() => {
+  const visiblePacts = useMemo(() => {
     const now = Date.now();
-    let list = jobs;
+    let list = pacts;
     if (statusFilter !== 'All') {
       list = list.filter((j) => effectiveStatus(j, now) === statusFilter);
     }
@@ -138,7 +138,7 @@ export default function MyJobsPage() {
       }
     });
     return sorted;
-  }, [jobs, statusFilter, sortKey]);
+  }, [pacts, statusFilter, sortKey]);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -147,14 +147,14 @@ export default function MyJobsPage() {
           <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
             ← back
           </Link>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">My jobs</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">My pacts</h1>
           <p className="mt-2 text-sm text-neutral-400">
-            Every job on Arc where you&apos;re a client, provider, or evaluator.
+            Every pact on Arc where you&apos;re a client, provider, or evaluator.
           </p>
         </div>
         <button
           type="button"
-          onClick={() => void fetchJobs()}
+          onClick={() => void fetchPacts()}
           disabled={loading || !signer.isConnected}
           className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-300 transition hover:text-neutral-100 disabled:opacity-50"
         >
@@ -162,17 +162,17 @@ export default function MyJobsPage() {
         </button>
       </header>
 
-      {/* Tabs — only "My jobs" today; "All jobs" tab will land in a future iteration. */}
+      {/* Tabs — only "My pacts" today; "All pacts" tab will land in a future iteration. */}
       <nav className="mb-6 flex gap-1 border-b border-neutral-800 text-sm">
         <span className="rounded-t-md border-b-2 border-neutral-100 px-3 py-2 text-neutral-100">
-          My jobs
+          My pacts
         </span>
-        <span className="rounded-t-md px-3 py-2 text-neutral-600">All jobs (coming soon)</span>
+        <span className="rounded-t-md px-3 py-2 text-neutral-600">All pacts (coming soon)</span>
       </nav>
 
       {!signer.isConnected && (
         <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
-          Connect a wallet or sign in with a passkey to see your jobs.{' '}
+          Connect a wallet or sign in with a passkey to see your pacts.{' '}
           <Link href="/" className="underline">
             Go to sign-in
           </Link>
@@ -196,19 +196,19 @@ export default function MyJobsPage() {
               options={SORT_OPTIONS.map((s) => ({ value: s.key, label: s.label }))}
             />
             <span className="ml-auto text-xs text-neutral-500">
-              {visibleJobs.length} of {jobs.length} job{jobs.length === 1 ? '' : 's'}
+              {visiblePacts.length} of {pacts.length} pact{pacts.length === 1 ? '' : 's'}
             </span>
           </div>
 
           {error && (
             <ErrorBanner
-              title="Couldn't load your jobs"
+              title="Couldn't load your pacts"
               message={error}
-              onRetry={() => void fetchJobs()}
+              onRetry={() => void fetchPacts()}
             />
           )}
 
-          {!error && loading && jobs.length === 0 && (
+          {!error && loading && pacts.length === 0 && (
             <ul className="space-y-3">
               <ListItemSkeleton />
               <ListItemSkeleton />
@@ -216,26 +216,26 @@ export default function MyJobsPage() {
             </ul>
           )}
 
-          {!error && !loading && jobs.length === 0 && (
+          {!error && !loading && pacts.length === 0 && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-8 text-center">
-              <p className="text-neutral-300">No jobs yet.</p>
+              <p className="text-neutral-300">No pacts yet.</p>
               <p className="mt-2 text-xs text-neutral-500">
-                Either you haven&apos;t posted any jobs, or you&apos;re not yet listed as a
-                provider/evaluator on someone else&apos;s. The indexer catches new jobs within ~10s.
+                Either you haven&apos;t posted any pacts, or you&apos;re not yet listed as a
+                provider/evaluator on someone else&apos;s. The indexer catches new pacts within ~10s.
                 Try Refresh after posting.
               </p>
               <Link
                 href="/create"
                 className="mt-4 inline-block rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white"
               >
-                Create a job
+                Create a pact
               </Link>
             </div>
           )}
 
           <ul className="space-y-3">
-            {visibleJobs.map((job) => (
-              <JobCard key={job.jobId} job={job} />
+            {visiblePacts.map((pact) => (
+              <PactCard key={pact.pactId} pact={pact} />
             ))}
           </ul>
         </>
@@ -244,11 +244,11 @@ export default function MyJobsPage() {
   );
 }
 
-// Non-terminal jobs get a one-line "Waiting on X..." cue with a pulsing
+// Non-terminal pacts get a one-line "Waiting on X..." cue with a pulsing
 // dot + text. Completed/Rejected/Expired return null — terminal states
 // have nothing to wait on. The detail page's lifecycle timeline tells the
 // full story; this list-card cue is the at-a-glance preview.
-function jobWaitingLine(live: JobLiveState | null, effectiveStatus: string): string | null {
+function pactWaitingLine(live: PactLiveState | null, effectiveStatus: string): string | null {
   if (!live) return null;
   if (
     effectiveStatus === 'Completed' ||
@@ -260,7 +260,7 @@ function jobWaitingLine(live: JobLiveState | null, effectiveStatus: string): str
   if (live.status === 'Open') {
     return live.budget.usdc === '0'
       ? 'Waiting for the provider to quote a price…'
-      : 'Waiting for the client to fund the job…';
+      : 'Waiting for the client to fund the pact…';
   }
   if (live.status === 'Funded') {
     return 'Waiting for the provider to submit a deliverable…';
@@ -271,62 +271,62 @@ function jobWaitingLine(live: JobLiveState | null, effectiveStatus: string): str
   return null;
 }
 
-function JobCard({ job }: { job: EnrichedJob }) {
-  const status = effectiveStatus(job, Date.now());
+function PactCard({ pact }: { pact: EnrichedPact }) {
+  const status = effectiveStatus(pact, Date.now());
   const isSoftExpired =
-    status === 'Expired' && job.live?.status !== 'Expired' && job.live?.status !== 'Rejected';
+    status === 'Expired' && pact.live?.status !== 'Expired' && pact.live?.status !== 'Rejected';
   const statusClass =
     STATUS_TINT[status] ?? 'bg-neutral-900 text-neutral-400 border-neutral-800';
-  // Show the pulsing cue for every non-terminal job. effectiveStatus may
+  // Show the pulsing cue for every non-terminal pact. effectiveStatus may
   // upgrade Open/Funded/Submitted → Expired past the deadline; suppress
   // the cue in that case so the soft-expired notice stays the focus.
-  const waitingLine = jobWaitingLine(job.live, status);
-  // jobWaitingLine guarantees null unless live.status is Open / Funded /
+  const waitingLine = pactWaitingLine(pact.live, status);
+  // pactWaitingLine guarantees null unless live.status is Open / Funded /
   // Submitted, so the type assertion is sound and TS keeps WAITING_TINT
   // narrow to those three keys.
   const waitingTint = waitingLine
-    ? WAITING_TINT[job.live!.status as keyof typeof WAITING_TINT]
+    ? WAITING_TINT[pact.live!.status as keyof typeof WAITING_TINT]
     : null;
 
   return (
     <li>
       <Link
-        href={`/jobs/${job.jobId}`}
+        href={`/pacts/${pact.pactId}`}
         className="block rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition hover:border-neutral-700 hover:bg-neutral-900/70"
       >
       <div className="flex items-start justify-between gap-4">
         {/* Left column: identity + content */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm text-neutral-300">#{job.jobId}</span>
+            <span className="font-mono text-sm text-neutral-300">#{pact.pactId}</span>
             <span
               className={`rounded-md border px-2 py-0.5 text-xs ${statusClass}`}
             >
               {status}
             </span>
-            {/* Countdown chip — at-a-glance urgency for non-terminal jobs.
+            {/* Countdown chip — at-a-glance urgency for non-terminal pacts.
                 Terminal states (Completed/Rejected) don't have a meaningful
                 deadline anymore. */}
-            {status !== 'Completed' && status !== 'Rejected' && job.live?.status !== 'Expired' && (
-              <CountdownChip unix={job.live?.expiredAt.unix ?? job.expiredAt} />
+            {status !== 'Completed' && status !== 'Rejected' && pact.live?.status !== 'Expired' && (
+              <CountdownChip unix={pact.live?.expiredAt.unix ?? pact.expiredAt} />
             )}
           </div>
-          {job.live?.description && (
-            <p className="mt-2 truncate text-sm text-neutral-200">{job.live.description}</p>
+          {pact.live?.description && (
+            <p className="mt-2 truncate text-sm text-neutral-200">{pact.live.description}</p>
           )}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
             <span>
               Budget:{' '}
               <span className="text-neutral-300">
-                {job.live ? `${job.live.budget.usdc} USDC` : '…'}
+                {pact.live ? `${pact.live.budget.usdc} USDC` : '…'}
               </span>
             </span>
             <span>
               Expires:{' '}
               <span className="text-neutral-300">
-                {job.live
-                  ? new Date(job.live.expiredAt.iso).toLocaleString()
-                  : new Date(job.expiredAt * 1000).toLocaleString()}
+                {pact.live
+                  ? new Date(pact.live.expiredAt.iso).toLocaleString()
+                  : new Date(pact.expiredAt * 1000).toLocaleString()}
               </span>
             </span>
           </div>
@@ -337,7 +337,7 @@ function JobCard({ job }: { job: EnrichedJob }) {
             squeezed on narrow viewports. */}
         <div className="flex flex-shrink-0 flex-col items-end gap-3">
           <div className="flex flex-wrap justify-end gap-2">
-            {job.roles.map((role) => (
+            {pact.roles.map((role) => (
               <span
                 key={role}
                 className="rounded-md border border-neutral-800 px-2 py-0.5 text-xs text-neutral-400"
@@ -363,12 +363,12 @@ function JobCard({ job }: { job: EnrichedJob }) {
       </div>
       {isSoftExpired && (
         <p className="mt-2 text-xs text-neutral-500">
-          Deadline passed but on-chain status is still <span className="font-mono">{job.live?.status}</span>.
+          Deadline passed but on-chain status is still <span className="font-mono">{pact.live?.status}</span>.
           Anyone can call claimRefund to release funds back to the client.
         </p>
       )}
-      {job.error && (
-        <p className="mt-2 text-xs text-red-400">Couldn&apos;t read live state: {job.error}</p>
+      {pact.error && (
+        <p className="mt-2 text-xs text-red-400">Couldn&apos;t read live state: {pact.error}</p>
       )}
       </Link>
     </li>

@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { parseEventLogs } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
-import { buildCreateJobUnsigned, resolveAddress } from '@/lib/api';
+import { buildCreatePactUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 
 // Mirrors the on-chain JobCreated event from the AgenticCommerce contract.
-// Used to parse the jobId out of the tx receipt after a successful createJob.
+// Used to parse the pactId out of the tx receipt after a successful createJob.
 const jobCreatedEventAbi = [
   {
     type: 'event',
@@ -35,10 +35,10 @@ type Submission =
   | { status: 'resolving' }
   | { status: 'signing' }
   | { status: 'waiting'; hash: string }
-  | { status: 'done'; jobId: string; txHash: string }
+  | { status: 'done'; pactId: string; txHash: string }
   | { status: 'error'; message: string };
 
-export default function CreateJobPage() {
+export default function CreatePactPage() {
   const signer = useSigner();
   // Receipt parsing must read from Arc even if the wallet is currently on a
   // bridge source chain (Sepolia / Base / Arbitrum / OP).
@@ -71,7 +71,7 @@ export default function CreateJobPage() {
       const provider = await resolveAddress(providerInput);
       const evaluator = await resolveAddress(evaluatorInput);
 
-      const unsigned = await buildCreateJobUnsigned({
+      const unsigned = await buildCreatePactUnsigned({
         provider,
         evaluator,
         expiredInSeconds: expiresIn,
@@ -89,7 +89,7 @@ export default function CreateJobPage() {
       const { txHash, status } = await sent.wait();
       if (status !== 'success') throw new Error(`Tx ${status}`);
 
-      // Pull jobId from the JobCreated event in the receipt.
+      // Pull pactId from the on-chain JobCreated event in the receipt.
       if (!publicClient) throw new Error('No public client available');
       const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
       const [createdLog] = parseEventLogs({
@@ -98,7 +98,7 @@ export default function CreateJobPage() {
         logs: receipt.logs,
       });
       if (!createdLog) throw new Error('JobCreated event missing from receipt');
-      setSubmission({ status: 'done', jobId: createdLog.args.jobId.toString(), txHash });
+      setSubmission({ status: 'done', pactId: createdLog.args.jobId.toString(), txHash });
     } catch (err) {
       setSubmission({
         status: 'error',
@@ -118,9 +118,9 @@ export default function CreateJobPage() {
         <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
           ← back
         </Link>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a job</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a pact</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Post a job to the open ERC-8183 escrow on Arc. You're the <strong>client</strong>: you set
+          Post a pact to the open ERC-8183 escrow on Arc. You're the <strong>client</strong>: you set
           the parties and the deadline. The provider quotes the price next (
           <code className="text-neutral-500">setBudget</code>), and you fund to accept.
         </p>
@@ -128,7 +128,7 @@ export default function CreateJobPage() {
 
       {!signer.isConnected && (
         <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
-          You need to connect a wallet or sign in with a passkey before posting a job.{' '}
+          You need to connect a wallet or sign in with a passkey before posting a pact.{' '}
           <Link href="/" className="underline">
             Go to sign-in
           </Link>
@@ -179,7 +179,7 @@ export default function CreateJobPage() {
 
           <Field
             label="Deadline"
-            hint={`Seconds from now until the job expires. Reference contract requires > ${MIN_EXPIRES_IN_SECONDS - 1}.`}
+            hint={`Seconds from now until the pact expires. Reference contract requires > ${MIN_EXPIRES_IN_SECONDS - 1}.`}
           >
             <div className="flex items-center gap-3">
               <input
@@ -223,7 +223,7 @@ export default function CreateJobPage() {
               {(submission.status === 'idle' ||
                 submission.status === 'done' ||
                 submission.status === 'error') &&
-                'Post job'}
+                'Post pact'}
             </button>
             <p className="mt-3 text-xs text-neutral-500">
               Signing as <span className="font-mono">{signer.address}</span> (
@@ -240,7 +240,7 @@ export default function CreateJobPage() {
           {submission.status === 'done' && (
             <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm">
               <p className="font-medium text-emerald-300">
-                Job <span className="font-mono">#{submission.jobId}</span> created.
+                Pact <span className="font-mono">#{submission.pactId}</span> created.
               </p>
               <p className="mt-1 text-xs text-neutral-400">
                 Tx{' '}

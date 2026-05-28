@@ -136,43 +136,43 @@ async function main() {
   step('0g. Ensure evaluator has gas');
   await ensureGas(evaluator, client, gasMinRaw, GAS_TOPUP_USDC, 'evaluator');
 
-  step(`1. Create job (client=${CLIENT_HANDLE}, provider=${PROVIDER_HANDLE}, evaluator=${EVALUATOR_HANDLE})`);
-  const created = await req<{ jobId: string }>('POST', '/arc/escrow/jobs', {
+  step(`1. Create pact (client=${CLIENT_HANDLE}, provider=${PROVIDER_HANDLE}, evaluator=${EVALUATOR_HANDLE})`);
+  const created = await req<{ pactId: string }>('POST', '/arc/escrow/pacts', {
     handle: CLIENT_HANDLE,
     provider: provider.walletAddress,
     evaluator: evaluator.walletAddress,
     expiredInSeconds: EXPIRES_IN,
     description: DESCRIPTION,
   });
-  const jobId = created.jobId;
-  console.log(`${GREEN}→ jobId=${jobId}${RESET}`);
+  const pactId = created.pactId;
+  console.log(`${GREEN}→ pactId=${pactId}${RESET}`);
 
   step(`2. Set budget (${BUDGET} USDC) — signed by ${PROVIDER_HANDLE} (provider quotes price)`);
-  await req('POST', `/arc/escrow/jobs/${jobId}/budget`, { handle: PROVIDER_HANDLE, budgetUsdc: BUDGET });
+  await req('POST', `/arc/escrow/pacts/${pactId}/budget`, { handle: PROVIDER_HANDLE, budgetUsdc: BUDGET });
 
   step(`3. Approve USDC (${BUDGET}) — signed by ${CLIENT_HANDLE} (idempotent)`);
   await req('POST', '/arc/usdc/approve', { handle: CLIENT_HANDLE, amountUsdc: BUDGET });
 
-  step(`4. Fund job ${jobId} — signed by ${CLIENT_HANDLE}`);
-  await req('POST', `/arc/escrow/jobs/${jobId}/fund`, { handle: CLIENT_HANDLE });
+  step(`4. Fund pact ${pactId} — signed by ${CLIENT_HANDLE}`);
+  await req('POST', `/arc/escrow/pacts/${pactId}/fund`, { handle: CLIENT_HANDLE });
 
   if (target === 'funded') {
     step('5. Verify final state');
-    const job = await req<{ status: string }>('GET', `/arc/escrow/job/${jobId}`);
+    const pact = await req<{ status: string }>('GET', `/arc/escrow/pact/${pactId}`);
 
     console.log();
-    if (job.status === 'Funded') {
-      console.log(`${GREEN}✓ smoke test passed — job ${jobId} is Funded${RESET}`);
+    if (pact.status === 'Funded') {
+      console.log(`${GREEN}✓ smoke test passed — pact ${pactId} is Funded${RESET}`);
       process.exit(0);
     } else {
-      console.log(`${RED}✗ expected Funded, got ${job.status}${RESET}`);
+      console.log(`${RED}✗ expected Funded, got ${pact.status}${RESET}`);
       process.exit(1);
     }
   }
 
   const deliverableHash = `0x${randomBytes(32).toString('hex')}`;
   step(`5. Submit deliverable (${deliverableHash.slice(0, 10)}…) — signed by ${PROVIDER_HANDLE}`);
-  await req('POST', `/arc/escrow/jobs/${jobId}/submit`, { handle: PROVIDER_HANDLE, deliverableHash });
+  await req('POST', `/arc/escrow/pacts/${pactId}/submit`, { handle: PROVIDER_HANDLE, deliverableHash });
 
   const budgetRaw = BigInt(Math.round(Number(BUDGET) * 1_000_000));
 
@@ -180,11 +180,11 @@ async function main() {
     step('6a. Read provider USDC balance (just before complete) — isolates payout from gas');
     const providerPreComplete = await getUsdcRawBalance(provider.walletAddress);
 
-    step(`6b. Complete job (release to provider) — signed by ${EVALUATOR_HANDLE}`);
-    await req('POST', `/arc/escrow/jobs/${jobId}/complete`, { handle: EVALUATOR_HANDLE });
+    step(`6b. Complete pact (release to provider) — signed by ${EVALUATOR_HANDLE}`);
+    await req('POST', `/arc/escrow/pacts/${pactId}/complete`, { handle: EVALUATOR_HANDLE });
 
     step('7. Verify on-chain state');
-    const job = await req<{ status: string; provider: string }>('GET', `/arc/escrow/job/${jobId}`);
+    const pact = await req<{ status: string; provider: string }>('GET', `/arc/escrow/pact/${pactId}`);
 
     step('8. Read provider USDC balance (after complete) + assert delta');
     const providerPostComplete = await getUsdcRawBalance(provider.walletAddress);
@@ -193,16 +193,16 @@ async function main() {
     console.log(`${GREEN}→ preComplete=${providerPreComplete} postComplete=${providerPostComplete} delta=${delta} expected=${expectedDelta}${RESET}`);
 
     console.log();
-    const statusOK = job.status === 'Completed';
-    const providerOK = job.provider.toLowerCase() === provider.walletAddress.toLowerCase();
+    const statusOK = pact.status === 'Completed';
+    const providerOK = pact.provider.toLowerCase() === provider.walletAddress.toLowerCase();
     const deltaOK = delta === expectedDelta;
 
     if (statusOK && providerOK && deltaOK) {
-      console.log(`${GREEN}✓ smoke test passed — job ${jobId} Completed; provider ${provider.walletAddress} received ${delta} raw USDC (expected ${expectedDelta})${RESET}`);
+      console.log(`${GREEN}✓ smoke test passed — pact ${pactId} Completed; provider ${provider.walletAddress} received ${delta} raw USDC (expected ${expectedDelta})${RESET}`);
       process.exit(0);
     } else {
-      if (!statusOK) console.log(`${RED}✗ expected status Completed, got ${job.status}${RESET}`);
-      if (!providerOK) console.log(`${RED}✗ provider mismatch: chain says ${job.provider}, expected ${provider.walletAddress}${RESET}`);
+      if (!statusOK) console.log(`${RED}✗ expected status Completed, got ${pact.status}${RESET}`);
+      if (!providerOK) console.log(`${RED}✗ provider mismatch: chain says ${pact.provider}, expected ${provider.walletAddress}${RESET}`);
       if (!deltaOK) console.log(`${RED}✗ provider USDC delta ${delta} != expected ${expectedDelta}${RESET}`);
       process.exit(1);
     }
@@ -217,11 +217,11 @@ async function main() {
     step('6a. Read client USDC balance (just before reject) — isolates refund from gas');
     const clientPreReject = await getUsdcRawBalance(client.walletAddress);
 
-    step(`6b. Reject job (refund client) — signed by ${EVALUATOR_HANDLE}`);
-    await req('POST', `/arc/escrow/jobs/${jobId}/reject`, { handle: EVALUATOR_HANDLE });
+    step(`6b. Reject pact (refund client) — signed by ${EVALUATOR_HANDLE}`);
+    await req('POST', `/arc/escrow/pacts/${pactId}/reject`, { handle: EVALUATOR_HANDLE });
 
     step('7. Verify on-chain state');
-    const job = await req<{ status: string; client: string }>('GET', `/arc/escrow/job/${jobId}`);
+    const pact = await req<{ status: string; client: string }>('GET', `/arc/escrow/pact/${pactId}`);
 
     step('8. Read client USDC balance (after reject) + assert delta');
     const clientPostReject = await getUsdcRawBalance(client.walletAddress);
@@ -229,16 +229,16 @@ async function main() {
     console.log(`${GREEN}→ preReject=${clientPreReject} postReject=${clientPostReject} delta=${delta} expected=${budgetRaw} (full refund, no fees)${RESET}`);
 
     console.log();
-    const statusOK = job.status === 'Rejected';
-    const clientOK = job.client.toLowerCase() === client.walletAddress.toLowerCase();
+    const statusOK = pact.status === 'Rejected';
+    const clientOK = pact.client.toLowerCase() === client.walletAddress.toLowerCase();
     const deltaOK = delta === budgetRaw;
 
     if (statusOK && clientOK && deltaOK) {
-      console.log(`${GREEN}✓ smoke test passed — job ${jobId} Rejected; client ${client.walletAddress} received full refund ${delta} raw USDC${RESET}`);
+      console.log(`${GREEN}✓ smoke test passed — pact ${pactId} Rejected; client ${client.walletAddress} received full refund ${delta} raw USDC${RESET}`);
       process.exit(0);
     } else {
-      if (!statusOK) console.log(`${RED}✗ expected status Rejected, got ${job.status}${RESET}`);
-      if (!clientOK) console.log(`${RED}✗ client mismatch: chain says ${job.client}, expected ${client.walletAddress}${RESET}`);
+      if (!statusOK) console.log(`${RED}✗ expected status Rejected, got ${pact.status}${RESET}`);
+      if (!clientOK) console.log(`${RED}✗ client mismatch: chain says ${pact.client}, expected ${client.walletAddress}${RESET}`);
       if (!deltaOK) console.log(`${RED}✗ client USDC delta ${delta} != expected ${budgetRaw}${RESET}`);
       process.exit(1);
     }

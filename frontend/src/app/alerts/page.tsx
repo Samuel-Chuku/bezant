@@ -17,7 +17,7 @@ export default function AlertsPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Alerts</h1>
           <p className="mt-2 text-sm text-neutral-400">
-            Things that happened on your jobs, things waiting on you, and deadlines closing in.
+            Things that happened on your pacts, things waiting on you, and deadlines closing in.
           </p>
         </div>
         {unreadCount > 0 && (
@@ -49,13 +49,13 @@ export default function AlertsPage() {
         <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6 text-center">
           <p className="text-sm text-neutral-300">No alerts yet.</p>
           <p className="mt-2 text-xs text-neutral-500">
-            Create or join a job and we&apos;ll surface things needing your attention here.
+            Create or join a pact and we&apos;ll surface things needing your attention here.
           </p>
           <Link
             href="/create"
             className="mt-4 inline-block rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white"
           >
-            Create a job
+            Create a pact
           </Link>
         </section>
       )}
@@ -68,7 +68,7 @@ export default function AlertsPage() {
               item={item}
               onOpen={() => {
                 markRead(item.key);
-                router.push(`/jobs/${encodeURIComponent(item.jobId)}`);
+                router.push(`/pacts/${encodeURIComponent(item.pactId)}`);
               }}
             />
           ))}

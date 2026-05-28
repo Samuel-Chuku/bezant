@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { getOpenJobs, type OpenJobEntry, type OpenJobsResponse } from '@/lib/api';
+import { getOpenPacts, type OpenPactEntry, type OpenPactsResponse } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { CountdownChip } from '@/components/countdown';
 import { ErrorBanner, ListItemSkeleton } from '@/components/async-state';
@@ -12,7 +12,7 @@ const PAGE_SIZE = 20;
 type LoadState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; data: OpenJobsResponse }
+  | { status: 'ready'; data: OpenPactsResponse }
   | { status: 'error'; message: string };
 
 export default function MarketPage() {
@@ -29,7 +29,7 @@ export default function MarketPage() {
   const fetchPage = useCallback(async () => {
     setState({ status: 'loading' });
     try {
-      const data = await getOpenJobs({
+      const data = await getOpenPacts({
         limit: PAGE_SIZE,
         offset,
         minBudget: appliedMin || undefined,
@@ -79,7 +79,7 @@ export default function MarketPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight">Market</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Every Open ERC-8183 job on Arc Testnet our indexer has seen, including jobs created
+          Every Open ERC-8183 pact on Arc Testnet our indexer has seen, including pacts created
           outside arc-trade. Showing the most recent first.
         </p>
       </header>
@@ -153,12 +153,12 @@ export default function MarketPage() {
           />
         )}
 
-        {state.status === 'ready' && state.data.jobs.length === 0 && (
+        {state.status === 'ready' && state.data.pacts.length === 0 && (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6 text-center">
             <p className="text-sm text-neutral-300">
               {appliedMin || appliedMax
-                ? 'No open jobs match that filter.'
-                : 'No open jobs right now.'}
+                ? 'No open pacts match that filter.'
+                : 'No open pacts right now.'}
             </p>
             <p className="mt-2 text-xs text-neutral-500">
               {appliedMin || appliedMax
@@ -178,16 +178,16 @@ export default function MarketPage() {
                 href="/create"
                 className="mt-4 inline-block rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white"
               >
-                Create a job
+                Create a pact
               </Link>
             )}
           </div>
         )}
 
-        {state.status === 'ready' && state.data.jobs.length > 0 && (
+        {state.status === 'ready' && state.data.pacts.length > 0 && (
           <ul className="space-y-3">
-            {state.data.jobs.map((job) => (
-              <MarketCard key={job.jobId} job={job} />
+            {state.data.pacts.map((pact) => (
+              <MarketCard key={pact.pactId} pact={pact} />
             ))}
           </ul>
         )}
@@ -228,32 +228,32 @@ export default function MarketPage() {
   );
 }
 
-function MarketCard({ job }: { job: OpenJobEntry }) {
+function MarketCard({ pact }: { pact: OpenPactEntry }) {
   return (
     <li className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition hover:border-neutral-700">
-      <Link href={`/jobs/${encodeURIComponent(job.jobId)}`} className="block">
+      <Link href={`/pacts/${encodeURIComponent(pact.pactId)}`} className="block">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-neutral-500">#{job.jobId}</span>
+              <span className="font-mono text-[11px] text-neutral-500">#{pact.pactId}</span>
               <span className="rounded-md bg-sky-950/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
                 Open
               </span>
-              <CountdownChip unix={job.expiredAt.unix} />
+              <CountdownChip unix={pact.expiredAt.unix} />
             </div>
-            <p className="mt-2 text-sm text-neutral-100 line-clamp-2">{job.description || 'No description'}</p>
+            <p className="mt-2 text-sm text-neutral-100 line-clamp-2">{pact.description || 'No description'}</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
               <span>
-                Client <span className="font-mono text-neutral-400">{shortAddress(job.client)}</span>
+                Client <span className="font-mono text-neutral-400">{shortAddress(pact.client)}</span>
               </span>
               <span aria-hidden>·</span>
               <span>
-                Provider <span className="font-mono text-neutral-400">{shortAddress(job.provider)}</span>
+                Provider <span className="font-mono text-neutral-400">{shortAddress(pact.provider)}</span>
               </span>
             </div>
           </div>
           <div className="text-right">
-            <div className="font-mono text-sm text-neutral-100">{job.budget.usdc}</div>
+            <div className="font-mono text-sm text-neutral-100">{pact.budget.usdc}</div>
             <div className="text-[10px] uppercase tracking-wide text-neutral-500">USDC quoted</div>
           </div>
         </div>

@@ -139,13 +139,13 @@ export default function Home() {
               href="/create"
               className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
             >
-              Create a job
+              Create a pact
             </Link>
             <Link
-              href="/jobs"
+              href="/pacts"
               className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 transition hover:text-neutral-100"
             >
-              My jobs
+              My pacts
             </Link>
           </div>
         </section>
@@ -197,7 +197,7 @@ function AgentIdTooltip() {
       tabIndex={0}
       role="button"
       aria-label="What is an Agent ID?"
-      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets arc-trade surface your reputation badge next to your name on every job."
+      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets arc-trade surface your reputation badge next to your name on every pact."
     >
       <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-700 text-[10px] text-neutral-500 group-hover:text-neutral-300">
         ?
@@ -211,7 +211,7 @@ function AgentIdTooltip() {
         </span>
         <span className="mt-2 block text-neutral-400">
           Linking it surfaces your <span className="text-amber-300">★ score</span>{' '}
-          next to your name on every job in arc-trade.
+          next to your name on every pact in arc-trade.
         </span>
       </span>
     </span>

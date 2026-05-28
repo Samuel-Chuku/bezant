@@ -5,11 +5,11 @@ import type { Address } from 'viem';
 import {
   getNotificationFeed,
   type FeedRow,
-  type JobEvent,
-  type JobLiveState,
-  type JobRole,
+  type PactEvent,
+  type PactLiveState,
+  type PactRole,
 } from '@/lib/api';
-import { describeCurrentStep, isActionRequiredByMe } from '@/lib/job-status';
+import { describeCurrentStep, isActionRequiredByMe } from '@/lib/pact-status';
 import { loadReadKeys, markReadKeys } from '@/lib/notifications-read';
 import { useSigner } from './use-signer';
 import { CHAIN_REFRESH_EVENT } from './use-refresh-chain-data';
@@ -18,7 +18,7 @@ export type NotificationKind = 'action' | 'status' | 'event' | 'deadline';
 
 export type NotificationItem = {
   key: string;
-  jobId: string;
+  pactId: string;
   kind: NotificationKind;
   summary: string;
   // Sort key — milliseconds. Newer = bigger.
@@ -37,7 +37,7 @@ type LoadState =
 const POLL_MS = 30_000;
 
 // Effective status — soft-Expired any non-terminal that's past deadline,
-// matching the job-detail page's getEffectiveStatus inline.
+// matching the pact-detail page's getEffectiveStatus inline.
 function effectiveStatus(live: { status: string; expiredAt: { unix: number } }): string {
   if (
     (live.status === 'Open' || live.status === 'Funded' || live.status === 'Submitted') &&
@@ -56,13 +56,13 @@ function isTerminal(status: string): boolean {
 //   action  — connected user is the actor up next ("Fund #N", "Submit on #N").
 //   status  — connected user is involved but waiting on someone else
 //             ("#N — Waiting for the client to fund"). Same identity as
-//             action (one per job/status/roles tuple) — kind just flips
+//             action (one per pact/status/roles tuple) — kind just flips
 //             based on whose turn it is.
 //   event   — one per Submitted/Completed/Rejected/Funded/Refunded row in
-//             job_events (excludes user's own actions to avoid notifying
+//             pact_events (excludes user's own actions to avoid notifying
 //             yourself about your own tx).
 //   deadline— bucketed alerts as the deadline approaches: 24h / 1h / 15m
-//             / expired. Each fires at most once per bucket per job, only
+//             / expired. Each fires at most once per bucket per pact, only
 //             when the user is the action party (urgency = their problem).
 function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
   const me = myAddress.toLowerCase();
@@ -74,7 +74,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
     const status = effectiveStatus(row.live);
 
     // Events fire regardless of terminal status: the provider needs to see
-    // the Completed event ("Client released payment") when their job settles,
+    // the Completed event ("Client released payment") when their pact settles,
     // not have it silently dropped because the row is now terminal.
     //
     // Self-authored events are normally suppressed (you don't need a bell
@@ -94,8 +94,8 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
       if (isSelf && !isTerminalEvent) continue;
       const summary = formatEventSummary(ev, row, isSelf);
       items.push({
-        key: `job:${row.jobId}:event:${ev.txHash}:${ev.logIndex}`,
-        jobId: row.jobId,
+        key: `pact:${row.pactId}:event:${ev.txHash}:${ev.logIndex}`,
+        pactId: row.pactId,
         kind: 'event',
         summary,
         whenMs: new Date(ev.indexedAt).getTime(),
@@ -104,12 +104,12 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
       });
     }
 
-    // Status, action, and deadline items only make sense while the job is
+    // Status, action, and deadline items only make sense while the pact is
     // still in flight — once it's terminal there's nothing left to do.
     if (isTerminal(status)) continue;
 
-    const liveJob: JobLiveState = {
-      id: row.jobId,
+    const livePact: PactLiveState = {
+      id: row.pactId,
       client: row.index.client,
       provider: row.index.provider,
       evaluator: row.index.evaluator,
@@ -124,20 +124,20 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
         indexedAt: row.index.indexedAt,
       },
     };
-    const roles = row.roles as JobRole[];
+    const roles = row.roles as PactRole[];
 
-    // Status/action item — always emit one for any non-terminal job the
-    // user is party to so the bell isn't silent on in-flight jobs you're
+    // Status/action item — always emit one for any non-terminal pact the
+    // user is party to so the bell isn't silent on in-flight pacts you're
     // just waiting on. Kind flips to 'action' when it's your turn so the
     // visual weight (and unread count) reflects urgency.
-    const sentence = describeCurrentStep(liveJob, status, roles);
-    const isMine = isActionRequiredByMe(liveJob, status, roles);
+    const sentence = describeCurrentStep(livePact, status, roles);
+    const isMine = isActionRequiredByMe(livePact, status, roles);
     if (sentence) {
       items.push({
-        key: `job:${row.jobId}:status:${status}:${roles.sort().join('+')}`,
-        jobId: row.jobId,
+        key: `pact:${row.pactId}:status:${status}:${roles.sort().join('+')}`,
+        pactId: row.pactId,
         kind: isMine ? 'action' : 'status',
-        summary: `Job #${row.jobId}: ${sentence}`,
+        summary: `Pact #${row.pactId}: ${sentence}`,
         whenMs: row.live.expiredAt.unix * 1000,
         whenIso: row.live.expiredAt.iso,
         read: false,
@@ -150,10 +150,10 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
       const bucket = bucketFor(remainingMs);
       if (bucket) {
         items.push({
-          key: `job:${row.jobId}:deadline:${bucket.key}`,
-          jobId: row.jobId,
+          key: `pact:${row.pactId}:deadline:${bucket.key}`,
+          pactId: row.pactId,
           kind: 'deadline',
-          summary: `Job #${row.jobId}: ${bucket.label}.`,
+          summary: `Pact #${row.pactId}: ${bucket.label}.`,
           whenMs: row.live.expiredAt.unix * 1000,
           whenIso: row.live.expiredAt.iso,
           read: false,
@@ -167,7 +167,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
   return items;
 }
 
-function formatEventSummary(ev: JobEvent, row: FeedRow, isSelf: boolean): string {
+function formatEventSummary(ev: PactEvent, row: FeedRow, isSelf: boolean): string {
   const actorShort = `${ev.actor.slice(0, 6)}…${ev.actor.slice(-4)}`;
   const subject = isSelf
     ? 'You'
@@ -182,26 +182,26 @@ function formatEventSummary(ev: JobEvent, row: FeedRow, isSelf: boolean): string
   // (e.g. "You released payment" not "You released payment on..." mid-sentence).
   switch (ev.eventType) {
     case 'Funded':
-      return `${subject} funded job #${row.jobId}.`;
+      return `${subject} funded pact #${row.pactId}.`;
     case 'Submitted':
-      return `${subject} submitted the deliverable on job #${row.jobId}.`;
+      return `${subject} submitted the deliverable on pact #${row.pactId}.`;
     case 'Completed':
-      return `${subject} released payment on job #${row.jobId}.`;
+      return `${subject} released payment on pact #${row.pactId}.`;
     case 'Rejected': {
-      // Client rejecting their own job is a cancellation; surface that.
+      // Client rejecting their own pact is a cancellation; surface that.
       const actorIsClient =
         ev.actor.toLowerCase() === row.index.client.toLowerCase();
       if (actorIsClient) {
         return isSelf
-          ? `You cancelled job #${row.jobId}.`
-          : `Client cancelled job #${row.jobId}.`;
+          ? `You cancelled pact #${row.pactId}.`
+          : `Client cancelled pact #${row.pactId}.`;
       }
-      return `${subject} rejected the deliverable on job #${row.jobId}.`;
+      return `${subject} rejected the deliverable on pact #${row.pactId}.`;
     }
     case 'Refunded':
-      return `Refund returned to client on job #${row.jobId}.`;
+      return `Refund returned to client on pact #${row.pactId}.`;
     default:
-      return `Job #${row.jobId}: ${ev.eventType}.`;
+      return `Pact #${row.pactId}: ${ev.eventType}.`;
   }
 }
 

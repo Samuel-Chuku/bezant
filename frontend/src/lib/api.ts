@@ -212,22 +212,23 @@ export type UnsignedTx = {
   chainId: number;
 };
 
-export async function buildCreateJobUnsigned(input: {
+export async function buildCreatePactUnsigned(input: {
   provider: `0x${string}`;
   evaluator: `0x${string}`;
   expiredInSeconds: number;
   description: string;
 }): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', '/arc/escrow/jobs/unsigned', input);
+  return jsonFetch<UnsignedTx>('POST', '/arc/escrow/pacts/unsigned', input);
 }
 
-// ─── Jobs index ────────────────────────────────────────────────────────────
-// Static data from the backend's JobCreated event indexer. Pair with
-// getJobState() to read live status/budget per job.
-export type JobRole = 'client' | 'provider' | 'evaluator';
+// ─── Pacts index ───────────────────────────────────────────────────────────
+// Static data from the backend's pact-indexer (decodes JobCreated events
+// off the ERC-8183 reference contract). Pair with getPactState() to read
+// live status/budget per pact.
+export type PactRole = 'client' | 'provider' | 'evaluator';
 
-export type JobIndexEntry = {
-  jobId: string;
+export type PactIndexEntry = {
+  pactId: string;
   client: string;
   provider: string;
   evaluator: string;
@@ -236,20 +237,20 @@ export type JobIndexEntry = {
   blockNumber: number;
   txHash: string;
   indexedAt: string;
-  roles: JobRole[];
+  roles: PactRole[];
 };
 
-export async function getJobsByAddress(address: string): Promise<JobIndexEntry[]> {
-  const result = await jsonFetch<{ address: string; jobs: JobIndexEntry[]; count: number }>(
+export async function getPactsByAddress(address: string): Promise<PactIndexEntry[]> {
+  const result = await jsonFetch<{ address: string; pacts: PactIndexEntry[]; count: number }>(
     'GET',
-    `/jobs/by-address/${encodeURIComponent(address)}`,
+    `/pacts/by-address/${encodeURIComponent(address)}`,
   );
-  return result.jobs;
+  return result.pacts;
 }
 
-// Live on-chain state for a single job. Shape mirrors the existing
-// /arc/escrow/job/:id route response.
-export type JobLiveState = {
+// Live on-chain state for a single pact. Shape mirrors the existing
+// /arc/escrow/pact/:id route response.
+export type PactLiveState = {
   id: string;
   client: string;
   provider: string;
@@ -264,21 +265,21 @@ export type JobLiveState = {
   // caught up. Used to distinguish "client cancelled" from "evaluator
   // rejected" since the contract emits the same Rejected event for both.
   terminationActor?: string | null;
-  // Creation metadata from the local jobs_index. null if the indexer hasn't
+  // Creation metadata from the local pacts_index. null if the indexer hasn't
   // caught up to the JobCreated event yet (~10s after creation).
   createdAt: { blockNumber: number; txHash: string; indexedAt: string } | null;
 };
 
-export async function getJobState(jobId: string): Promise<JobLiveState> {
-  return jsonFetch<JobLiveState>('GET', `/arc/escrow/job/${encodeURIComponent(jobId)}`);
+export async function getPactState(pactId: string): Promise<PactLiveState> {
+  return jsonFetch<PactLiveState>('GET', `/arc/escrow/pact/${encodeURIComponent(pactId)}`);
 }
 
-// Marketplace — all Open ERC-8183 jobs across the public reference contract
-// on Arc (not just arc-trade-created jobs). Paginated server-side; budget
-// filter is optional. Each row is JobIndexEntry-like + live status/budget
+// Marketplace — all Open ERC-8183 pacts across the public reference contract
+// on Arc (not just arc-trade-created pacts). Paginated server-side; budget
+// filter is optional. Each row is PactIndexEntry-like + live status/budget
 // merged so the card can render without a second fetch.
-export type OpenJobEntry = {
-  jobId: string;
+export type OpenPactEntry = {
+  pactId: string;
   client: string;
   provider: string;
   evaluator: string;
@@ -290,34 +291,34 @@ export type OpenJobEntry = {
   createdAt: { blockNumber: number; txHash: string; indexedAt: string };
 };
 
-export type OpenJobsResponse = {
-  jobs: OpenJobEntry[];
+export type OpenPactsResponse = {
+  pacts: OpenPactEntry[];
   total: number;
   limit: number;
   offset: number;
   indexScanned: number;
 };
 
-export async function getOpenJobs(params: {
+export async function getOpenPacts(params: {
   limit?: number;
   offset?: number;
   minBudget?: string;
   maxBudget?: string;
-}): Promise<OpenJobsResponse> {
+}): Promise<OpenPactsResponse> {
   const qs = new URLSearchParams();
   if (params.limit !== undefined) qs.set('limit', String(params.limit));
   if (params.offset !== undefined) qs.set('offset', String(params.offset));
   if (params.minBudget) qs.set('minBudget', params.minBudget);
   if (params.maxBudget) qs.set('maxBudget', params.maxBudget);
-  return jsonFetch<OpenJobsResponse>('GET', `/jobs/open?${qs.toString()}`);
+  return jsonFetch<OpenPactsResponse>('GET', `/pacts/open?${qs.toString()}`);
 }
 
-// Notifications feed. Per-job bundle: index row + live state + events array.
+// Notifications feed. Per-pact bundle: index row + live state + events array.
 // The frontend derives action/event/deadline notifications from these rows
 // (see hooks/use-notifications.ts) rather than the backend pre-shaping them,
 // because the action/deadline-bucket logic is role-sensitive and easier to
-// keep in sync with the job-detail page when both consume from lib/job-status.
-export type FeedJobLive = {
+// keep in sync with the pact-detail page when both consume from lib/pact-status.
+export type FeedPactLive = {
   status: string;
   budget: { raw: string; usdc: string };
   expiredAt: { unix: number; iso: string };
@@ -325,8 +326,8 @@ export type FeedJobLive = {
 };
 
 export type FeedRow = {
-  jobId: string;
-  roles: JobRole[];
+  pactId: string;
+  roles: PactRole[];
   index: {
     client: string;
     provider: string;
@@ -336,8 +337,8 @@ export type FeedRow = {
     txHash: string;
     indexedAt: string;
   };
-  live: FeedJobLive | null;
-  events: JobEvent[];
+  live: FeedPactLive | null;
+  events: PactEvent[];
 };
 
 export type NotificationFeedResponse = {
@@ -358,7 +359,7 @@ export async function getNotificationFeed(
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return jsonFetch<NotificationFeedResponse>(
     'GET',
-    `/jobs/by-address/${encodeURIComponent(address)}/feed${suffix}`,
+    `/pacts/by-address/${encodeURIComponent(address)}/feed${suffix}`,
   );
 }
 
@@ -395,8 +396,8 @@ export async function getBridgeHistory(
   );
 }
 
-export type JobEvent = {
-  jobId: string;
+export type PactEvent = {
+  pactId: string;
   eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';
   hashValue: string;
   // Set for Funded + Refunded rows (uint256 USDC amount as decimal string);
@@ -411,10 +412,10 @@ export type JobEvent = {
   indexedAt: string;
 };
 
-export async function getJobEvents(jobId: string): Promise<JobEvent[]> {
-  const res = await jsonFetch<{ jobId: string; events: JobEvent[] }>(
+export async function getPactEvents(pactId: string): Promise<PactEvent[]> {
+  const res = await jsonFetch<{ pactId: string; events: PactEvent[] }>(
     'GET',
-    `/arc/escrow/job/${encodeURIComponent(jobId)}/events`,
+    `/arc/escrow/pact/${encodeURIComponent(pactId)}/events`,
   );
   return res.events;
 }
@@ -427,7 +428,7 @@ export async function getJobEvents(jobId: string): Promise<JobEvent[]> {
 export type DeliverableContentType = 'text' | 'url' | 'file';
 
 export type Deliverable = {
-  jobId: string;
+  pactId: string;
   hash: string;
   contentType: DeliverableContentType;
   textContent: string;
@@ -439,15 +440,15 @@ export type Deliverable = {
 };
 
 export async function uploadDeliverableContent(input: {
-  jobId: string;
+  pactId: string;
   contentType: 'text' | 'url';
   content: string;
   expectedHash: string;
   uploadedBy: string;
-}): Promise<{ jobId: string; hash: string; contentType: DeliverableContentType }> {
+}): Promise<{ pactId: string; hash: string; contentType: DeliverableContentType }> {
   return jsonFetch(
     'POST',
-    `/arc/escrow/job/${encodeURIComponent(input.jobId)}/deliverable-content`,
+    `/arc/escrow/pact/${encodeURIComponent(input.pactId)}/deliverable-content`,
     {
       contentType: input.contentType,
       content: input.content,
@@ -461,14 +462,14 @@ export async function uploadDeliverableContent(input: {
 // the precomputed keccak256 hash so the server can refuse mismatches without
 // us redoing the hash twice.
 export async function uploadDeliverableFile(input: {
-  jobId: string;
+  pactId: string;
   fileName: string;
   mime: string;
   fileBase64: string;
   expectedHash: string;
   uploadedBy: string;
 }): Promise<{
-  jobId: string;
+  pactId: string;
   hash: string;
   contentType: 'file';
   fileName: string;
@@ -477,7 +478,7 @@ export async function uploadDeliverableFile(input: {
 }> {
   return jsonFetch(
     'POST',
-    `/arc/escrow/job/${encodeURIComponent(input.jobId)}/deliverable-content`,
+    `/arc/escrow/pact/${encodeURIComponent(input.pactId)}/deliverable-content`,
     {
       contentType: 'file',
       fileName: input.fileName,
@@ -492,12 +493,12 @@ export async function uploadDeliverableFile(input: {
 // Fetches the raw bytes for a file deliverable. Returns a Blob so the caller
 // can recompute the hash client-side before saving the file to disk.
 export async function getDeliverableFile(
-  jobId: string,
+  pactId: string,
   hash: string,
   auth: { viewer: string; sig: string; ts: number },
 ): Promise<Blob> {
   const res = await fetch(
-    `${API_BASE}/arc/escrow/job/${encodeURIComponent(jobId)}/deliverable/file?hash=${encodeURIComponent(hash)}`,
+    `${API_BASE}/arc/escrow/pact/${encodeURIComponent(pactId)}/deliverable/file?hash=${encodeURIComponent(hash)}`,
     {
       headers: {
         'x-arc-viewer': auth.viewer,
@@ -521,10 +522,10 @@ export async function getDeliverableFile(
   return res.blob();
 }
 
-// Builds the canonical read-challenge message for a given jobId + timestamp.
+// Builds the canonical read-challenge message for a given pactId + timestamp.
 // Backend must reconstruct this exact string to verify the signature.
-export function readDeliverableChallenge(jobId: string, ts: number): string {
-  return `arc-trade:read-deliverable:${jobId}:${ts}`;
+export function readDeliverableChallenge(pactId: string, ts: number): string {
+  return `arc-trade:read-deliverable:${pactId}:${ts}`;
 }
 
 // Reuses a cached signature from localStorage if it's within the validity
@@ -532,12 +533,12 @@ export function readDeliverableChallenge(jobId: string, ts: number): string {
 // prompts the wallet once and caches. Caller passes signMessage so we stay
 // signer-agnostic (wagmi or Circle Modular).
 export async function getOrCreateReadAuth(
-  jobId: string,
+  pactId: string,
   viewer: string,
   signMessage: (msg: string) => Promise<string>,
 ): Promise<{ viewer: string; sig: string; ts: number }> {
   const CACHE_TTL_SECONDS = 23 * 60 * 60;
-  const cacheKey = `arc:deliv-sig:${jobId}:${viewer.toLowerCase()}`;
+  const cacheKey = `arc:deliv-sig:${pactId}:${viewer.toLowerCase()}`;
   const nowSec = Math.floor(Date.now() / 1000);
 
   if (typeof window !== 'undefined') {
@@ -555,7 +556,7 @@ export async function getOrCreateReadAuth(
   }
 
   const ts = nowSec;
-  const sig = await signMessage(readDeliverableChallenge(jobId, ts));
+  const sig = await signMessage(readDeliverableChallenge(pactId, ts));
 
   if (typeof window !== 'undefined') {
     localStorage.setItem(cacheKey, JSON.stringify({ sig, ts }));
@@ -565,12 +566,12 @@ export async function getOrCreateReadAuth(
 }
 
 export async function getDeliverable(
-  jobId: string,
+  pactId: string,
   hash: string,
   auth: { viewer: string; sig: string; ts: number },
 ): Promise<Deliverable> {
   const res = await fetch(
-    `${API_BASE}/arc/escrow/job/${encodeURIComponent(jobId)}/deliverable?hash=${encodeURIComponent(hash)}`,
+    `${API_BASE}/arc/escrow/pact/${encodeURIComponent(pactId)}/deliverable?hash=${encodeURIComponent(hash)}`,
     {
       headers: {
         'x-arc-viewer': auth.viewer,
@@ -603,8 +604,8 @@ export async function getDeliverable(
 // useSigner().sendCall(). The signer is whoever's connected; the backend
 // never sees the signer.
 
-export async function buildSetBudgetUnsigned(jobId: string, budgetUsdc: string): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/jobs/${encodeURIComponent(jobId)}/budget/unsigned`, {
+export async function buildSetBudgetUnsigned(pactId: string, budgetUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/budget/unsigned`, {
     budgetUsdc,
   });
 }
@@ -613,31 +614,31 @@ export async function buildApproveUnsigned(amountUsdc: string): Promise<Unsigned
   return jsonFetch<UnsignedTx>('POST', '/arc/usdc/approve/unsigned', { amountUsdc });
 }
 
-export async function buildFundUnsigned(jobId: string): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/jobs/${encodeURIComponent(jobId)}/fund/unsigned`);
+export async function buildFundUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/fund/unsigned`);
 }
 
 export async function buildSubmitUnsigned(
-  jobId: string,
+  pactId: string,
   deliverableHash: string,
 ): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/jobs/${encodeURIComponent(jobId)}/submit/unsigned`, {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/submit/unsigned`, {
     deliverableHash,
   });
 }
 
-export async function buildCompleteUnsigned(jobId: string, reasonHash?: string): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/jobs/${encodeURIComponent(jobId)}/complete/unsigned`, {
+export async function buildCompleteUnsigned(pactId: string, reasonHash?: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/complete/unsigned`, {
     reasonHash,
   });
 }
 
-export async function buildRejectUnsigned(jobId: string, reasonHash?: string): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/jobs/${encodeURIComponent(jobId)}/reject/unsigned`, {
+export async function buildRejectUnsigned(pactId: string, reasonHash?: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/reject/unsigned`, {
     reasonHash,
   });
 }
 
-export async function buildRefundUnsigned(jobId: string): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/jobs/${encodeURIComponent(jobId)}/refund/unsigned`);
+export async function buildRefundUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/refund/unsigned`);
 }

@@ -124,14 +124,37 @@ export function rowToUser(row: UserRow): User {
   };
 }
 
-// ─── Jobs index ────────────────────────────────────────────────────────────
-// Local cache of JobCreated events from the ERC-8183 reference contract.
-// Lets us answer "which jobs involve address X" without scanning chain logs
-// on every request. Live state (status, budget) is still read from chain.
+// ─── Pacts index ───────────────────────────────────────────────────────────
+// Local cache of JobCreated events from the ERC-8183 reference contract,
+// surfaced in our domain as Pacts. Lets us answer "which pacts involve
+// address X" without scanning chain logs on every request. Live state
+// (status, budget) is still read from chain.
+
+// M41a rename: pre-rename DBs had `jobs_index` / `job_events` and a
+// `job_id` column in deliverables. Migrate before the CREATE TABLE block
+// so existing rows carry over instead of leaving an empty new table.
+const masterRow = (name: string) =>
+  db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name);
+if (masterRow('jobs_index') && !masterRow('pacts_index')) {
+  db.exec(`
+    ALTER TABLE jobs_index RENAME TO pacts_index;
+    ALTER TABLE pacts_index RENAME COLUMN job_id TO pact_id;
+    DROP INDEX IF EXISTS idx_jobs_client;
+    DROP INDEX IF EXISTS idx_jobs_provider;
+    DROP INDEX IF EXISTS idx_jobs_evaluator;
+  `);
+}
+if (masterRow('job_events') && !masterRow('pact_events')) {
+  db.exec(`
+    ALTER TABLE job_events RENAME TO pact_events;
+    ALTER TABLE pact_events RENAME COLUMN job_id TO pact_id;
+    DROP INDEX IF EXISTS idx_job_events_job;
+  `);
+}
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS jobs_index (
-    job_id        TEXT PRIMARY KEY,
+  CREATE TABLE IF NOT EXISTS pacts_index (
+    pact_id       TEXT PRIMARY KEY,
     client        TEXT NOT NULL,
     provider      TEXT NOT NULL,
     evaluator     TEXT NOT NULL,
@@ -141,9 +164,9 @@ db.exec(`
     tx_hash       TEXT NOT NULL,
     indexed_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
-  CREATE INDEX IF NOT EXISTS idx_jobs_client    ON jobs_index(client);
-  CREATE INDEX IF NOT EXISTS idx_jobs_provider  ON jobs_index(provider);
-  CREATE INDEX IF NOT EXISTS idx_jobs_evaluator ON jobs_index(evaluator);
+  CREATE INDEX IF NOT EXISTS idx_pacts_client    ON pacts_index(client);
+  CREATE INDEX IF NOT EXISTS idx_pacts_provider  ON pacts_index(provider);
+  CREATE INDEX IF NOT EXISTS idx_pacts_evaluator ON pacts_index(evaluator);
 
   CREATE TABLE IF NOT EXISTS indexer_state (
     key   TEXT PRIMARY KEY,
@@ -153,8 +176,8 @@ db.exec(`
   -- Lifecycle events from ERC-8183 (Submitted/Completed/Rejected).
   -- One row per emitted event; PK is (tx_hash, log_index) so re-indexing
   -- the same block range is a no-op.
-  CREATE TABLE IF NOT EXISTS job_events (
-    job_id        TEXT NOT NULL,
+  CREATE TABLE IF NOT EXISTS pact_events (
+    pact_id       TEXT NOT NULL,
     event_type    TEXT NOT NULL,
     hash_value    TEXT NOT NULL,
     actor         TEXT NOT NULL,
@@ -164,9 +187,9 @@ db.exec(`
     indexed_at    TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (tx_hash, log_index)
   );
-  CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events(job_id);
+  CREATE INDEX IF NOT EXISTS idx_pact_events_pact ON pact_events(pact_id);
 
-  -- Off-chain deliverable content keyed by (job_id, hash). Only inserted
+  -- Off-chain deliverable content keyed by (pact_id, hash). Only inserted
   -- if the supplied content actually hashes to the claimed hash — the
   -- on-chain bytes32 is the access credential. Reads are parties-only
   -- (enforced in the route via signed-challenge auth).
@@ -174,7 +197,7 @@ db.exec(`
   -- text_content holds the actual text/url, or the filename for files.
   -- mime / size_bytes / file_path are only populated for files.
   CREATE TABLE IF NOT EXISTS deliverables (
-    job_id        TEXT NOT NULL,
+    pact_id       TEXT NOT NULL,
     hash          TEXT NOT NULL,
     content_type  TEXT NOT NULL,
     text_content  TEXT NOT NULL,
@@ -183,7 +206,7 @@ db.exec(`
     file_path     TEXT,
     uploaded_by   TEXT NOT NULL,
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (job_id, hash)
+    PRIMARY KEY (pact_id, hash)
   );
 
   -- CCTP V2 inbound bridge arrivals on Arc. Indexed from USDC Transfer
@@ -218,20 +241,32 @@ const colNames = new Set(deliverableCols.map((c) => c.name));
 if (!colNames.has('mime')) db.exec('ALTER TABLE deliverables ADD COLUMN mime TEXT');
 if (!colNames.has('size_bytes')) db.exec('ALTER TABLE deliverables ADD COLUMN size_bytes INTEGER');
 if (!colNames.has('file_path')) db.exec('ALTER TABLE deliverables ADD COLUMN file_path TEXT');
-
-// Idempotent migration for pre-M30 databases — adds amount_raw to job_events
-// so JobFunded rows can store the locked amount (uint256 as decimal string).
-// Existing Submitted/Completed/Rejected rows keep amount_raw NULL.
-const jobEventCols = db
-  .prepare("SELECT name FROM pragma_table_info('job_events')")
-  .all() as { name: string }[];
-const jobEventColNames = new Set(jobEventCols.map((c) => c.name));
-if (!jobEventColNames.has('amount_raw')) {
-  db.exec('ALTER TABLE job_events ADD COLUMN amount_raw TEXT');
+// M41a rename: pre-rename deliverables had `job_id`; carry the data into
+// the renamed column without dropping the table.
+if (colNames.has('job_id') && !colNames.has('pact_id')) {
+  db.exec('ALTER TABLE deliverables RENAME COLUMN job_id TO pact_id');
 }
 
-export type JobIndexRow = {
-  job_id: string;
+// Idempotent migration for pre-M30 databases — adds amount_raw to pact_events
+// so Funded rows can store the locked amount (uint256 as decimal string).
+// Existing Submitted/Completed/Rejected rows keep amount_raw NULL.
+const pactEventCols = db
+  .prepare("SELECT name FROM pragma_table_info('pact_events')")
+  .all() as { name: string }[];
+const pactEventColNames = new Set(pactEventCols.map((c) => c.name));
+if (!pactEventColNames.has('amount_raw')) {
+  db.exec('ALTER TABLE pact_events ADD COLUMN amount_raw TEXT');
+}
+
+// M41a rename: migrate indexer cursor keys so the indexer resumes from
+// where it stopped instead of re-scanning the lookback window.
+db.exec(`
+  UPDATE indexer_state SET key = 'pacts_index:last_block' WHERE key = 'jobs_index:last_block';
+  UPDATE indexer_state SET key = 'pact_events:last_block' WHERE key = 'job_events:last_block';
+`);
+
+export type PactIndexRow = {
+  pact_id: string;
   client: string;
   provider: string;
   evaluator: string;
@@ -242,8 +277,8 @@ export type JobIndexRow = {
   indexed_at: string;
 };
 
-export type JobIndex = {
-  jobId: string;
+export type PactIndex = {
+  pactId: string;
   client: string;
   provider: string;
   evaluator: string;
@@ -254,9 +289,9 @@ export type JobIndex = {
   indexedAt: string;
 };
 
-export function rowToJobIndex(row: JobIndexRow): JobIndex {
+export function rowToPactIndex(row: PactIndexRow): PactIndex {
   return {
-    jobId: row.job_id,
+    pactId: row.pact_id,
     client: row.client,
     provider: row.provider,
     evaluator: row.evaluator,
@@ -268,11 +303,11 @@ export function rowToJobIndex(row: JobIndexRow): JobIndex {
   };
 }
 
-export type JobEventType = 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';
+export type PactEventType = 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';
 
-export type JobEventRow = {
-  job_id: string;
-  event_type: JobEventType;
+export type PactEventRow = {
+  pact_id: string;
+  event_type: PactEventType;
   hash_value: string;       // bytes32 hex for Submitted/Completed/Rejected; '' for Funded
   amount_raw: string | null; // raw uint256 string for Funded; null for hash events
   actor: string;
@@ -282,9 +317,9 @@ export type JobEventRow = {
   indexed_at: string;
 };
 
-export type JobEvent = {
-  jobId: string;
-  eventType: JobEventType;
+export type PactEvent = {
+  pactId: string;
+  eventType: PactEventType;
   hashValue: string;
   amountRaw: string | null;
   actor: string;
@@ -294,9 +329,9 @@ export type JobEvent = {
   indexedAt: string;
 };
 
-export function rowToJobEvent(row: JobEventRow): JobEvent {
+export function rowToPactEvent(row: PactEventRow): PactEvent {
   return {
-    jobId: row.job_id,
+    pactId: row.pact_id,
     eventType: row.event_type,
     hashValue: row.hash_value,
     amountRaw: row.amount_raw,
@@ -311,7 +346,7 @@ export function rowToJobEvent(row: JobEventRow): JobEvent {
 export type DeliverableContentType = 'text' | 'url' | 'file';
 
 export type DeliverableRow = {
-  job_id: string;
+  pact_id: string;
   hash: string;
   content_type: DeliverableContentType;
   text_content: string;
@@ -323,7 +358,7 @@ export type DeliverableRow = {
 };
 
 export type Deliverable = {
-  jobId: string;
+  pactId: string;
   hash: string;
   contentType: DeliverableContentType;
   textContent: string;
@@ -336,7 +371,7 @@ export type Deliverable = {
 
 export function rowToDeliverable(row: DeliverableRow): Deliverable {
   return {
-    jobId: row.job_id,
+    pactId: row.pact_id,
     hash: row.hash,
     contentType: row.content_type,
     textContent: row.text_content,

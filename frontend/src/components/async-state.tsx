@@ -16,8 +16,8 @@ export function Skeleton({ className }: { className?: string }) {
   );
 }
 
-// A row that approximates a job/list card while content loads. Reused across
-// /jobs, /market, etc. so loading states feel consistent.
+// A row that approximates a pact/list card while content loads. Reused across
+// /pacts, /market, etc. so loading states feel consistent.
 export function ListItemSkeleton() {
   return (
     <div className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-900/30 p-4">

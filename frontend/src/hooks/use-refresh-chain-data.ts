@@ -15,7 +15,7 @@ import { useQueryClient } from '@tanstack/react-query';
  *
  * Used by:
  *   - hooks/use-signer.ts → after sendCall().wait() resolves successfully,
- *     covering every job action (setBudget, fund, submit, complete, reject,
+ *     covering every pact action (setBudget, fund, submit, complete, reject,
  *     claimRefund, register-agent).
  *   - components/bridge-widget.tsx → after kit.bridge() settles. Bridge Kit
  *     bypasses useSigner, so it needs the explicit call.

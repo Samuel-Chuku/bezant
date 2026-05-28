@@ -31,7 +31,7 @@ export default function ReputationIndexPage() {
         <h1 className="text-3xl font-semibold tracking-tight">Reputation</h1>
         <p className="mt-2 text-sm text-neutral-400">
           ERC-8004 reputation feedback for any agent on Arc. Link your own
-          agent to surface your record here and on every job page.
+          agent to surface your record here and on every pact page.
         </p>
       </header>
 

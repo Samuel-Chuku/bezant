@@ -88,7 +88,7 @@ export function CountdownChip({ unix, label }: { unix: number; label?: string })
   );
 }
 
-// Live-ticking banner — updates every second. For the job-detail page where
+// Live-ticking banner — updates every second. For the pact-detail page where
 // urgency matters and the user is actively deciding.
 export function CountdownBanner({
   unix,

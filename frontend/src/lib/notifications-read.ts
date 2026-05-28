@@ -1,6 +1,6 @@
 // localStorage-backed read-state for notifications. Stores the set of
 // notification keys this wallet has already seen, capped FIFO so the file
-// doesn't grow forever as old jobs accumulate.
+// doesn't grow forever as old pacts accumulate.
 import type { Address } from 'viem';
 
 const MAX_KEYS = 200;

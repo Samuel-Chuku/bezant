@@ -102,7 +102,7 @@ export function NotificationsBell() {
                     onClick={() => {
                       markRead(item.key);
                       setOpen(false);
-                      router.push(`/jobs/${encodeURIComponent(item.jobId)}`);
+                      router.push(`/pacts/${encodeURIComponent(item.pactId)}`);
                     }}
                   />
                 ))}

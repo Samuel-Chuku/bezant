@@ -1,46 +1,46 @@
-// Role-aware "what should happen next" for a job. Single source of truth
-// for both the job-detail page's waiting cue and the notifications feed —
+// Role-aware "what should happen next" for a pact. Single source of truth
+// for both the pact-detail page's waiting cue and the notifications feed —
 // derives the directive sentence and whether the *connected user* is the
 // one being asked to act.
-import type { JobLiveState, JobRole } from './api';
+import type { PactLiveState, PactRole } from './api';
 
 // Returns a directive/waiting sentence for the connected user, or null when
-// the job is terminal. Mirrors the lifecycle the reference contract enforces;
-// `status` is the effective status (soft-Expired included), `job.status` is
+// the pact is terminal. Mirrors the lifecycle the reference contract enforces;
+// `status` is the effective status (soft-Expired included), `pact.status` is
 // the raw on-chain enum value.
 export function describeCurrentStep(
-  job: JobLiveState,
+  pact: PactLiveState,
   status: string,
-  roles: JobRole[],
+  roles: PactRole[],
 ): string | null {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
   const isEvaluator = roles.includes('evaluator');
-  const budgetSet = job.budget.usdc !== '0';
+  const budgetSet = pact.budget.usdc !== '0';
 
   if (status === 'Completed' || status === 'Rejected') return null;
   // On-chain Expired is reached only via claimRefund(); terminal.
-  if (job.status === 'Expired') return null;
+  if (pact.status === 'Expired') return null;
 
   if (status === 'Expired') {
-    if (job.status === 'Funded' || job.status === 'Submitted') {
-      return `Anyone can claim the ${job.budget.usdc} USDC refund for the client.`;
+    if (pact.status === 'Funded' || pact.status === 'Submitted') {
+      return `Anyone can claim the ${pact.budget.usdc} USDC refund for the client.`;
     }
     return isClient
-      ? 'Cancel this job to clear it, then post a fresh one with a longer deadline.'
+      ? 'Cancel this pact to clear it, then post a fresh one with a longer deadline.'
       : 'Waiting for the client to cancel or repost.';
   }
 
   if (status === 'Open' && !budgetSet) {
     return isProvider
-      ? 'Set your quote so the client can fund the job.'
+      ? 'Set your quote so the client can fund the pact.'
       : 'Waiting for the provider to quote a price.';
   }
 
   if (status === 'Open' && budgetSet) {
-    if (isClient) return `Fund the job to lock the ${job.budget.usdc} USDC and let work begin.`;
-    if (isProvider) return 'Quote sent. Waiting for the client to fund the job.';
-    return 'Waiting for the client to fund the job.';
+    if (isClient) return `Fund the pact to lock the ${pact.budget.usdc} USDC and let work begin.`;
+    if (isProvider) return 'Quote sent. Waiting for the client to fund the pact.';
+    return 'Waiting for the client to fund the pact.';
   }
 
   if (status === 'Funded') {
@@ -68,23 +68,23 @@ export function describeCurrentStep(
 // than scraping the returned sentence — keeps the two in lock-step without
 // fragile string matching.
 export function isActionRequiredByMe(
-  job: JobLiveState,
+  pact: PactLiveState,
   status: string,
-  roles: JobRole[],
+  roles: PactRole[],
 ): boolean {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
   const isEvaluator = roles.includes('evaluator');
-  const budgetSet = job.budget.usdc !== '0';
+  const budgetSet = pact.budget.usdc !== '0';
 
   if (status === 'Completed' || status === 'Rejected') return false;
-  if (job.status === 'Expired') return false;
+  if (pact.status === 'Expired') return false;
 
   if (status === 'Expired') {
     // Anyone can claim the refund on behalf of the client; only the client
     // sees this as "their action" — non-clients can technically call it too
-    // but it's not their job. Surface this only to client.
-    if (job.status === 'Funded' || job.status === 'Submitted') return isClient;
+    // but it's not their pact. Surface this only to client.
+    if (pact.status === 'Funded' || pact.status === 'Submitted') return isClient;
     return isClient;
   }
   if (status === 'Open' && !budgetSet) return isProvider;
@@ -98,13 +98,13 @@ export function isActionRequiredByMe(
 // Display status that distinguishes a client cancellation from an evaluator
 // rejection. The ERC-8183 reference contract has a single reject() function
 // for both, so the raw on-chain status is "Rejected" in both cases. Compare
-// the indexed terminationActor with job.client to recover the semantic case.
+// the indexed terminationActor with pact.client to recover the semantic case.
 // Falls back to the raw status when terminationActor isn't available yet
 // (~10s window while the indexer catches up).
-export function displayStatus(job: JobLiveState, status: string): string {
+export function displayStatus(pact: PactLiveState, status: string): string {
   if (status !== 'Rejected') return status;
-  if (!job.terminationActor) return status;
-  if (job.terminationActor.toLowerCase() === job.client.toLowerCase()) {
+  if (!pact.terminationActor) return status;
+  if (pact.terminationActor.toLowerCase() === pact.client.toLowerCase()) {
     return 'Cancelled';
   }
   return status;
@@ -114,15 +114,15 @@ export function displayStatus(job: JobLiveState, status: string): string {
 // null on terminal states or "waiting for someone else" branches; callers
 // fall back to a generic deadline label.
 export function actionVerbForMe(
-  job: JobLiveState,
+  pact: PactLiveState,
   status: string,
-  roles: JobRole[],
+  roles: PactRole[],
 ): string | null {
-  if (!isActionRequiredByMe(job, status, roles)) return null;
-  const budgetSet = job.budget.usdc !== '0';
+  if (!isActionRequiredByMe(pact, status, roles)) return null;
+  const budgetSet = pact.budget.usdc !== '0';
   if (status === 'Expired') return 'cancel and repost';
   if (status === 'Open' && !budgetSet) return 'set your quote';
-  if (status === 'Open' && budgetSet) return 'fund the job';
+  if (status === 'Open' && budgetSet) return 'fund the pact';
   if (status === 'Funded') return 'submit the deliverable';
   if (status === 'Submitted') return 'review the deliverable';
   return null;

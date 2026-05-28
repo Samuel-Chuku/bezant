@@ -124,7 +124,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
       },
       // Smart-account sig is ERC-1271; backend verifies via on-chain
       // isValidSignature, so the smart account must already be deployed
-      // (true for any address that's already a party on a job).
+      // (true for any address that's already a party on a pact).
       signMessage: async (message) => smartAccount.signMessage({ message }),
       disconnect: () => circle.disconnect(),
     };

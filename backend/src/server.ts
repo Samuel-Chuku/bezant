@@ -35,16 +35,16 @@ import {
 import {
   db,
   rowToUser,
-  rowToJobIndex,
-  rowToJobEvent,
+  rowToPactIndex,
+  rowToPactEvent,
   rowToDeliverable,
   type UserRow,
-  type JobIndexRow,
-  type JobEventRow,
+  type PactIndexRow,
+  type PactEventRow,
   type DeliverableRow,
   type DeliverableContentType,
 } from './lib/db.js';
-import { startJobIndexer } from './lib/job-indexer.js';
+import { startPactIndexer } from './lib/pact-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
 
 function requireEnv(key: string): string {
@@ -467,7 +467,7 @@ app.patch<{ Params: { id: string }; Body: { handle?: string | null } }>(
 // Users opt-in to surface their ERC-8004 reputation by linking an agentId
 // they own (verified on-chain via IdentityRegistry.ownerOf / getAgentWallet).
 // Reputation itself is fetched live — no indexing yet, view calls are cheap
-// enough on a single jobId-keyed page that caching can come later if needed.
+// enough on a single pactId-keyed page that caching can come later if needed.
 
 let cachedIdentityRegistry: `0x${string}` | null = null;
 async function resolveIdentityRegistry(): Promise<`0x${string}`> {
@@ -668,7 +668,7 @@ app.post<{
     expiredInSeconds: number;
     description: string;
   };
-}>('/arc/escrow/jobs', async (request, reply) => {
+}>('/arc/escrow/pacts', async (request, reply) => {
   const { provider, evaluator, expiredInSeconds, description } = request.body;
   const signer = requireSigner(reply, request.body);
   if (!signer) return;
@@ -694,7 +694,7 @@ app.post<{
   if (!createdLog) return reply.code(500).send({ error: 'JobCreated event missing from receipt' });
 
   return {
-    jobId: createdLog.args.jobId.toString(),
+    pactId: createdLog.args.jobId.toString(),
     txId: tx.id,
     txHash: tx.txHash,
     state: tx.state,
@@ -702,26 +702,26 @@ app.post<{
 });
 
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; budgetUsdc: string } }>(
-  '/arc/escrow/jobs/:id/budget',
+  '/arc/escrow/pacts/:id/budget',
   async (request, reply) => {
     const { budgetUsdc } = request.body;
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const jobId = request.params.id;
+    const pactId = request.params.id;
     const amountRaw = parseUnits(budgetUsdc, 6);
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'setBudget(uint256,uint256,bytes)',
-      abiParameters: [jobId, amountRaw.toString(), '0x'],
+      abiParameters: [pactId, amountRaw.toString(), '0x'],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
     const tx = await waitForCircleTx(exec.data!.id);
 
     return {
-      jobId,
+      pactId,
       budget: { raw: amountRaw.toString(), usdc: budgetUsdc },
       txId: tx.id,
       txHash: tx.txHash,
@@ -756,24 +756,24 @@ app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/a
 });
 
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
-  '/arc/escrow/jobs/:id/fund',
+  '/arc/escrow/pacts/:id/fund',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const jobId = request.params.id;
+    const pactId = request.params.id;
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'fund(uint256,bytes)',
-      abiParameters: [jobId, '0x'],
+      abiParameters: [pactId, '0x'],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
     const tx = await waitForCircleTx(exec.data!.id);
 
     return {
-      jobId,
+      pactId,
       txId: tx.id,
       txHash: tx.txHash,
       state: tx.state,
@@ -782,11 +782,11 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
 );
 
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; deliverableHash: string } }>(
-  '/arc/escrow/jobs/:id/submit',
+  '/arc/escrow/pacts/:id/submit',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const jobId = request.params.id;
+    const pactId = request.params.id;
     let deliverable: `0x${string}`;
     try {
       deliverable = toBytes32(request.body?.deliverableHash, 'deliverableHash');
@@ -801,14 +801,14 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; del
       walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'submit(uint256,bytes32,bytes)',
-      abiParameters: [jobId, deliverable, '0x'],
+      abiParameters: [pactId, deliverable, '0x'],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
     const tx = await waitForCircleTx(exec.data!.id);
 
     return {
-      jobId,
+      pactId,
       deliverableHash: deliverable,
       txId: tx.id,
       txHash: tx.txHash,
@@ -818,11 +818,11 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; del
 );
 
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; reasonHash?: string } }>(
-  '/arc/escrow/jobs/:id/complete',
+  '/arc/escrow/pacts/:id/complete',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const jobId = request.params.id;
+    const pactId = request.params.id;
     let reason: `0x${string}`;
     try {
       reason = toBytes32(request.body?.reasonHash, 'reasonHash');
@@ -834,14 +834,14 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
       walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'complete(uint256,bytes32,bytes)',
-      abiParameters: [jobId, reason, '0x'],
+      abiParameters: [pactId, reason, '0x'],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
     const tx = await waitForCircleTx(exec.data!.id);
 
     return {
-      jobId,
+      pactId,
       reasonHash: reason,
       txId: tx.id,
       txHash: tx.txHash,
@@ -851,11 +851,11 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
 );
 
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; reasonHash?: string } }>(
-  '/arc/escrow/jobs/:id/reject',
+  '/arc/escrow/pacts/:id/reject',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const jobId = request.params.id;
+    const pactId = request.params.id;
     let reason: `0x${string}`;
     try {
       reason = toBytes32(request.body?.reasonHash, 'reasonHash');
@@ -867,14 +867,14 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
       walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'reject(uint256,bytes32,bytes)',
-      abiParameters: [jobId, reason, '0x'],
+      abiParameters: [pactId, reason, '0x'],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
     const tx = await waitForCircleTx(exec.data!.id);
 
     return {
-      jobId,
+      pactId,
       reasonHash: reason,
       txId: tx.id,
       txHash: tx.txHash,
@@ -884,24 +884,24 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
 );
 
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
-  '/arc/escrow/jobs/:id/refund',
+  '/arc/escrow/pacts/:id/refund',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const jobId = request.params.id;
+    const pactId = request.params.id;
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
       contractAddress: ERC8183_ADDRESS,
       abiFunctionSignature: 'claimRefund(uint256)',
-      abiParameters: [jobId],
+      abiParameters: [pactId],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
     const tx = await waitForCircleTx(exec.data!.id);
 
     return {
-      jobId,
+      pactId,
       txId: tx.id,
       txHash: tx.txHash,
       state: tx.state,
@@ -924,7 +924,7 @@ app.post<{
     expiredInSeconds: number;
     description: string;
   };
-}>('/arc/escrow/jobs/unsigned', async (request, reply) => {
+}>('/arc/escrow/pacts/unsigned', async (request, reply) => {
   const { provider, evaluator, expiredInSeconds, description } = request.body;
   if (!provider || !/^0x[0-9a-fA-F]{40}$/.test(provider)) {
     return reply.code(400).send({ error: 'provider must be a 0x-prefixed 20-byte hex address' });
@@ -946,15 +946,15 @@ app.post<{
 });
 
 app.post<{ Params: { id: string }; Body: { budgetUsdc: string } }>(
-  '/arc/escrow/jobs/:id/budget/unsigned',
+  '/arc/escrow/pacts/:id/budget/unsigned',
   async (request, reply) => {
-    const jobId = BigInt(request.params.id);
+    const pactId = BigInt(request.params.id);
     const { budgetUsdc } = request.body;
     if (!budgetUsdc || Number(budgetUsdc) <= 0) {
       return reply.code(400).send({ error: 'budgetUsdc must be a positive number string' });
     }
     const amountRaw = parseUnits(budgetUsdc, 6);
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'setBudget', [jobId, amountRaw, '0x']);
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'setBudget', [pactId, amountRaw, '0x']);
   },
 );
 
@@ -967,15 +967,15 @@ app.post<{ Body: { amountUsdc: string } }>('/arc/usdc/approve/unsigned', async (
   return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [ERC8183_ADDRESS, amountRaw]);
 });
 
-app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/fund/unsigned', async (request) => {
-  const jobId = BigInt(request.params.id);
-  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'fund', [jobId, '0x']);
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/fund/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'fund', [pactId, '0x']);
 });
 
 app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
-  '/arc/escrow/jobs/:id/submit/unsigned',
+  '/arc/escrow/pacts/:id/submit/unsigned',
   async (request, reply) => {
-    const jobId = BigInt(request.params.id);
+    const pactId = BigInt(request.params.id);
     let deliverable: `0x${string}`;
     try {
       deliverable = toBytes32(request.body.deliverableHash, 'deliverableHash');
@@ -985,49 +985,49 @@ app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
     if (deliverable === ZERO_BYTES32) {
       return reply.code(400).send({ error: 'deliverableHash is required' });
     }
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'submit', [jobId, deliverable, '0x']);
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'submit', [pactId, deliverable, '0x']);
   },
 );
 
 app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
-  '/arc/escrow/jobs/:id/complete/unsigned',
+  '/arc/escrow/pacts/:id/complete/unsigned',
   async (request, reply) => {
-    const jobId = BigInt(request.params.id);
+    const pactId = BigInt(request.params.id);
     let reason: `0x${string}`;
     try {
       reason = toBytes32(request.body.reasonHash, 'reasonHash');
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'complete', [jobId, reason, '0x']);
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'complete', [pactId, reason, '0x']);
   },
 );
 
 app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
-  '/arc/escrow/jobs/:id/reject/unsigned',
+  '/arc/escrow/pacts/:id/reject/unsigned',
   async (request, reply) => {
-    const jobId = BigInt(request.params.id);
+    const pactId = BigInt(request.params.id);
     let reason: `0x${string}`;
     try {
       reason = toBytes32(request.body.reasonHash, 'reasonHash');
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'reject', [jobId, reason, '0x']);
+    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'reject', [pactId, reason, '0x']);
   },
 );
 
-app.post<{ Params: { id: string } }>('/arc/escrow/jobs/:id/refund/unsigned', async (request) => {
-  const jobId = BigInt(request.params.id);
-  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'claimRefund', [jobId]);
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/refund/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'claimRefund', [pactId]);
 });
 
-// Lookup jobs by participant address. Indexed locally by polling JobCreated
+// Lookup pacts by participant address. Indexed locally by polling JobCreated
 // events from the reference contract; live state (status, budget) still comes
-// from the chain via /arc/escrow/job/:id. Returned rows include the role the
-// address plays in each job so the frontend doesn't need to recompute it.
-type JobsByAddressEntry = {
-  jobId: string;
+// from the chain via /arc/escrow/pact/:id. Returned rows include the role the
+// address plays in each pact so the frontend doesn't need to recompute it.
+type PactsByAddressEntry = {
+  pactId: string;
   client: string;
   provider: string;
   evaluator: string;
@@ -1040,7 +1040,7 @@ type JobsByAddressEntry = {
 };
 
 app.get<{ Params: { address: string } }>(
-  '/jobs/by-address/:address',
+  '/pacts/by-address/:address',
   async (request, reply) => {
     const address = request.params.address.toLowerCase();
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
@@ -1048,33 +1048,33 @@ app.get<{ Params: { address: string } }>(
     }
     const rows = db
       .prepare(
-        `SELECT * FROM jobs_index
+        `SELECT * FROM pacts_index
          WHERE client = ? OR provider = ? OR evaluator = ?
          ORDER BY block_number DESC`,
       )
-      .all(address, address, address) as JobIndexRow[];
+      .all(address, address, address) as PactIndexRow[];
 
-    const jobs: JobsByAddressEntry[] = rows.map((row) => {
-      const base = rowToJobIndex(row);
-      const roles: JobsByAddressEntry['roles'] = [];
+    const pacts: PactsByAddressEntry[] = rows.map((row) => {
+      const base = rowToPactIndex(row);
+      const roles: PactsByAddressEntry['roles'] = [];
       if (base.client === address) roles.push('client');
       if (base.provider === address) roles.push('provider');
       if (base.evaluator === address) roles.push('evaluator');
       return { ...base, roles };
     });
 
-    return { address, jobs, count: jobs.length };
+    return { address, pacts, count: pacts.length };
   },
 );
 
-// Notifications feed for a given address — bundles, per job, the immutable
-// index row + live on-chain state + this job's events. Saves the frontend
+// Notifications feed for a given address — bundles, per pact, the immutable
+// index row + live on-chain state + this pact's events. Saves the frontend
 // from doing N×2 round-trips to render the bell. Paginated by recency.
 const FEED_PAGE_DEFAULT = 30;
 const FEED_PAGE_MAX = 100;
 
 type FeedRow = {
-  jobId: string;
+  pactId: string;
   roles: Array<'client' | 'provider' | 'evaluator'>;
   index: {
     client: string;
@@ -1091,13 +1091,13 @@ type FeedRow = {
     expiredAt: { unix: number; iso: string };
     description: string;
   } | null;
-  events: ReturnType<typeof rowToJobEvent>[];
+  events: ReturnType<typeof rowToPactEvent>[];
 };
 
 app.get<{
   Params: { address: string };
   Querystring: { limit?: string; offset?: string };
-}>('/jobs/by-address/:address/feed', async (request, reply) => {
+}>('/pacts/by-address/:address/feed', async (request, reply) => {
   const address = request.params.address.toLowerCase();
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
     return reply.code(400).send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
@@ -1105,19 +1105,19 @@ app.get<{
   const limit = clampInt(request.query.limit, FEED_PAGE_DEFAULT, 1, FEED_PAGE_MAX);
   const offset = clampInt(request.query.offset, 0, 0, 100_000);
 
-  // Newest jobs first — matches the bell's "what changed recently" framing.
+  // Newest pacts first — matches the bell's "what changed recently" framing.
   const indexRows = db
     .prepare(
-      `SELECT * FROM jobs_index
+      `SELECT * FROM pacts_index
        WHERE client = ? OR provider = ? OR evaluator = ?
        ORDER BY block_number DESC`,
     )
-    .all(address, address, address) as JobIndexRow[];
+    .all(address, address, address) as PactIndexRow[];
 
   const total = indexRows.length;
   const pageRows = indexRows.slice(offset, offset + limit);
 
-  // Live read + events fetched per job in parallel. Tolerates per-call
+  // Live read + events fetched per pact in parallel. Tolerates per-call
   // failures — a single dead RPC shouldn't take the whole bell down.
   const live = await Promise.allSettled(
     pageRows.map((row) =>
@@ -1125,30 +1125,30 @@ app.get<{
         address: ERC8183_ADDRESS,
         abi: erc8183Abi,
         functionName: 'getJob',
-        args: [BigInt(row.job_id)],
+        args: [BigInt(row.pact_id)],
       }),
     ),
   );
 
-  const eventsByJob = new Map<string, ReturnType<typeof rowToJobEvent>[]>();
+  const eventsByPact = new Map<string, ReturnType<typeof rowToPactEvent>[]>();
   if (pageRows.length > 0) {
     const placeholders = pageRows.map(() => '?').join(',');
     const eventRows = db
       .prepare(
-        `SELECT * FROM job_events
-         WHERE job_id IN (${placeholders})
+        `SELECT * FROM pact_events
+         WHERE pact_id IN (${placeholders})
          ORDER BY block_number ASC, log_index ASC`,
       )
-      .all(...pageRows.map((r) => r.job_id)) as JobEventRow[];
+      .all(...pageRows.map((r) => r.pact_id)) as PactEventRow[];
     for (const r of eventRows) {
-      const list = eventsByJob.get(r.job_id) ?? [];
-      list.push(rowToJobEvent(r));
-      eventsByJob.set(r.job_id, list);
+      const list = eventsByPact.get(r.pact_id) ?? [];
+      list.push(rowToPactEvent(r));
+      eventsByPact.set(r.pact_id, list);
     }
   }
 
   const feed: FeedRow[] = pageRows.map((row, i) => {
-    const base = rowToJobIndex(row);
+    const base = rowToPactIndex(row);
     const roles: FeedRow['roles'] = [];
     if (base.client === address) roles.push('client');
     if (base.provider === address) roles.push('provider');
@@ -1172,7 +1172,7 @@ app.get<{
         : null;
 
     return {
-      jobId: base.jobId,
+      pactId: base.pactId,
       roles,
       index: {
         client: base.client,
@@ -1184,7 +1184,7 @@ app.get<{
         indexedAt: base.indexedAt,
       },
       live: liveData,
-      events: eventsByJob.get(base.jobId) ?? [],
+      events: eventsByPact.get(base.pactId) ?? [],
     };
   });
 
@@ -1263,16 +1263,16 @@ app.get<{
   return { address, history, count: history.length };
 });
 
-// Open-jobs marketplace. Lists every Open ERC-8183 job our indexer has
+// Open-pacts marketplace. Lists every Open ERC-8183 pact our indexer has
 // seen (this is the public reference contract, so it's the whole network
-// pre-wrapper, not just arc-trade-created jobs). Filters in-memory after a
+// pre-wrapper, not just arc-trade-created pacts). Filters in-memory after a
 // fan-out live read since status + budget aren't indexed on-chain.
 const MARKET_INDEX_CAP = 500;
 const MARKET_PAGE_DEFAULT = 20;
 const MARKET_PAGE_MAX = 50;
 
-type OpenJobEntry = {
-  jobId: string;
+type OpenPactEntry = {
+  pactId: string;
   client: string;
   provider: string;
   evaluator: string;
@@ -1286,7 +1286,7 @@ type OpenJobEntry = {
 
 app.get<{
   Querystring: { limit?: string; offset?: string; minBudget?: string; maxBudget?: string };
-}>('/jobs/open', async (request, reply) => {
+}>('/pacts/open', async (request, reply) => {
   const limit = clampInt(request.query.limit, MARKET_PAGE_DEFAULT, 1, MARKET_PAGE_MAX);
   const offset = clampInt(request.query.offset, 0, 0, 100_000);
 
@@ -1299,15 +1299,15 @@ app.get<{
     return reply.code(400).send({ error: 'minBudget/maxBudget must be numeric USDC strings' });
   }
 
-  // Pull the most-recent N from the index. Older jobs (most likely terminal
+  // Pull the most-recent N from the index. Older pacts (most likely terminal
   // by now) are dropped — keeps the live-read fan-out bounded.
   const indexRows = db
     .prepare(
-      `SELECT * FROM jobs_index
+      `SELECT * FROM pacts_index
        ORDER BY block_number DESC
        LIMIT ?`,
     )
-    .all(MARKET_INDEX_CAP) as JobIndexRow[];
+    .all(MARKET_INDEX_CAP) as PactIndexRow[];
 
   // Live-read budget + status for every candidate in parallel. ERC-8183
   // doesn't emit a BudgetSet event, so we can't index this — see M30 note.
@@ -1317,37 +1317,37 @@ app.get<{
         address: ERC8183_ADDRESS,
         abi: erc8183Abi,
         functionName: 'getJob',
-        args: [BigInt(row.job_id)],
+        args: [BigInt(row.pact_id)],
       }),
     ),
   );
 
   const nowUnix = Math.floor(Date.now() / 1000);
-  const open: OpenJobEntry[] = [];
+  const open: OpenPactEntry[] = [];
 
   for (let i = 0; i < indexRows.length; i++) {
     const row = indexRows[i];
     const result = liveStates[i];
     if (result.status !== 'fulfilled') continue;
-    const job = result.value;
-    const status = JOB_STATUS[job.status] ?? `Unknown(${job.status})`;
+    const pact = result.value;
+    const status = JOB_STATUS[pact.status] ?? `Unknown(${pact.status})`;
     if (status !== 'Open') continue;
-    if (Number(job.expiredAt) <= nowUnix) continue;
-    if (minBudgetRaw !== null && job.budget < minBudgetRaw) continue;
-    if (maxBudgetRaw !== null && job.budget > maxBudgetRaw) continue;
+    if (Number(pact.expiredAt) <= nowUnix) continue;
+    if (minBudgetRaw !== null && pact.budget < minBudgetRaw) continue;
+    if (maxBudgetRaw !== null && pact.budget > maxBudgetRaw) continue;
     open.push({
-      jobId: row.job_id,
-      client: job.client,
-      provider: job.provider,
-      evaluator: job.evaluator,
-      description: job.description,
-      budget: { raw: job.budget.toString(), usdc: formatUnits(job.budget, 6) },
+      pactId: row.pact_id,
+      client: pact.client,
+      provider: pact.provider,
+      evaluator: pact.evaluator,
+      description: pact.description,
+      budget: { raw: pact.budget.toString(), usdc: formatUnits(pact.budget, 6) },
       expiredAt: {
-        unix: Number(job.expiredAt),
-        iso: new Date(Number(job.expiredAt) * 1000).toISOString(),
+        unix: Number(pact.expiredAt),
+        iso: new Date(Number(pact.expiredAt) * 1000).toISOString(),
       },
       status,
-      hook: job.hook,
+      hook: pact.hook,
       createdAt: {
         blockNumber: row.block_number,
         txHash: row.tx_hash,
@@ -1357,8 +1357,8 @@ app.get<{
   }
 
   const total = open.length;
-  const jobs = open.slice(offset, offset + limit);
-  return { jobs, total, limit, offset, indexScanned: indexRows.length };
+  const pacts = open.slice(offset, offset + limit);
+  return { pacts, total, limit, offset, indexScanned: indexRows.length };
 });
 
 function clampInt(value: string | undefined, fallback: number, min: number, max: number): number {
@@ -1368,42 +1368,42 @@ function clampInt(value: string | undefined, fallback: number, min: number, max:
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
-app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply) => {
-  const jobId = BigInt(request.params.id);
+app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, reply) => {
+  const pactId = BigInt(request.params.id);
 
-  const job = await arcClient.readContract({
+  const pact = await arcClient.readContract({
     address: ERC8183_ADDRESS,
     abi: erc8183Abi,
     functionName: 'getJob',
-    args: [jobId],
+    args: [pactId],
   });
 
-  if (job.id === 0n && job.client === '0x0000000000000000000000000000000000000000') {
-    return reply.code(404).send({ error: `Job ${request.params.id} not found` });
+  if (pact.id === 0n && pact.client === '0x0000000000000000000000000000000000000000') {
+    return reply.code(404).send({ error: `Pact ${request.params.id} not found` });
   }
 
   // Bolt on the creation metadata from the local index so the frontend can
   // render a lifecycle timeline without a second roundtrip. null if the
   // indexer hasn't caught up yet (~10s window after a fresh JobCreated).
   const createdRow = db
-    .prepare('SELECT block_number, tx_hash, indexed_at FROM jobs_index WHERE job_id = ?')
+    .prepare('SELECT block_number, tx_hash, indexed_at FROM pacts_index WHERE pact_id = ?')
     .get(request.params.id) as
     | { block_number: number; tx_hash: string; indexed_at: string }
     | undefined;
 
   // For terminal states (Completed / Rejected) include the actor address
-  // from job_events so the frontend can disambiguate semantic cases like
-  // "client cancelled an Open job" (label as Cancelled) vs. "evaluator
+  // from pact_events so the frontend can disambiguate semantic cases like
+  // "client cancelled an Open pact" (label as Cancelled) vs. "evaluator
   // rejected a Submitted deliverable" (label as Rejected). Both emit the
   // same Rejected event on the reference contract.
-  const status = JOB_STATUS[job.status] ?? `Unknown(${job.status})`;
+  const status = JOB_STATUS[pact.status] ?? `Unknown(${pact.status})`;
   let terminationActor: string | null = null;
   if (status === 'Rejected' || status === 'Completed') {
     const eventType = status; // 'Rejected' or 'Completed'
     const row = db
       .prepare(
-        `SELECT actor FROM job_events
-         WHERE job_id = ? AND event_type = ?
+        `SELECT actor FROM pact_events
+         WHERE pact_id = ? AND event_type = ?
          ORDER BY block_number DESC, log_index DESC
          LIMIT 1`,
       )
@@ -1412,21 +1412,21 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
   }
 
   return {
-    id: job.id.toString(),
-    client: job.client,
-    provider: job.provider,
-    evaluator: job.evaluator,
-    description: job.description,
+    id: pact.id.toString(),
+    client: pact.client,
+    provider: pact.provider,
+    evaluator: pact.evaluator,
+    description: pact.description,
     budget: {
-      raw: job.budget.toString(),
-      usdc: formatUnits(job.budget, 6),
+      raw: pact.budget.toString(),
+      usdc: formatUnits(pact.budget, 6),
     },
     expiredAt: {
-      unix: Number(job.expiredAt),
-      iso: new Date(Number(job.expiredAt) * 1000).toISOString(),
+      unix: Number(pact.expiredAt),
+      iso: new Date(Number(pact.expiredAt) * 1000).toISOString(),
     },
     status,
-    hook: job.hook,
+    hook: pact.hook,
     terminationActor,
     createdAt: createdRow
       ? {
@@ -1442,7 +1442,7 @@ app.get<{ Params: { id: string } }>('/arc/escrow/job/:id', async (request, reply
 // Live view-calls to the ReputationRegistry. No indexing yet — view reads
 // are cheap on a per-agent basis. Two routes:
 //   - /summary: just getClients + getSummary. Used by the inline badge so
-//     multi-party job-detail views don't shred bandwidth.
+//     multi-party pact-detail views don't shred bandwidth.
 //   - full path: adds readAllFeedback for the reputation page; truncated
 //     to FEEDBACK_PAGE_DEFAULT (or ?limit=) most-recent entries, since
 //     readAllFeedback returns the entire history in one shot and some
@@ -1711,25 +1711,25 @@ app.post<{ Body: { txHash?: string } }>(
   },
 );
 
-// Lifecycle events for a job (Submitted/Completed/Rejected). Surfaces the
+// Lifecycle events for a pact (Submitted/Completed/Rejected). Surfaces the
 // on-chain bytes32 deliverable + reason hashes for any viewer; indexed via
-// job-indexer. Empty array is valid (e.g. Open or Funded jobs).
-app.get<{ Params: { id: string } }>('/arc/escrow/job/:id/events', async (request, reply) => {
+// pact-indexer. Empty array is valid (e.g. Open or Funded pacts).
+app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id/events', async (request, reply) => {
   if (!/^\d+$/.test(request.params.id)) {
-    return reply.code(400).send({ error: 'id must be a numeric job id' });
+    return reply.code(400).send({ error: 'id must be a numeric pact id' });
   }
   const rows = db
     .prepare(
-      `SELECT * FROM job_events WHERE job_id = ?
+      `SELECT * FROM pact_events WHERE pact_id = ?
        ORDER BY block_number ASC, log_index ASC`,
     )
-    .all(request.params.id) as JobEventRow[];
-  return { jobId: request.params.id, events: rows.map(rowToJobEvent) };
+    .all(request.params.id) as PactEventRow[];
+  return { pactId: request.params.id, events: rows.map(rowToPactEvent) };
 });
 
 // ─── Deliverable content (Layers 2 + 3) ────────────────────────────────────
 // Off-chain content (text, URL, or file) attached to a Submitted event.
-// Stored keyed by (jobId, hash). Upload is gated by hash verification — the
+// Stored keyed by (pactId, hash). Upload is gated by hash verification — the
 // supplied content must keccak256 to the claimed hash, which means only
 // whoever already knew the preimage (i.e. the provider) can store content
 // for that slot. Read is gated by wallet-signature auth, parties-only.
@@ -1751,13 +1751,13 @@ function isHexBytes32(s: string): boolean {
 }
 
 // Verify x-arc-viewer / x-arc-sig / x-arc-ts and check the viewer is a
-// party on this job. Returns the lowercased viewer address on success,
+// party on this pact. Returns the lowercased viewer address on success,
 // or null after sending an error response. Shared between the JSON
 // metadata route and the binary file route.
 async function verifyDeliverableReadAuth(
   request: import('fastify').FastifyRequest,
   reply: FastifyReply,
-  jobId: string,
+  pactId: string,
 ): Promise<string | null> {
   const viewer = request.headers['x-arc-viewer'];
   const sig = request.headers['x-arc-sig'];
@@ -1781,7 +1781,7 @@ async function verifyDeliverableReadAuth(
     return null;
   }
 
-  const message = `arc-trade:read-deliverable:${jobId}:${ts}`;
+  const message = `arc-trade:read-deliverable:${pactId}:${ts}`;
   let valid = false;
   try {
     valid = await arcClient.verifyMessage({
@@ -1797,16 +1797,16 @@ async function verifyDeliverableReadAuth(
     return null;
   }
 
-  const jobRow = db
-    .prepare('SELECT client, provider, evaluator FROM jobs_index WHERE job_id = ?')
-    .get(jobId) as { client: string; provider: string; evaluator: string } | undefined;
-  if (!jobRow) {
-    reply.code(404).send({ error: 'job not indexed yet — try again in a few seconds' });
+  const pactRow = db
+    .prepare('SELECT client, provider, evaluator FROM pacts_index WHERE pact_id = ?')
+    .get(pactId) as { client: string; provider: string; evaluator: string } | undefined;
+  if (!pactRow) {
+    reply.code(404).send({ error: 'pact not indexed yet — try again in a few seconds' });
     return null;
   }
   const v = viewer.toLowerCase();
-  if (v !== jobRow.client && v !== jobRow.provider && v !== jobRow.evaluator) {
-    reply.code(403).send({ error: 'not a party to this job' });
+  if (v !== pactRow.client && v !== pactRow.provider && v !== pactRow.evaluator) {
+    reply.code(403).send({ error: 'not a party to this pact' });
     return null;
   }
   return v;
@@ -1829,12 +1829,12 @@ app.post<{
     mime?: string;
   };
 }>(
-  '/arc/escrow/job/:id/deliverable-content',
+  '/arc/escrow/pact/:id/deliverable-content',
   { bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
   async (request, reply) => {
-  const jobId = request.params.id;
-  if (!/^\d+$/.test(jobId)) {
-    return reply.code(400).send({ error: 'id must be a numeric job id' });
+  const pactId = request.params.id;
+  if (!/^\d+$/.test(pactId)) {
+    return reply.code(400).send({ error: 'id must be a numeric pact id' });
   }
   const { contentType, content, expectedHash, uploadedBy, fileBase64, fileName, mime } =
     request.body ?? {};
@@ -1851,8 +1851,8 @@ app.post<{
 
   // Idempotency check up-front so we don't write a file we'll then reject.
   const existing = db
-    .prepare('SELECT hash FROM deliverables WHERE job_id = ? AND hash = ?')
-    .get(jobId, expectedHash.toLowerCase()) as { hash: string } | undefined;
+    .prepare('SELECT hash FROM deliverables WHERE pact_id = ? AND hash = ?')
+    .get(pactId, expectedHash.toLowerCase()) as { hash: string } | undefined;
   if (existing) {
     return reply.code(409).send({ error: 'deliverable already uploaded for this hash' });
   }
@@ -1880,10 +1880,10 @@ app.post<{
       return reply.code(400).send({ error: 'content does not hash to expectedHash', computed });
     }
     db.prepare(
-      `INSERT INTO deliverables (job_id, hash, content_type, text_content, uploaded_by)
+      `INSERT INTO deliverables (pact_id, hash, content_type, text_content, uploaded_by)
        VALUES (?, ?, ?, ?, ?)`,
-    ).run(jobId, computed.toLowerCase(), contentType, content, uploadedBy.toLowerCase());
-    return reply.code(201).send({ jobId, hash: computed.toLowerCase(), contentType });
+    ).run(pactId, computed.toLowerCase(), contentType, content, uploadedBy.toLowerCase());
+    return reply.code(201).send({ pactId, hash: computed.toLowerCase(), contentType });
   }
 
   // contentType === 'file'
@@ -1920,19 +1920,19 @@ app.post<{
   }
 
   const hashLower = computed.toLowerCase();
-  const jobDir = join(DELIVERABLE_FILES_DIR, jobId);
-  mkdirSync(jobDir, { recursive: true });
-  const relativePath = join(jobId, `${hashLower}.bin`);
+  const pactDir = join(DELIVERABLE_FILES_DIR, pactId);
+  mkdirSync(pactDir, { recursive: true });
+  const relativePath = join(pactId, `${hashLower}.bin`);
   const absolutePath = join(DELIVERABLE_FILES_DIR, relativePath);
   writeFileSync(absolutePath, bytes);
 
   db.prepare(
-    `INSERT INTO deliverables (job_id, hash, content_type, text_content, mime, size_bytes, file_path, uploaded_by)
+    `INSERT INTO deliverables (pact_id, hash, content_type, text_content, mime, size_bytes, file_path, uploaded_by)
      VALUES (?, ?, 'file', ?, ?, ?, ?, ?)`,
-  ).run(jobId, hashLower, fileName, safeMime, bytes.length, relativePath, uploadedBy.toLowerCase());
+  ).run(pactId, hashLower, fileName, safeMime, bytes.length, relativePath, uploadedBy.toLowerCase());
 
   return reply.code(201).send({
-    jobId,
+    pactId,
     hash: hashLower,
     contentType: 'file',
     fileName,
@@ -1946,21 +1946,21 @@ app.post<{
 app.get<{
   Params: { id: string };
   Querystring: { hash?: string };
-}>('/arc/escrow/job/:id/deliverable', async (request, reply) => {
-  const jobId = request.params.id;
-  if (!/^\d+$/.test(jobId)) {
-    return reply.code(400).send({ error: 'id must be a numeric job id' });
+}>('/arc/escrow/pact/:id/deliverable', async (request, reply) => {
+  const pactId = request.params.id;
+  if (!/^\d+$/.test(pactId)) {
+    return reply.code(400).send({ error: 'id must be a numeric pact id' });
   }
   const hash = request.query.hash;
   if (typeof hash !== 'string' || !isHexBytes32(hash)) {
     return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
   }
-  const ok = await verifyDeliverableReadAuth(request, reply, jobId);
+  const ok = await verifyDeliverableReadAuth(request, reply, pactId);
   if (!ok) return;
 
   const row = db
-    .prepare('SELECT * FROM deliverables WHERE job_id = ? AND hash = ?')
-    .get(jobId, hash.toLowerCase()) as DeliverableRow | undefined;
+    .prepare('SELECT * FROM deliverables WHERE pact_id = ? AND hash = ?')
+    .get(pactId, hash.toLowerCase()) as DeliverableRow | undefined;
   if (!row) {
     return reply.code(404).send({ error: 'no deliverable content stored for this hash' });
   }
@@ -1973,21 +1973,21 @@ app.get<{
 app.get<{
   Params: { id: string };
   Querystring: { hash?: string };
-}>('/arc/escrow/job/:id/deliverable/file', async (request, reply) => {
-  const jobId = request.params.id;
-  if (!/^\d+$/.test(jobId)) {
-    return reply.code(400).send({ error: 'id must be a numeric job id' });
+}>('/arc/escrow/pact/:id/deliverable/file', async (request, reply) => {
+  const pactId = request.params.id;
+  if (!/^\d+$/.test(pactId)) {
+    return reply.code(400).send({ error: 'id must be a numeric pact id' });
   }
   const hash = request.query.hash;
   if (typeof hash !== 'string' || !isHexBytes32(hash)) {
     return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
   }
-  const ok = await verifyDeliverableReadAuth(request, reply, jobId);
+  const ok = await verifyDeliverableReadAuth(request, reply, pactId);
   if (!ok) return;
 
   const row = db
-    .prepare('SELECT * FROM deliverables WHERE job_id = ? AND hash = ?')
-    .get(jobId, hash.toLowerCase()) as DeliverableRow | undefined;
+    .prepare('SELECT * FROM deliverables WHERE pact_id = ? AND hash = ?')
+    .get(pactId, hash.toLowerCase()) as DeliverableRow | undefined;
   if (!row || row.content_type !== 'file' || !row.file_path) {
     return reply.code(404).send({ error: 'no file deliverable stored for this hash' });
   }
@@ -2013,7 +2013,7 @@ const port = Number(process.env.PORT ?? 3001);
 app
   .listen({ port, host: '0.0.0.0' })
   .then(() => {
-    startJobIndexer(app.log);
+    startPactIndexer(app.log);
     startBridgeIndexer(app.log);
   })
   .catch((err) => {

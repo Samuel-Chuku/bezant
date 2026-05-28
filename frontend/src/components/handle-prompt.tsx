@@ -34,7 +34,7 @@ export function HandlePrompt({ onClaim, onSkip }: HandlePromptProps) {
         trading just with your wallet address, but a handle gives you a few things:
       </p>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-neutral-400">
-        <li>Other users can post jobs to you by handle instead of a 0x address.</li>
+        <li>Other users can post pacts to you by handle instead of a 0x address.</li>
         <li>Your reputation accrues against a stable identity, not an opaque address.</li>
         <li>You're easier to recognize in trade history and on-chain logs.</li>
       </ul>

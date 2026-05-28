@@ -17,8 +17,8 @@ import {
   formatReputationValue,
   getDeliverable,
   getDeliverableFile,
-  getJobEvents,
-  getJobState,
+  getPactEvents,
+  getPactState,
   getOrCreateReadAuth,
   getReputationSummary,
   getUserByAddress,
@@ -26,13 +26,13 @@ import {
   uploadDeliverableFile,
   type Deliverable,
   type DeliverableContentType,
-  type JobEvent,
-  type JobLiveState,
-  type JobRole,
+  type PactEvent,
+  type PactLiveState,
+  type PactRole,
   type ReputationSummary,
 } from '@/lib/api';
 import { ERC8183_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
-import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/job-status';
+import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/pact-status';
 import { CountdownBanner } from '@/components/countdown';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 
@@ -60,7 +60,7 @@ const STATUS_TINT: Record<string, string> = {
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
 };
 
-function effectiveStatus(live: JobLiveState, nowMs: number): string {
+function effectiveStatus(live: PactLiveState, nowMs: number): string {
   const raw = live.status;
   if (raw === 'Completed' || raw === 'Rejected' || raw === 'Expired') {
     return displayStatus(live, raw);
@@ -69,17 +69,17 @@ function effectiveStatus(live: JobLiveState, nowMs: number): string {
   return raw;
 }
 
-function userRoles(live: JobLiveState, address: string | undefined): JobRole[] {
+function userRoles(live: PactLiveState, address: string | undefined): PactRole[] {
   if (!address) return [];
   const a = address.toLowerCase();
-  const roles: JobRole[] = [];
+  const roles: PactRole[] = [];
   if (live.client.toLowerCase() === a) roles.push('client');
   if (live.provider.toLowerCase() === a) roles.push('provider');
   if (live.evaluator.toLowerCase() === a) roles.push('evaluator');
   return roles;
 }
 
-// describeCurrentStep moved to lib/job-status.ts so the notifications feed
+// describeCurrentStep moved to lib/pact-status.ts so the notifications feed
 // and other surfaces can derive the same sentences without duplication.
 
 // Compact relative-time formatter ("3m ago", "2h ago", "5d ago"). Beyond a
@@ -105,7 +105,7 @@ type LifecycleRow = {
   txHash?: string;
 };
 
-// Waiting-cue tint keyed off effective status. Mirrors the job-list page's
+// Waiting-cue tint keyed off effective status. Mirrors the pact-list page's
 // WAITING_TINT but with an Expired fallback (the detail page still surfaces
 // a waiting line for expired-with-funds-locked while lists go quiet).
 const LIFECYCLE_TINT: Record<string, { ping: string; solid: string; text: string }> = {
@@ -117,30 +117,30 @@ const LIFECYCLE_TINT: Record<string, { ping: string; solid: string; text: string
 const DEFAULT_LIFECYCLE_TINT = LIFECYCLE_TINT.Open;
 
 // Builds the ordered list of completed lifecycle steps. Sources:
-// - Created: jobs_index (createdAt on JobLiveState)
-// - Quoted: derived from job.budget > 0 (no event indexed today, no time)
+// - Created: pacts_index (createdAt on PactLiveState)
+// - Quoted: derived from pact.budget > 0 (no event indexed today, no time)
 // - Funded: derived from on-chain status being Funded or beyond (no time)
-// - Submitted / Completed / Rejected: job_events table via getJobEvents
+// - Submitted / Completed / Rejected: pact_events table via getPactEvents
 // Terminal states (Completed / Rejected) append a value-summary suffix so
 // the timeline tells the whole story without a separate banner.
 function buildLifecycle(
-  job: JobLiveState,
-  events: JobEvent[],
+  pact: PactLiveState,
+  events: PactEvent[],
   status: string,
 ): LifecycleRow[] {
   const rows: LifecycleRow[] = [];
 
   rows.push({
     label: 'Created',
-    actorAddr: job.client,
-    when: job.createdAt?.indexedAt,
-    txHash: job.createdAt?.txHash,
+    actorAddr: pact.client,
+    when: pact.createdAt?.indexedAt,
+    txHash: pact.createdAt?.txHash,
   });
 
-  if (job.budget.usdc !== '0') {
+  if (pact.budget.usdc !== '0') {
     rows.push({
-      label: `Quoted ${job.budget.usdc} USDC`,
-      actorAddr: job.provider,
+      label: `Quoted ${pact.budget.usdc} USDC`,
+      actorAddr: pact.provider,
     });
   }
 
@@ -148,21 +148,21 @@ function buildLifecycle(
   // Fall back to the derived row from on-chain status when the indexer
   // hasn't caught up — drops the timestamp but keeps the timeline coherent.
   const fundedEvent = events.find((e) => e.eventType === 'Funded');
-  // A cancelled-from-Open job hits status Rejected without ever being
+  // A cancelled-from-Open pact hits status Rejected without ever being
   // Funded, so exclude that case from the fallback. Detect it by checking
   // whether the indexed Rejected event was emitted by the client.
   const rejectedEv = events.find((e) => e.eventType === 'Rejected');
   const wasClientCancellation =
-    !!rejectedEv && rejectedEv.actor.toLowerCase() === job.client.toLowerCase();
+    !!rejectedEv && rejectedEv.actor.toLowerCase() === pact.client.toLowerCase();
   const fundedFromStatus =
-    job.status === 'Funded' ||
-    job.status === 'Submitted' ||
-    job.status === 'Completed' ||
-    (job.status === 'Rejected' && !wasClientCancellation);
+    pact.status === 'Funded' ||
+    pact.status === 'Submitted' ||
+    pact.status === 'Completed' ||
+    (pact.status === 'Rejected' && !wasClientCancellation);
   if (fundedEvent) {
     const amountUsdc = fundedEvent.amountRaw
       ? formatUnits(BigInt(fundedEvent.amountRaw), 6)
-      : job.budget.usdc;
+      : pact.budget.usdc;
     rows.push({
       label: `Funded ${amountUsdc} USDC into escrow`,
       actorAddr: fundedEvent.actor,
@@ -170,7 +170,7 @@ function buildLifecycle(
       txHash: fundedEvent.txHash,
     });
   } else if (fundedFromStatus) {
-    rows.push({ label: `Funded ${job.budget.usdc} USDC into escrow`, actorAddr: job.client });
+    rows.push({ label: `Funded ${pact.budget.usdc} USDC into escrow`, actorAddr: pact.client });
   }
 
   const submitted = events.find((e) => e.eventType === 'Submitted');
@@ -185,14 +185,14 @@ function buildLifecycle(
   const completed = events.find((e) => e.eventType === 'Completed');
   if (completed) {
     rows.push({
-      label: `Completed. ${job.budget.usdc} USDC released to provider.`,
+      label: `Completed. ${pact.budget.usdc} USDC released to provider.`,
       actorAddr: completed.actor,
       when: completed.indexedAt,
       txHash: completed.txHash,
     });
   }
   if (rejectedEv) {
-    // Same reject() function powers both client-cancellation (job was
+    // Same reject() function powers both client-cancellation (pact was
     // never funded) and evaluator-rejection (after a submission). Label
     // based on the actor so the timeline reads correctly.
     rows.push({
@@ -205,7 +205,7 @@ function buildLifecycle(
     });
   }
 
-  // Refund-claimed closes the story for jobs where the deadline lapsed and
+  // Refund-claimed closes the story for pacts where the deadline lapsed and
   // someone (anyone) called claimRefund. Prefer the indexed Refunded event
   // (timestamp + tx link); fall back to a derived row when the indexer
   // hasn't caught up. The event's `client` field is the recipient — caller
@@ -215,15 +215,15 @@ function buildLifecycle(
   if (refundedEvent) {
     const amountUsdc = refundedEvent.amountRaw
       ? formatUnits(BigInt(refundedEvent.amountRaw), 6)
-      : job.budget.usdc;
+      : pact.budget.usdc;
     rows.push({
       label: `Refund of ${amountUsdc} USDC returned to client (deadline passed)`,
       when: refundedEvent.indexedAt,
       txHash: refundedEvent.txHash,
     });
-  } else if (job.status === 'Expired') {
+  } else if (pact.status === 'Expired') {
     rows.push({
-      label: `Refund of ${job.budget.usdc} USDC returned to client (deadline passed)`,
+      label: `Refund of ${pact.budget.usdc} USDC returned to client (deadline passed)`,
     });
   }
 
@@ -257,8 +257,8 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: jobId } = use(params);
+export default function PactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: pactId } = use(params);
   const signer = useSigner();
   // Allowance + any other Arc reads must stay pinned to Arc even if the
   // user just bridged and the wallet is sitting on Base / Sepolia / etc.
@@ -266,13 +266,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const wagmiChainId = useChainId();
   const { switchChain } = useSwitchChain();
   const isOffArc = signer.isConnected && signer.mode === 'external' && wagmiChainId !== arcTestnet.id;
-  const [job, setJob] = useState<JobLiveState | null>(null);
-  const [events, setEvents] = useState<JobEvent[]>([]);
-  const [loadingJob, setLoadingJob] = useState(false);
+  const [pact, setPact] = useState<PactLiveState | null>(null);
+  const [events, setEvents] = useState<PactEvent[]>([]);
+  const [loadingPact, setLoadingPact] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>({ status: 'idle' });
   // Cache of address → handle (or null if not registered). Populated when the
-  // job loads so client/provider/evaluator can render as "@handle" + address.
+  // pact loads so client/provider/evaluator can render as "@handle" + address.
   const [handlesByAddress, setHandlesByAddress] = useState<Record<string, string | null>>({});
   // Cache of address → linked ERC-8004 agentId (or null). Drives the
   // ReputationBadge next to each party's address.
@@ -288,13 +288,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   // For files we keep the precomputed base64 + metadata so the retry path
   // never asks the user to re-pick the file.
   type PendingTextUrl = {
-    jobId: string;
+    pactId: string;
     hash: Hex;
     contentType: 'text' | 'url';
     content: string;
   };
   type PendingFile = {
-    jobId: string;
+    pactId: string;
     hash: Hex;
     contentType: 'file';
     fileName: string;
@@ -303,31 +303,31 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   };
   const [pendingUpload, setPendingUpload] = useState<PendingTextUrl | PendingFile | null>(null);
 
-  const fetchJob = useCallback(async () => {
-    setLoadingJob(true);
+  const fetchPact = useCallback(async () => {
+    setLoadingPact(true);
     setLoadError(null);
     try {
-      const [live, evts] = await Promise.all([getJobState(jobId), getJobEvents(jobId)]);
-      setJob(live);
+      const [live, evts] = await Promise.all([getPactState(pactId), getPactEvents(pactId)]);
+      setPact(live);
       setEvents(evts);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoadingJob(false);
+      setLoadingPact(false);
     }
-  }, [jobId]);
+  }, [pactId]);
 
   useEffect(() => {
-    void fetchJob();
-  }, [fetchJob]);
+    void fetchPact();
+  }, [fetchPact]);
 
-  // Resolve handles + agentIds for client/provider/evaluator when the job
+  // Resolve handles + agentIds for client/provider/evaluator when the pact
   // loads. Deduped + parallel; absent users cache as null so we don't
   // re-query. Pulls handle + agentId from the same UserRecord — one lookup
   // covers both displays (handle chip + reputation badge).
   useEffect(() => {
-    if (!job) return;
-    const addresses = [job.client, job.provider, job.evaluator]
+    if (!pact) return;
+    const addresses = [pact.client, pact.provider, pact.evaluator]
       .map((a) => a.toLowerCase())
       .filter((a, i, arr) => arr.indexOf(a) === i);
     let cancelled = false;
@@ -356,22 +356,22 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     return () => {
       cancelled = true;
     };
-  }, [job]);
+  }, [pact]);
 
-  const status = useMemo(() => (job ? effectiveStatus(job, Date.now()) : null), [job]);
+  const status = useMemo(() => (pact ? effectiveStatus(pact, Date.now()) : null), [pact]);
   const roles = useMemo(
-    () => (job && signer.isConnected ? userRoles(job, signer.address) : []),
-    [job, signer],
+    () => (pact && signer.isConnected ? userRoles(pact, signer.address) : []),
+    [pact, signer],
   );
 
   // Always-on lifecycle context — what's happening, what's next. Independent
   // of whether an action card renders for this user.
   const currentStep = useMemo(
-    () => (job && status ? describeCurrentStep(job, status, roles) : null),
-    [job, status, roles],
+    () => (pact && status ? describeCurrentStep(pact, status, roles) : null),
+    [pact, status, roles],
   );
 
-  // Read-only banner shown only when user has no role at all on this job.
+  // Read-only banner shown only when user has no role at all on this pact.
   const showReadOnlyNotice = signer.isConnected && roles.length === 0;
 
   const runAction = async (
@@ -382,7 +382,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     try {
       const { txHash } = await fn();
       setActionState({ status: 'success', txHash });
-      await fetchJob();
+      await fetchPact();
       return true;
     } catch (err) {
       setActionState({
@@ -399,11 +399,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   // block all "forward-progress" actions client-side so the user doesn't waste
   // gas on a tx that produces a useless state.
   const guardDeadline = (actionVerb: string): boolean => {
-    if (!job) return false;
-    if (job.expiredAt.unix * 1000 > Date.now()) return true;
+    if (!pact) return false;
+    if (pact.expiredAt.unix * 1000 > Date.now()) return true;
     setActionState({
       status: 'error',
-      message: `Deadline has passed. ${actionVerb} now would leave this job in an unrecoverable state. The client needs to cancel and post a fresh job with a longer deadline.`,
+      message: `Deadline has passed. ${actionVerb} now would leave this pact in an unrecoverable state. The client needs to cancel and post a fresh pact with a longer deadline.`,
     });
     return false;
   };
@@ -424,19 +424,19 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   };
 
   // Approve + fund. Skips approve if current allowance already covers the budget.
-  // Pre-flight checks: job exists, budget set, deadline still in the future.
-  const fundJob = async () => {
-    if (!signer.isConnected || !job || !publicClient) return;
-    const budgetRaw = BigInt(job.budget.raw);
+  // Pre-flight checks: pact exists, budget set, deadline still in the future.
+  const fundPact = async () => {
+    if (!signer.isConnected || !pact || !publicClient) return;
+    const budgetRaw = BigInt(pact.budget.raw);
     if (budgetRaw === 0n) {
       setActionState({ status: 'error', message: 'Provider has not set a budget yet.' });
       return;
     }
-    if (job.expiredAt.unix * 1000 <= Date.now()) {
+    if (pact.expiredAt.unix * 1000 <= Date.now()) {
       setActionState({
         status: 'error',
         message:
-          'Deadline has passed. The chain will refuse to fund this job. Use "Cancel job" to clean it up, or create a new job with a longer deadline.',
+          'Deadline has passed. The chain will refuse to fund this pact. Use "Cancel pact" to clean it up, or create a new pact with a longer deadline.',
       });
       return;
     }
@@ -449,12 +449,12 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
       });
       if (allowance < budgetRaw) {
         const approvedOk = await runAction('Approving USDC…', () =>
-          sendUnsigned('Approving USDC…', () => buildApproveUnsigned(job.budget.usdc)),
+          sendUnsigned('Approving USDC…', () => buildApproveUnsigned(pact.budget.usdc)),
         );
         if (!approvedOk) return;
       }
-      await runAction('Funding job…', () =>
-        sendUnsigned('Funding job…', () => buildFundUnsigned(jobId)),
+      await runAction('Funding pact…', () =>
+        sendUnsigned('Funding pact…', () => buildFundUnsigned(pactId)),
       );
     } catch (err) {
       setActionState({
@@ -467,11 +467,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <header className="mb-6">
-        <Link href="/jobs" className="text-xs text-neutral-500 hover:text-neutral-100">
-          ← back to my jobs
+        <Link href="/pacts" className="text-xs text-neutral-500 hover:text-neutral-100">
+          ← back to my pacts
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-          Job <span className="font-mono">#{jobId}</span>
+          Pact <span className="font-mono">#{pactId}</span>
         </h1>
         {status && (
           <span
@@ -484,24 +484,24 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
       {loadError && (
         <p className="rounded-lg border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-400">
-          Couldn&apos;t load this job: {loadError}
+          Couldn&apos;t load this pact: {loadError}
         </p>
       )}
 
-      {loadingJob && !job && <p className="text-sm text-neutral-500">Loading…</p>}
+      {loadingPact && !pact && <p className="text-sm text-neutral-500">Loading…</p>}
 
-      {job && status && (
+      {pact && status && (
         <>
           {/* Live countdown banner — sits above Details so the time-pressure
               is the first thing the user sees. Hidden on terminal states
               where no deadline matters. Label adapts to the connected user's
               role: "Time to fund / submit / review / cancel" when it's their
               turn, generic "Deadline" otherwise. */}
-          {status !== 'Completed' && status !== 'Rejected' && job.status !== 'Expired' && (
+          {status !== 'Completed' && status !== 'Rejected' && pact.status !== 'Expired' && (
             <CountdownBanner
-              unix={job.expiredAt.unix}
+              unix={pact.expiredAt.unix}
               label={(() => {
-                const verb = actionVerbForMe(job, status, roles);
+                const verb = actionVerbForMe(pact, status, roles);
                 if (verb) return `Time to ${verb}`;
                 return status === 'Expired' ? 'Past deadline' : 'Deadline';
               })()}
@@ -511,16 +511,16 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
             <h2 className="text-sm font-medium text-neutral-300">Details</h2>
             <dl className="mt-3 space-y-2 text-sm">
-              <Detail label="Description" value={job.description || <em className="text-neutral-500">(none)</em>} />
-              <Detail label="Budget" value={`${job.budget.usdc} USDC`} />
+              <Detail label="Description" value={pact.description || <em className="text-neutral-500">(none)</em>} />
+              <Detail label="Budget" value={`${pact.budget.usdc} USDC`} />
               <Detail
                 label="Client"
                 value={
                   <Mono
-                    addr={job.client}
+                    addr={pact.client}
                     you={signer.address}
-                    handle={handlesByAddress[job.client.toLowerCase()]}
-                    agentId={agentIdsByAddress[job.client.toLowerCase()]}
+                    handle={handlesByAddress[pact.client.toLowerCase()]}
+                    agentId={agentIdsByAddress[pact.client.toLowerCase()]}
                   />
                 }
               />
@@ -528,10 +528,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 label="Provider"
                 value={
                   <Mono
-                    addr={job.provider}
+                    addr={pact.provider}
                     you={signer.address}
-                    handle={handlesByAddress[job.provider.toLowerCase()]}
-                    agentId={agentIdsByAddress[job.provider.toLowerCase()]}
+                    handle={handlesByAddress[pact.provider.toLowerCase()]}
+                    agentId={agentIdsByAddress[pact.provider.toLowerCase()]}
                   />
                 }
               />
@@ -539,10 +539,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 label="Evaluator"
                 value={
                   <Mono
-                    addr={job.evaluator}
+                    addr={pact.evaluator}
                     you={signer.address}
-                    handle={handlesByAddress[job.evaluator.toLowerCase()]}
-                    agentId={agentIdsByAddress[job.evaluator.toLowerCase()]}
+                    handle={handlesByAddress[pact.evaluator.toLowerCase()]}
+                    agentId={agentIdsByAddress[pact.evaluator.toLowerCase()]}
                   />
                 }
               />
@@ -553,11 +553,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </p>
             )}
 
-            <OnChainRecord events={events} liveStatus={job.status} handlesByAddress={handlesByAddress} />
+            <OnChainRecord events={events} liveStatus={pact.status} handlesByAddress={handlesByAddress} />
           </section>
 
           <DeliverableContent
-            jobId={jobId}
+            pactId={pactId}
             events={events}
             isParty={roles.length > 0}
             signer={signer}
@@ -565,7 +565,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
           {!signer.isConnected && (
             <p className="mt-6 rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
-              Connect to act on this job.{' '}
+              Connect to act on this pact.{' '}
               <Link href="/" className="underline">
                 Sign in
               </Link>
@@ -577,7 +577,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               <h2 className="text-sm font-medium text-neutral-300">Actions</h2>
 
               <LifecyclePanel
-                rows={buildLifecycle(job, events, status)}
+                rows={buildLifecycle(pact, events, status)}
                 waitingLine={currentStep}
                 effectiveStatus={status}
                 handlesByAddress={handlesByAddress}
@@ -585,12 +585,12 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               />
 
               {showReadOnlyNotice && (
-                <p className="mt-3 text-xs text-neutral-500">Read-only. You&apos;re not a party on this job.</p>
+                <p className="mt-3 text-xs text-neutral-500">Read-only. You&apos;re not a party on this pact.</p>
               )}
 
               {!showReadOnlyNotice && isOffArc && (
                 <div className="mt-4 rounded-xl border border-amber-700/40 bg-amber-950/20 p-3">
-                  <p className="text-sm text-amber-200">Switch to Arc to take action on this job.</p>
+                  <p className="text-sm text-amber-200">Switch to Arc to take action on this pact.</p>
                   <p className="mt-1 text-xs text-amber-200/70">
                     Your wallet is on a different network. Fund, submit, and complete must be signed on Arc.
                   </p>
@@ -605,7 +605,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               )}
 
               {/* Coming-soon hint — when the client is staring at a Submitted
-                  job, surface that they'll soon be able to release directly
+                  pact, surface that they'll soon be able to release directly
                   (no evaluator wait) once our wrapper escrow ships. M36 just
                   sets expectations; the actual contract function lands at M37. */}
               {roles.includes('client') && status === 'Submitted' && !isOffArc && (
@@ -622,9 +622,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                   <ActionCard
                     title="Set or update your quote"
                     hint={
-                      job.budget.usdc === '0'
+                      pact.budget.usdc === '0'
                         ? 'Quote a price in USDC.'
-                        : `Current quote: ${job.budget.usdc} USDC. Re-quote any time.`
+                        : `Current quote: ${pact.budget.usdc} USDC. Re-quote any time.`
                     }
                   >
                     <div className="flex gap-2">
@@ -633,7 +633,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                         inputMode="decimal"
                         value={budgetInput}
                         onChange={(e) => setBudgetInput(e.target.value)}
-                        placeholder={job.budget.usdc === '0' ? '0.1' : job.budget.usdc}
+                        placeholder={pact.budget.usdc === '0' ? '0.1' : pact.budget.usdc}
                         className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
                       />
                       <button
@@ -642,7 +642,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                           if (!guardDeadline('Quoting')) return;
                           void runAction('Setting budget…', () =>
                             sendUnsigned('Setting budget…', () =>
-                              buildSetBudgetUnsigned(jobId, budgetInput.trim() || '0'),
+                              buildSetBudgetUnsigned(pactId, budgetInput.trim() || '0'),
                             ),
                           );
                         }}
@@ -662,20 +662,20 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 {/* fund — client only, while Open + budget set + deadline not yet passed */}
                 {roles.includes('client') && status === 'Open' && (
                   <ActionCard
-                    title="Fund the job"
+                    title="Fund the pact"
                     hint={
-                      job.budget.usdc === '0'
+                      pact.budget.usdc === '0'
                         ? 'Waiting on the provider to quote.'
-                        : `Locks ${job.budget.usdc} USDC into escrow.`
+                        : `Locks ${pact.budget.usdc} USDC into escrow.`
                     }
                   >
                     <button
                       type="button"
-                      onClick={fundJob}
-                      disabled={actionState.status === 'busy' || job.budget.usdc === '0'}
+                      onClick={fundPact}
+                      disabled={actionState.status === 'busy' || pact.budget.usdc === '0'}
                       className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
                     >
-                      Fund {job.budget.usdc} USDC
+                      Fund {pact.budget.usdc} USDC
                     </button>
                   </ActionCard>
                 )}
@@ -683,13 +683,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 {/* cancel — client can call reject() while on-chain status is still Open
                     (covers both "before anyone acts" and "stuck past deadline"). The
                     reference contract has no deadline-extension function, so this is
-                    the only way out for an expired-Open job. */}
-                {roles.includes('client') && job.status === 'Open' && (
+                    the only way out for an expired-Open pact. */}
+                {roles.includes('client') && pact.status === 'Open' && (
                   <ActionCard
-                    title="Cancel job"
+                    title="Cancel pact"
                     hint={
-                      job.expiredAt.unix * 1000 <= Date.now()
-                        ? 'Closes an expired job so you can repost.'
+                      pact.expiredAt.unix * 1000 <= Date.now()
+                        ? 'Closes an expired pact so you can repost.'
                         : 'Cancels before anyone funds it.'
                     }
                   >
@@ -697,13 +697,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                       type="button"
                       onClick={() =>
                         runAction('Cancelling…', () =>
-                          sendUnsigned('Cancelling…', () => buildRejectUnsigned(jobId)),
+                          sendUnsigned('Cancelling…', () => buildRejectUnsigned(pactId)),
                         )
                       }
                       disabled={actionState.status === 'busy'}
                       className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                     >
-                      Cancel job
+                      Cancel pact
                     </button>
                   </ActionCard>
                 )}
@@ -802,10 +802,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                                   hash = fileHash;
                                   const fileName = deliverableFile.name;
                                   const mime = deliverableFile.type || 'application/octet-stream';
-                                  retry = { jobId, hash, contentType: 'file', fileName, mime, fileBase64: base64 };
+                                  retry = { pactId, hash, contentType: 'file', fileName, mime, fileBase64: base64 };
                                   upload = async () => {
                                     await uploadDeliverableFile({
-                                      jobId,
+                                      pactId,
                                       fileName,
                                       mime,
                                       fileBase64: base64,
@@ -820,10 +820,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                                     return;
                                   }
                                   hash = keccak256(stringToBytes(content));
-                                  retry = { jobId, hash, contentType: deliverableType, content };
+                                  retry = { pactId, hash, contentType: deliverableType, content };
                                   upload = async () => {
                                     await uploadDeliverableContent({
-                                      jobId,
+                                      pactId,
                                       contentType: deliverableType,
                                       content,
                                       expectedHash: hash,
@@ -835,7 +835,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                                 setActionState({ status: 'busy', label: 'Submitting on-chain…' });
                                 const onchain = await sendUnsigned(
                                   'Submitting on-chain…',
-                                  () => buildSubmitUnsigned(jobId, hash),
+                                  () => buildSubmitUnsigned(pactId, hash),
                                 );
                                 onchainTxHash = onchain.txHash;
 
@@ -846,7 +846,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                                   setDeliverableInput('');
                                   setDeliverableFile(null);
                                   setActionState({ status: 'success', txHash: onchainTxHash });
-                                  await fetchJob();
+                                  await fetchPact();
                                 } catch (uploadErr) {
                                   setPendingUpload(retry);
                                   setActionState({
@@ -855,7 +855,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                                       uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
                                     }. The hash is committed; use Retry upload below.`,
                                   });
-                                  await fetchJob();
+                                  await fetchPact();
                                 }
                               } catch (err) {
                                 setActionState({
@@ -881,7 +881,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 {/* Retry-upload surface — chain submit landed, off-chain
                     upload didn't. Provider can re-run the upload step
                     without re-signing on-chain. */}
-                {roles.includes('provider') && pendingUpload && pendingUpload.jobId === jobId && (
+                {roles.includes('provider') && pendingUpload && pendingUpload.pactId === pactId && (
                   <ActionCard
                     title="Retry upload"
                     hint={`Hash ${pendingUpload.hash.slice(0, 10)}… already on-chain.`}
@@ -896,7 +896,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                           try {
                             if (retry.contentType === 'file') {
                               await uploadDeliverableFile({
-                                jobId: retry.jobId,
+                                pactId: retry.pactId,
                                 fileName: retry.fileName,
                                 mime: retry.mime,
                                 fileBase64: retry.fileBase64,
@@ -905,7 +905,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                               });
                             } else {
                               await uploadDeliverableContent({
-                                jobId: retry.jobId,
+                                pactId: retry.pactId,
                                 contentType: retry.contentType,
                                 content: retry.content,
                                 expectedHash: retry.hash,
@@ -914,7 +914,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                             }
                             setPendingUpload(null);
                             setActionState({ status: 'success', txHash: '0x' as Hex });
-                            await fetchJob();
+                            await fetchPact();
                           } catch (err) {
                             setActionState({
                               status: 'error',
@@ -942,7 +942,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                       onClick={() => {
                         if (!guardDeadline('Completing')) return;
                         void runAction('Completing…', () =>
-                          sendUnsigned('Completing…', () => buildCompleteUnsigned(jobId)),
+                          sendUnsigned('Completing…', () => buildCompleteUnsigned(pactId)),
                         );
                       }}
                       disabled={actionState.status === 'busy'}
@@ -964,7 +964,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                         type="button"
                         onClick={() =>
                           runAction('Rejecting…', () =>
-                            sendUnsigned('Rejecting…', () => buildRejectUnsigned(jobId)),
+                            sendUnsigned('Rejecting…', () => buildRejectUnsigned(pactId)),
                           )
                         }
                         disabled={actionState.status === 'busy'}
@@ -975,9 +975,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                     </ActionCard>
                   )}
 
-                {/* claimRefund — anyone, when deadline passed + job is Funded/Submitted */}
+                {/* claimRefund — anyone, when deadline passed + pact is Funded/Submitted */}
                 {status === 'Expired' &&
-                  (job.status === 'Funded' || job.status === 'Submitted') && (
+                  (pact.status === 'Funded' || pact.status === 'Submitted') && (
                     <ActionCard
                       title="Claim refund (deadline passed)"
                       hint="Anyone can trigger; funds go to the client."
@@ -986,7 +986,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                         type="button"
                         onClick={() =>
                           runAction('Claiming refund…', () =>
-                            sendUnsigned('Claiming refund…', () => buildRefundUnsigned(jobId)),
+                            sendUnsigned('Claiming refund…', () => buildRefundUnsigned(pactId)),
                           )
                         }
                         disabled={actionState.status === 'busy'}
@@ -1219,13 +1219,13 @@ function Actor({
 }
 
 function DeliverableContent({
-  jobId,
+  pactId,
   events,
   isParty,
   signer,
 }: {
-  jobId: string;
-  events: JobEvent[];
+  pactId: string;
+  events: PactEvent[];
   isParty: boolean;
   signer: ReturnType<typeof useSigner>;
 }) {
@@ -1268,11 +1268,11 @@ function DeliverableContent({
     setError(null);
     try {
       const auth = await getOrCreateReadAuth(
-        jobId,
+        pactId,
         signer.address,
         signer.signMessage,
       );
-      const fetched = await getDeliverable(jobId, submittedEvent.hashValue, auth);
+      const fetched = await getDeliverable(pactId, submittedEvent.hashValue, auth);
       setContent(fetched);
       setNeedsUnlock(false);
     } catch (err) {
@@ -1280,7 +1280,7 @@ function DeliverableContent({
     } finally {
       setLoading(false);
     }
-  }, [jobId, signer, submittedEvent]);
+  }, [pactId, signer, submittedEvent]);
 
   const downloadAndVerify = useCallback(async () => {
     if (
@@ -1294,8 +1294,8 @@ function DeliverableContent({
     }
     setFileState({ status: 'downloading' });
     try {
-      const auth = await getOrCreateReadAuth(jobId, signer.address, signer.signMessage);
-      const blob = await getDeliverableFile(jobId, submittedEvent.hashValue, auth);
+      const auth = await getOrCreateReadAuth(pactId, signer.address, signer.signMessage);
+      const blob = await getDeliverableFile(pactId, submittedEvent.hashValue, auth);
       const buf = await blob.arrayBuffer();
       const recomputed = keccak256(new Uint8Array(buf));
       if (recomputed.toLowerCase() !== onchainHash.toLowerCase()) {
@@ -1315,7 +1315,7 @@ function DeliverableContent({
     } catch (err) {
       setFileState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
     }
-  }, [content, jobId, signer, submittedEvent, onchainHash]);
+  }, [content, pactId, signer, submittedEvent, onchainHash]);
 
   // On mount / when becoming a party: if a cached signature exists, auto-load.
   // Otherwise surface an explicit "Unlock" button so the user understands
@@ -1323,13 +1323,13 @@ function DeliverableContent({
   useEffect(() => {
     if (!isParty || !signer.isConnected || !submittedEvent) return;
     if (typeof window === 'undefined') return;
-    const cacheKey = `arc:deliv-sig:${jobId}:${signer.address.toLowerCase()}`;
+    const cacheKey = `arc:deliv-sig:${pactId}:${signer.address.toLowerCase()}`;
     if (localStorage.getItem(cacheKey)) {
       void loadContent();
     } else {
       setNeedsUnlock(true);
     }
-  }, [isParty, signer.isConnected, signer.address, submittedEvent, jobId, loadContent]);
+  }, [isParty, signer.isConnected, signer.address, submittedEvent, pactId, loadContent]);
 
   if (!submittedEvent) return null;
 
@@ -1466,7 +1466,7 @@ function OnChainRecord({
   liveStatus,
   handlesByAddress,
 }: {
-  events: JobEvent[];
+  events: PactEvent[];
   liveStatus: string;
   handlesByAddress: Record<string, string | null>;
 }) {
@@ -1475,12 +1475,12 @@ function OnChainRecord({
   // the lifecycle timeline above; filter them out here.
   type HashEventType = 'Submitted' | 'Completed' | 'Rejected';
   const hashEvents = events.filter(
-    (e): e is JobEvent & { eventType: HashEventType } =>
+    (e): e is PactEvent & { eventType: HashEventType } =>
       e.eventType === 'Submitted' ||
       e.eventType === 'Completed' ||
       e.eventType === 'Rejected',
   );
-  // Jobs at Open/Funded have nothing to show. For Submitted/Completed/Rejected,
+  // Pacts at Open/Funded have nothing to show. For Submitted/Completed/Rejected,
   // if no event row has indexed yet (~10s lag), show a soft hint instead of
   // hiding the section entirely.
   const expectsRecord =
