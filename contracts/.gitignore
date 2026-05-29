@@ -1,0 +1,8 @@
+cache/
+out/
+broadcast/
+.env
+
+# Foundry deps cloned via `forge install`; not vendored. After a fresh
+# clone run: `cd contracts && forge install foundry-rs/forge-std --no-commit`.
+/lib/
