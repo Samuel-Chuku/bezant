@@ -400,9 +400,17 @@ contract PactWrapper {
         pactExists(pactId)
         inStatus(pactId, Status.Open)
     {
-        // TODO: §8.1 proposeTerms
-        pactId; budget; challengeWindow;
-        revert("NOT_IMPLEMENTED");
+        if (budget == 0) revert BudgetNotSet();
+        if (challengeWindow < CHALLENGE_FLOOR || challengeWindow > CHALLENGE_CEILING) {
+            revert ChallengeWindowOutOfRange(challengeWindow);
+        }
+
+        PactRecord storage p = pacts[pactId];
+        p.pendingBudget          = budget;
+        p.pendingChallengeWindow = challengeWindow;
+        p.pendingProposedAt      = uint64(block.timestamp);
+
+        emit TermsProposed(pactId, budget, challengeWindow, msg.sender);
     }
 
     function setBudget(uint256 pactId, uint256 budget, uint64 challengeWindow)
