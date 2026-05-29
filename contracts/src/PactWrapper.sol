@@ -365,9 +365,33 @@ contract PactWrapper {
         address hook,
         uint64  challengeWindow
     ) external returns (uint256 pactId) {
-        // TODO: implement per §8.1 createPact
-        provider; expiredAt; description; hook; challengeWindow; // silence unused
-        revert("NOT_IMPLEMENTED");
+        // Rule 3: minimum 30-minute deadline at creation.
+        uint64 minRequired = uint64(block.timestamp) + MIN_DEADLINE_FROM_NOW;
+        if (expiredAt < minRequired) revert DeadlineTooSoon(minRequired);
+
+        uint64 cw = challengeWindow == 0 ? CHALLENGE_DEFAULT : challengeWindow;
+        if (cw < CHALLENGE_FLOOR || cw > CHALLENGE_CEILING) revert ChallengeWindowOutOfRange(cw);
+
+        // Wrapper acts as the protocol-level evaluator on every Pact it creates.
+        uint256 underlyingJobId = agenticCommerce.createJob(
+            provider,
+            address(this),
+            expiredAt,
+            description,
+            hook
+        );
+
+        pactId = nextPactId++;
+        PactRecord storage p = pacts[pactId];
+        p.underlyingJobId  = underlyingJobId;
+        p.client           = msg.sender;
+        p.provider         = provider;
+        p.createdAt        = uint64(block.timestamp);
+        p.expiredAt        = expiredAt;
+        p.status           = Status.Open;
+        p.challengeWindow  = cw;
+
+        emit PactCreated(pactId, underlyingJobId, msg.sender, provider, expiredAt, cw, description);
     }
 
     function proposeTerms(uint256 pactId, uint256 budget, uint64 challengeWindow)
@@ -387,9 +411,26 @@ contract PactWrapper {
         pactExists(pactId)
         inStatus(pactId, Status.Open)
     {
-        // TODO: §8.1 setBudget; clears pending; calls reference.setBudget
-        pactId; budget; challengeWindow;
-        revert("NOT_IMPLEMENTED");
+        if (budget == 0) revert BudgetNotSet();
+        PactRecord storage p = pacts[pactId];
+
+        if (challengeWindow != 0) {
+            if (challengeWindow < CHALLENGE_FLOOR || challengeWindow > CHALLENGE_CEILING) {
+                revert ChallengeWindowOutOfRange(challengeWindow);
+            }
+            p.challengeWindow = challengeWindow;
+        }
+        p.budget = budget;
+
+        // Clear pending client proposal (provider's setBudget supersedes
+        // whether or not they matched).
+        p.pendingBudget            = 0;
+        p.pendingChallengeWindow   = 0;
+        p.pendingProposedAt        = 0;
+
+        agenticCommerce.setBudget(p.underlyingJobId, budget, "");
+
+        emit BudgetSet(pactId, budget, p.challengeWindow, msg.sender);
     }
 
     function fund(uint256 pactId, uint256 expectedBudget, uint64 expectedChallengeWindow)
@@ -398,9 +439,29 @@ contract PactWrapper {
         pactExists(pactId)
         inStatus(pactId, Status.Open)
     {
-        // TODO: §8.1 fund; atomic acceptance; pulls budget + fee
-        pactId; expectedBudget; expectedChallengeWindow;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+
+        // Atomic acceptance — funding signs off on exactly the current live quote.
+        if (p.budget != expectedBudget || p.challengeWindow != expectedChallengeWindow) {
+            revert WrongTerms(expectedBudget, expectedChallengeWindow, p.budget, p.challengeWindow);
+        }
+        if (p.budget == 0) revert BudgetNotSet();
+
+        // Rule 2: no funding after expiry.
+        if (block.timestamp > p.expiredAt) revert FundingAfterExpiry();
+
+        // Effects before external calls (CEI).
+        p.status = Status.Funded;
+        uint256 fee = BondMath.platformFee(p.budget, platformFeeBps);
+        if (fee > 0) treasuryBalance += fee;
+
+        // Pull (budget + fee) from client, then approve and forward budget to
+        // the reference contract.
+        if (!usdc.transferFrom(msg.sender, address(this), p.budget + fee)) revert TransferFailed();
+        if (!usdc.approve(address(agenticCommerce), p.budget)) revert TransferFailed();
+        agenticCommerce.fund(p.underlyingJobId, "");
+
+        emit Funded(pactId, p.budget, fee, msg.sender);
     }
 
     function submit(uint256 pactId, bytes32 deliverableHash)
@@ -409,9 +470,17 @@ contract PactWrapper {
         pactExists(pactId)
         inStatus(pactId, Status.Funded)
     {
-        // TODO: §8.1 submit
-        pactId; deliverableHash;
-        revert("NOT_IMPLEMENTED");
+        if (deliverableHash == bytes32(0)) revert CommitMissing();
+        PactRecord storage p = pacts[pactId];
+        if (block.timestamp > p.expiredAt) revert PastDeadline(p.expiredAt, uint64(block.timestamp));
+
+        p.status          = Status.Submitted;
+        p.submittedAt     = uint64(block.timestamp);
+        p.deliverableHash = deliverableHash;
+
+        agenticCommerce.submit(p.underlyingJobId, deliverableHash, "");
+
+        emit Submitted(pactId, deliverableHash, msg.sender, p.submittedAt);
     }
 
     function clientAccept(uint256 pactId)
@@ -420,15 +489,18 @@ contract PactWrapper {
         pactExists(pactId)
         inStatus(pactId, Status.Submitted)
     {
-        // TODO: §8.1 clientAccept; calls _payout
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        if (pacts[pactId].disputeId != 0) revert DisputeAlreadyOpen();
+        _payout(pactId, bytes32(0), msg.sender);
     }
 
     function complete(uint256 pactId, bytes32 reason) external pactExists(pactId) {
-        // TODO: §8.1 complete; permissionless after challenge window
-        pactId; reason;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        if (p.status != Status.Submitted) revert WrongStatus(p.status, Status.Submitted);
+        if (p.disputeId != 0) revert DisputeAlreadyOpen();
+        uint64 challengeOpensAt = p.submittedAt;
+        uint64 closesAt = challengeOpensAt + p.challengeWindow;
+        if (block.timestamp < closesAt) revert ChallengeWindowStillOpen(challengeOpensAt, uint64(block.timestamp));
+        _payout(pactId, reason, msg.sender);
     }
 
     function reject(uint256 pactId, bytes32 reason) external onlyClient(pactId) pactExists(pactId) {
@@ -602,5 +674,21 @@ contract PactWrapper {
 
     function getActiveEvaluatorCount() external view returns (uint256) {
         return activeEvaluators.length;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //                          INTERNAL HELPERS
+    // ──────────────────────────────────────────────────────────────────────
+
+    // Settles a Pact in the provider's favor. Reference contract pays the
+    // provider directly (its platformFeeBP + evaluatorFeeBP are 0 on Arc
+    // Testnet); our platform fee was already collected on fund(), so
+    // nothing to skim here.
+    function _payout(uint256 pactId, bytes32 reason, address by) internal {
+        PactRecord storage p = pacts[pactId];
+        p.status           = Status.Completed;
+        p.terminationActor = by;
+        agenticCommerce.complete(p.underlyingJobId, reason, "");
+        emit Completed(pactId, reason, p.provider, p.budget, by);
     }
 }
