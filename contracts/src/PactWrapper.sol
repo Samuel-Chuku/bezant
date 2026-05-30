@@ -373,10 +373,17 @@ contract PactWrapper {
         if (cw < CHALLENGE_FLOOR || cw > CHALLENGE_CEILING) revert ChallengeWindowOutOfRange(cw);
 
         // Wrapper acts as the protocol-level evaluator on every Pact it creates.
+        // The reference contract's expiredAt is set to max-uint64 so the wrapper's
+        // deadline stays authoritative — wrapper.extendDeadline can push the user-
+        // facing deadline arbitrarily forward without colliding with the reference
+        // contract's own past-deadline guards on fund() and claimRefund(). For the
+        // same reason, wrapper.claimRefund routes through reference.reject() rather
+        // than reference.claimRefund() (which would refuse with our max-uint64 ref
+        // deadline). See §8.1 extendDeadline / claimRefund of the spec.
         uint256 underlyingJobId = agenticCommerce.createJob(
             provider,
             address(this),
-            expiredAt,
+            type(uint64).max,
             description,
             hook
         );
@@ -512,9 +519,23 @@ contract PactWrapper {
     }
 
     function reject(uint256 pactId, bytes32 reason) external onlyClient(pactId) pactExists(pactId) {
-        // TODO: §8.1 reject; allowed from Funded or Submitted
-        pactId; reason;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        if (p.status != Status.Funded && p.status != Status.Submitted) revert WrongStatusMulti(p.status);
+        if (p.disputeId != 0) revert DisputeAlreadyOpen();
+
+        uint256 budget       = p.budget;
+        address actualClient = p.client;
+
+        p.status           = Status.Rejected;
+        p.terminationActor = msg.sender;
+
+        // Reference's `client` is the wrapper (since wrapper called createJob),
+        // so reference.reject() sends the budget here. Forward to the real client.
+        // Platform fee stays in treasuryBalance per locked §11.
+        agenticCommerce.reject(p.underlyingJobId, reason, "");
+        if (!usdc.transfer(actualClient, budget)) revert TransferFailed();
+
+        emit Rejected(pactId, reason, msg.sender);
     }
 
     function cancel(uint256 pactId)
@@ -523,15 +544,38 @@ contract PactWrapper {
         pactExists(pactId)
         inStatus(pactId, Status.Open)
     {
-        // TODO: §8.1 cancel; calls reference.reject; status → Expired
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        p.status           = Status.Expired;
+        p.terminationActor = msg.sender;
+
+        // No funds have moved yet (Open ⇒ never funded). reference.reject is the
+        // canonical way to mark the underlying job terminal.
+        agenticCommerce.reject(p.underlyingJobId, bytes32(0), "");
+
+        emit Expired(pactId, msg.sender);
     }
 
     function claimRefund(uint256 pactId) external pactExists(pactId) {
-        // TODO: §8.1 claimRefund; status → Refunded
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        if (p.status != Status.Funded && p.status != Status.Submitted) revert WrongStatusMulti(p.status);
+        if (block.timestamp <= p.expiredAt) revert NotYetExpired(p.expiredAt, uint64(block.timestamp));
+        if (p.disputeId != 0) revert DisputeAlreadyOpen();
+
+        uint256 budget       = p.budget;
+        address actualClient = p.client;
+
+        p.status           = Status.Refunded;
+        p.terminationActor = msg.sender;
+
+        // Reference contract was given a max-uint64 expiredAt at createPact, so
+        // reference.claimRefund() would refuse (its check `now > expiredAt` fails).
+        // Use reference.reject() instead — refund lands in the wrapper (because
+        // reference's `client` is the wrapper) and we forward to the real client.
+        // Platform fee retained per §11.
+        agenticCommerce.reject(p.underlyingJobId, bytes32(0), "");
+        if (!usdc.transfer(actualClient, budget)) revert TransferFailed();
+
+        emit Refunded(pactId, budget, actualClient);
     }
 
     function extendDeadline(uint256 pactId, uint64 newExpiredAt)
@@ -539,9 +583,28 @@ contract PactWrapper {
         onlyClient(pactId)
         pactExists(pactId)
     {
-        // TODO: §8.1 extendDeadline; Rule 1
-        pactId; newExpiredAt;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        Status s = p.status;
+        uint64 cur = p.expiredAt;
+
+        // Rule 1, terminal states blocked.
+        if (s == Status.Completed || s == Status.Rejected || s == Status.Refunded || s == Status.Expired) {
+            revert TerminalStatus();
+        }
+
+        if (s == Status.Submitted) {
+            // Locked-down: exactly +1h, max 3 extensions, against the current expiredAt.
+            uint64 expected = cur + SUBMITTED_EXT_DELTA;
+            if (newExpiredAt != expected) revert ExtensionDeltaTooLarge();
+            if (p.submittedExtCount >= MAX_SUBMITTED_EXT) revert SubmittedExtensionsExhausted();
+            p.submittedExtCount = p.submittedExtCount + 1;
+        } else {
+            // Open / Funded / Disputed: unrestricted forward extensions.
+            if (newExpiredAt <= cur) revert ExtensionDeltaNotPositive();
+        }
+
+        p.expiredAt = newExpiredAt;
+        emit DeadlineExtended(pactId, cur, newExpiredAt, p.submittedExtCount);
     }
 
     // ──────────────────────────────────────────────────────────────────────
