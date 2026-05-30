@@ -659,12 +659,94 @@ contract PactWrapper {
     // ──────────────────────────────────────────────────────────────────────
 
     function stakeEvaluator(uint256 amount) external {
-        amount;
-        revert("NOT_IMPLEMENTED");
+        if (amount < EVALUATOR_MIN_STAKE) revert InsufficientStake(amount, EVALUATOR_MIN_STAKE);
+        EvaluatorStake storage e = evaluators[msg.sender];
+        if (e.stake != 0) revert AlreadyStaked();
+
+        if (!usdc.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+
+        e.stake               = amount;
+        e.stakedAt            = uint64(block.timestamp);
+        e.totalVotes          = 0;
+        e.majorityVotes       = 0;
+        e.pendingDisputeRefs  = 0;
+        e.active              = true;
+
+        activeEvaluators.push(msg.sender);
+        // 1-indexed so 0 means "not in pool".
+        activeEvaluatorIndex[msg.sender] = activeEvaluators.length;
+
+        emit EvaluatorStaked(msg.sender, amount);
     }
 
     function unstakeEvaluator() external {
-        revert("NOT_IMPLEMENTED");
+        EvaluatorStake storage e = evaluators[msg.sender];
+        if (e.stake == 0) revert NotStaked();
+        if (e.pendingDisputeRefs != 0) revert EvaluatorBusy(e.pendingDisputeRefs);
+
+        uint256 amount = e.stake;
+
+        // Remove from activeEvaluators[] via swap-and-pop. Only relevant if
+        // the evaluator is still in the active pool (ejection can drop them
+        // out preemptively while leaving the stake locked until refs == 0).
+        uint256 idx1 = activeEvaluatorIndex[msg.sender];
+        if (idx1 != 0) {
+            uint256 idx = idx1 - 1;
+            uint256 lastIdx = activeEvaluators.length - 1;
+            if (idx != lastIdx) {
+                address last = activeEvaluators[lastIdx];
+                activeEvaluators[idx] = last;
+                activeEvaluatorIndex[last] = idx + 1;
+            }
+            activeEvaluators.pop();
+            activeEvaluatorIndex[msg.sender] = 0;
+        }
+
+        // Reset record.
+        delete evaluators[msg.sender];
+
+        if (!usdc.transfer(msg.sender, amount)) revert TransferFailed();
+        emit EvaluatorUnstaked(msg.sender, amount);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //                    EVALUATOR SELECTION (internal)
+    // ──────────────────────────────────────────────────────────────────────
+
+    // Picks EVALUATORS_PER_DISPUTE distinct evaluators uniformly at random
+    // from activeEvaluators[]. Partial Fisher-Yates: each of the N picks
+    // shuffles one slot of an in-memory index array, so no evaluator can be
+    // picked twice. Seed mixes block.prevrandao + pactId + disputeId so two
+    // disputes in the same block (or even same proposer) don't collide.
+    function _selectEvaluators(uint256 pactId, uint256 disputeId)
+        internal
+        view
+        returns (address[3] memory selected)
+    {
+        uint256 poolSize = activeEvaluators.length;
+        if (poolSize < EVALUATORS_PER_DISPUTE) revert InsufficientEvaluators(poolSize);
+
+        // Build [0, 1, 2, ..., poolSize-1] in memory.
+        uint256[] memory pool = new uint256[](poolSize);
+        for (uint256 i = 0; i < poolSize; i++) pool[i] = i;
+
+        uint256 seed = uint256(
+            keccak256(abi.encode(block.prevrandao, pactId, disputeId, block.timestamp))
+        );
+
+        for (uint8 k = 0; k < EVALUATORS_PER_DISPUTE; k++) {
+            uint256 range  = poolSize - k;
+            uint256 offset = seed % range;
+            uint256 pickIdx = uint256(k) + offset;
+            if (pickIdx != k) {
+                uint256 tmp = pool[k];
+                pool[k] = pool[pickIdx];
+                pool[pickIdx] = tmp;
+            }
+            selected[k] = activeEvaluators[pool[k]];
+            // Mix for the next iteration.
+            seed = uint256(keccak256(abi.encode(seed, k)));
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────
