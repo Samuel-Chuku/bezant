@@ -270,6 +270,7 @@ contract PactWrapper {
     // dispute
     error DisputeAlreadyOpen();
     error NoActiveDispute();
+    error DisputeWindowClosed(uint64 closedAt, uint64 nowTs);
     error ConcedeDeadlinePassed();
     error ConcedeDeadlineNotYetPassed();
     error GraceWindowClosed();
@@ -522,20 +523,7 @@ contract PactWrapper {
         PactRecord storage p = pacts[pactId];
         if (p.status != Status.Funded && p.status != Status.Submitted) revert WrongStatusMulti(p.status);
         if (p.disputeId != 0) revert DisputeAlreadyOpen();
-
-        uint256 budget       = p.budget;
-        address actualClient = p.client;
-
-        p.status           = Status.Rejected;
-        p.terminationActor = msg.sender;
-
-        // Reference's `client` is the wrapper (since wrapper called createJob),
-        // so reference.reject() sends the budget here. Forward to the real client.
-        // Platform fee stays in treasuryBalance per locked §11.
-        agenticCommerce.reject(p.underlyingJobId, reason, "");
-        if (!usdc.transfer(actualClient, budget)) revert TransferFailed();
-
-        emit Rejected(pactId, reason, msg.sender);
+        _settleAsRejected(pactId, reason, msg.sender);
     }
 
     function cancel(uint256 pactId)
@@ -617,41 +605,164 @@ contract PactWrapper {
         inStatus(pactId, Status.Submitted)
         returns (uint256 disputeId)
     {
-        pactId; reasonHash;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+
+        // Only client / provider can dispute.
+        if (msg.sender != p.client && msg.sender != p.provider) revert NotPactParticipant();
+        if (p.disputeId != 0) revert DisputeAlreadyOpen();
+
+        // Dispute must happen within the challenge window — past that, anyone
+        // can permissionlessly auto-finalize via complete().
+        uint64 closesAt = p.submittedAt + p.challengeWindow;
+        if (block.timestamp >= closesAt) revert DisputeWindowClosed(closesAt, uint64(block.timestamp));
+
+        uint256 bond = BondMath.bondFor(p.budget, BOND_BPS);
+        if (!usdc.transferFrom(msg.sender, address(this), bond)) revert TransferFailed();
+
+        disputeId = nextDisputeId++;
+        Dispute storage d = disputes[disputeId];
+        d.pactId          = pactId;
+        d.disputer        = msg.sender;
+        d.opponent        = (msg.sender == p.client) ? p.provider : p.client;
+        d.bondDisputer    = bond;
+        d.reasonHash      = reasonHash;
+        d.status          = DisputeStatus.Open;
+        d.openedAt        = uint64(block.timestamp);
+        d.concedeDeadline = uint64(block.timestamp) + CONCEDE_WINDOW;
+
+        p.status    = Status.Disputed;
+        p.disputeId = disputeId;
+
+        emit DisputeOpened(pactId, disputeId, msg.sender, bond, reasonHash);
     }
 
     function concede(uint256 pactId) external pactExists(pactId) {
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        if (p.status != Status.Disputed) revert WrongStatus(p.status, Status.Disputed);
+        Dispute storage d = disputes[p.disputeId];
+        if (d.status != DisputeStatus.Open) revert NoActiveDispute();
+        if (msg.sender != d.opponent) revert NotDisputeOpponent();
+        if (block.timestamp > d.concedeDeadline) revert ConcedeDeadlinePassed();
+        _resolveByConcede(pactId, p.disputeId);
     }
 
     function forceConcede(uint256 pactId) external pactExists(pactId) {
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        if (p.status != Status.Disputed) revert WrongStatus(p.status, Status.Disputed);
+        Dispute storage d = disputes[p.disputeId];
+        if (d.status != DisputeStatus.Open) revert NoActiveDispute();
+        if (block.timestamp <= d.concedeDeadline) revert ConcedeDeadlineNotYetPassed();
+        _resolveByConcede(pactId, p.disputeId);
     }
 
     function defend(uint256 pactId) external pactExists(pactId) {
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        if (p.status != Status.Disputed) revert WrongStatus(p.status, Status.Disputed);
+        Dispute storage d = disputes[p.disputeId];
+        if (d.status != DisputeStatus.Open) revert NoActiveDispute();
+        if (msg.sender != d.opponent) revert NotDisputeOpponent();
+        if (block.timestamp > d.concedeDeadline) revert ConcedeDeadlinePassed();
+
+        uint256 bond = d.bondDisputer; // mirror disputer's bond
+        if (!usdc.transferFrom(msg.sender, address(this), bond)) revert TransferFailed();
+        d.bondOpponent = bond;
+
+        address[3] memory selected = _selectEvaluators(pactId, p.disputeId);
+        for (uint8 i = 0; i < EVALUATORS_PER_DISPUTE; i++) {
+            d.evaluators[i] = selected[i];
+            evaluators[selected[i]].pendingDisputeRefs += 1;
+        }
+
+        d.commitDeadline = uint64(block.timestamp) + COMMIT_WINDOW;
+        d.graceDeadline  = d.commitDeadline + GRACE_WINDOW;
+        d.revealDeadline = d.graceDeadline + REVEAL_WINDOW;
+        d.status         = DisputeStatus.Defended;
+
+        emit DisputeDefended(pactId, p.disputeId, msg.sender, bond, selected);
     }
 
     function commitVote(uint256 pactId, bytes32 commitHash) external pactExists(pactId) {
-        pactId; commitHash;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        Dispute storage d = disputes[p.disputeId];
+        if (d.status != DisputeStatus.Defended) revert NoActiveDispute();
+        if (block.timestamp > d.graceDeadline) revert GraceWindowClosed();
+        if (!_isSelectedEvaluator(d, msg.sender)) revert EvaluatorNotSelected(msg.sender);
+
+        bool firstCommit = d.commit[msg.sender] == bytes32(0);
+        d.commit[msg.sender] = commitHash;
+        if (firstCommit) d.commitCount += 1;
+
+        emit CommitSubmitted(pactId, p.disputeId, msg.sender, commitHash);
     }
 
     function revealVote(uint256 pactId, address evaluator, Vote vote_, bytes32 secret)
         external
         pactExists(pactId)
     {
-        pactId; evaluator; vote_; secret;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        Dispute storage d = disputes[p.disputeId];
+        if (d.status != DisputeStatus.Defended) revert NoActiveDispute();
+        if (vote_ == Vote.None) revert InvalidVote();
+        if (!_isSelectedEvaluator(d, evaluator)) revert EvaluatorNotSelected(evaluator);
+        if (block.timestamp <= d.graceDeadline) revert RevealNotOpen();
+        if (block.timestamp > d.revealDeadline) revert RevealWindowClosed();
+
+        bytes32 stored = d.commit[evaluator];
+        if (stored == bytes32(0)) revert CommitMissing();
+        bytes32 expected = keccak256(abi.encode(vote_, secret, evaluator));
+        if (stored != expected) revert CommitMismatch();
+        if (d.reveal[evaluator] != Vote.None) revert AlreadyRevealed();
+
+        d.reveal[evaluator] = vote_;
+        d.revealCount += 1;
+        if (vote_ == Vote.ForDisputer) d.votesForDisputer += 1;
+        else d.votesForOpponent += 1;
+
+        emit VoteRevealed(pactId, p.disputeId, evaluator, vote_);
     }
 
     function resolve(uint256 pactId) external pactExists(pactId) {
-        pactId;
-        revert("NOT_IMPLEMENTED");
+        PactRecord storage p = pacts[pactId];
+        Dispute storage d = disputes[p.disputeId];
+        if (d.status != DisputeStatus.Defended) revert NoActiveDispute();
+
+        // Can resolve when (a) reveal window has passed, OR (b) all N evaluators
+        // have revealed and the window's still open (early-exit shortcut).
+        bool allRevealed = d.revealCount == EVALUATORS_PER_DISPUTE;
+        if (!allRevealed && block.timestamp <= d.revealDeadline) revert ResolutionTooEarly();
+
+        if (d.revealCount < QUORUM) {
+            _resolveNoQuorum(pactId, p.disputeId);
+            return;
+        }
+
+        bool disputerWon = d.votesForDisputer > d.votesForOpponent;
+        (uint256 winnerReturn, uint256 loserReturn, uint256 evaluatorPoolShare) = BondMath.splitDispute(
+            disputerWon ? d.bondDisputer : d.bondOpponent,
+            disputerWon ? d.bondOpponent : d.bondDisputer,
+            LOSER_KEEPS_BPS,
+            WINNER_BONUS_BPS,
+            EVALUATOR_POOL_BPS
+        );
+
+        address winner = disputerWon ? d.disputer : d.opponent;
+        address loser  = disputerWon ? d.opponent : d.disputer;
+
+        if (winnerReturn > 0 && !usdc.transfer(winner, winnerReturn)) revert TransferFailed();
+        if (loserReturn  > 0 && !usdc.transfer(loser,  loserReturn))  revert TransferFailed();
+
+        _scoreEvaluatorsAndPayPool(d, evaluatorPoolShare, disputerWon);
+
+        d.status = disputerWon ? DisputeStatus.Resolved_Disputer : DisputeStatus.Resolved_Opponent;
+        emit DisputeResolved(pactId, p.disputeId, d.status, winner, winnerReturn, loserReturn, evaluatorPoolShare);
+
+        // Settle the pact in the winning side's favor.
+        if (winner == p.provider) {
+            _payout(pactId, bytes32(0), msg.sender);
+        } else {
+            // Winner is the client side.
+            _settleAsRejected(pactId, bytes32(0), msg.sender);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -843,5 +954,138 @@ contract PactWrapper {
         p.terminationActor = by;
         agenticCommerce.complete(p.underlyingJobId, reason, "");
         emit Completed(pactId, reason, p.provider, p.budget, by);
+    }
+
+    // Refund the locked budget to the client and mark the pact Rejected.
+    // Used by wrapper.reject (when caller is the client directly) and by the
+    // dispute-resolution paths whenever the client-side wins.
+    function _settleAsRejected(uint256 pactId, bytes32 reason, address by) internal {
+        PactRecord storage p = pacts[pactId];
+
+        uint256 budget       = p.budget;
+        address actualClient = p.client;
+
+        p.status           = Status.Rejected;
+        p.terminationActor = by;
+
+        // Reference's `client` is the wrapper (since wrapper called createJob),
+        // so reference.reject() sends the budget back here. Forward to the real
+        // client. Platform fee stays in treasuryBalance per locked §11.
+        agenticCommerce.reject(p.underlyingJobId, reason, "");
+        if (!usdc.transfer(actualClient, budget)) revert TransferFailed();
+
+        emit Rejected(pactId, reason, by);
+    }
+
+    function _isSelectedEvaluator(Dispute storage d, address who) internal view returns (bool) {
+        for (uint8 i = 0; i < EVALUATORS_PER_DISPUTE; i++) {
+            if (d.evaluators[i] == who) return true;
+        }
+        return false;
+    }
+
+    // Disputer wins by concession (opponent conceded or let the concedeDeadline
+    // pass). Refund disputer's bond in full; settle pact in their direction.
+    function _resolveByConcede(uint256 pactId, uint256 disputeId) internal {
+        Dispute storage d = disputes[disputeId];
+        PactRecord storage p = pacts[pactId];
+        uint256 bond = d.bondDisputer;
+        address disputer = d.disputer;
+
+        d.status = DisputeStatus.Conceded_Disputer;
+        emit DisputeConceded(pactId, disputeId, msg.sender);
+
+        if (bond > 0 && !usdc.transfer(disputer, bond)) revert TransferFailed();
+
+        if (disputer == p.provider) {
+            _payout(pactId, bytes32(0), msg.sender);
+        } else {
+            _settleAsRejected(pactId, bytes32(0), msg.sender);
+        }
+    }
+
+    // <QUORUM reveals — no decision. Refund both bonds, decrement evaluator
+    // refs without scoring, and rewind the pact to Submitted with a fresh
+    // challenge window so the parties can re-act.
+    function _resolveNoQuorum(uint256 pactId, uint256 disputeId) internal {
+        Dispute storage d = disputes[disputeId];
+        PactRecord storage p = pacts[pactId];
+
+        if (d.bondDisputer > 0 && !usdc.transfer(d.disputer, d.bondDisputer)) revert TransferFailed();
+        if (d.bondOpponent > 0 && !usdc.transfer(d.opponent, d.bondOpponent)) revert TransferFailed();
+
+        for (uint8 i = 0; i < EVALUATORS_PER_DISPUTE; i++) {
+            address ev = d.evaluators[i];
+            if (ev != address(0)) {
+                evaluators[ev].pendingDisputeRefs -= 1;
+            }
+        }
+
+        d.status = DisputeStatus.Resolved_NoQuorum;
+        emit DisputeResolved(pactId, disputeId, d.status, address(0), d.bondDisputer, d.bondOpponent, 0);
+
+        // Rewind: pact returns to Submitted, fresh challenge window opens.
+        p.status     = Status.Submitted;
+        p.disputeId  = 0;
+        p.submittedAt = uint64(block.timestamp);
+    }
+
+    // Per-evaluator stat update, ejection check, and pool distribution. Pool
+    // share is split equally across *revealers* — non-revealers get 0 of the
+    // pot but still take a totalVotes++ hit (counted as non-majority below).
+    // Dust from integer division goes to the first revealer.
+    function _scoreEvaluatorsAndPayPool(Dispute storage d, uint256 poolShare, bool disputerWon) internal {
+        Vote majority = disputerWon ? Vote.ForDisputer : Vote.ForOpponent;
+
+        uint256 revealerCount   = d.revealCount;
+        uint256 sharePerRevealer = revealerCount > 0 ? poolShare / revealerCount : 0;
+        uint256 dust = poolShare - sharePerRevealer * revealerCount;
+        bool firstRevealerSeen  = false;
+
+        for (uint8 i = 0; i < EVALUATORS_PER_DISPUTE; i++) {
+            address ev = d.evaluators[i];
+            EvaluatorStake storage stake = evaluators[ev];
+
+            stake.totalVotes += 1;
+            stake.pendingDisputeRefs -= 1;
+
+            Vote revealed = d.reveal[ev];
+            if (revealed == majority) {
+                stake.majorityVotes += 1;
+            }
+
+            if (revealed != Vote.None) {
+                uint256 payment = sharePerRevealer;
+                if (!firstRevealerSeen) {
+                    payment += dust;
+                    firstRevealerSeen = true;
+                }
+                if (payment > 0) {
+                    if (!usdc.transfer(ev, payment)) revert TransferFailed();
+                    emit EvaluatorPayout(ev, payment, d.pactId);
+                }
+            }
+
+            // Ejection: <30% lifetime majority alignment AND ≥10 total votes.
+            if (stake.totalVotes >= EJECT_MIN_VOTES) {
+                uint256 alignment = (uint256(stake.majorityVotes) * 10_000) / uint256(stake.totalVotes);
+                if (alignment < EJECT_ALIGNMENT_BPS && stake.active) {
+                    uint256 idx1 = activeEvaluatorIndex[ev];
+                    if (idx1 != 0) {
+                        uint256 idx = idx1 - 1;
+                        uint256 lastIdx = activeEvaluators.length - 1;
+                        if (idx != lastIdx) {
+                            address last = activeEvaluators[lastIdx];
+                            activeEvaluators[idx] = last;
+                            activeEvaluatorIndex[last] = idx + 1;
+                        }
+                        activeEvaluators.pop();
+                        activeEvaluatorIndex[ev] = 0;
+                    }
+                    stake.active = false;
+                    emit EvaluatorEjected(ev, stake.totalVotes, stake.majorityVotes);
+                }
+            }
+        }
     }
 }
