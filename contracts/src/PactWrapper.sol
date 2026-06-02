@@ -291,6 +291,7 @@ contract PactWrapper {
     error EvaluatorBusy(uint32 pendingDisputeRefs);
     error PlatformFeeAboveMax(uint16 requested, uint16 max);
     error ZeroAddress();
+    error InsufficientTreasury(uint256 have, uint256 want);
 
     // ──────────────────────────────────────────────────────────────────────
     //                             MODIFIERS
@@ -865,18 +866,27 @@ contract PactWrapper {
     // ──────────────────────────────────────────────────────────────────────
 
     function setPlatformFeeBps(uint16 bps) external onlyOwner {
-        bps;
-        revert("NOT_IMPLEMENTED");
+        if (bps > MAX_PLATFORM_FEE_BPS) revert PlatformFeeAboveMax(bps, MAX_PLATFORM_FEE_BPS);
+        uint16 old = platformFeeBps;
+        platformFeeBps = bps;
+        emit PlatformFeeUpdated(old, bps);
     }
 
     function setPlatformTreasury(address treasury) external onlyOwner {
-        treasury;
-        revert("NOT_IMPLEMENTED");
+        if (treasury == address(0)) revert ZeroAddress();
+        address old = platformTreasury;
+        platformTreasury = treasury;
+        emit PlatformTreasuryUpdated(old, treasury);
     }
 
     function withdrawTreasury(uint256 amount) external onlyOwner {
-        amount;
-        revert("NOT_IMPLEMENTED");
+        if (amount == 0) return;
+        uint256 bal = treasuryBalance;
+        if (amount > bal) revert InsufficientTreasury(bal, amount);
+        treasuryBalance = bal - amount;
+        address to = platformTreasury;
+        if (!usdc.transfer(to, amount)) revert TransferFailed();
+        emit TreasuryWithdrawn(to, amount);
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
