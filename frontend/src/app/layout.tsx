@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from '@/components/providers';
+import { ToastProvider } from '@/components/toast';
 import { TopNav } from '@/components/top-nav';
 import { SidebarSummary } from '@/components/sidebar-summary';
 
@@ -14,11 +15,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <Providers>
-          <TopNav />
-          {children}
-          {/* SidebarSummary self-positions: fixed + draggable at lg+,
-              inline panel below content under lg. */}
-          <SidebarSummary />
+          <ToastProvider>
+            <TopNav />
+            {children}
+            {/* SidebarSummary self-positions: fixed + draggable at lg+,
+                inline panel below content under lg. */}
+            <SidebarSummary />
+          </ToastProvider>
         </Providers>
       </body>
     </html>

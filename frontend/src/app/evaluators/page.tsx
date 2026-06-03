@@ -11,9 +11,14 @@ import {
   buildStakeEvaluatorUnsigned,
   buildUnstakeEvaluatorUnsigned,
   getEvaluatorInfo,
+  getUserByAddress,
+  getReputationSummary,
+  formatReputationValue,
   type EvaluatorInfo,
+  type ReputationSummary,
 } from '@/lib/api';
 import { ErrorBanner } from '@/components/async-state';
+import { useToast } from '@/components/toast';
 
 const erc20AllowanceAbi = [
   {
@@ -36,8 +41,11 @@ type ActionState =
 
 export default function EvaluatorsPage() {
   const signer = useSigner();
+  const toast = useToast();
   const publicClient = usePublicClient({ chainId: arcTestnet.id });
   const [info, setInfo] = useState<EvaluatorInfo | null>(null);
+  const [rep, setRep] = useState<ReputationSummary | null>(null);
+  const [hasAgentId, setHasAgentId] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [action, setAction] = useState<ActionState>({ status: 'idle' });
@@ -49,6 +57,15 @@ export default function EvaluatorsPage() {
       const data = await getEvaluatorInfo(signer.address.toLowerCase());
       setInfo(data);
       if (!amount) setAmount(data.pool.minStake.usdc);
+      // Best-effort ERC-8004 reputation: only if this address is a registered
+      // agent. Failures here shouldn't block the staking UI.
+      try {
+        const user = await getUserByAddress(signer.address.toLowerCase());
+        setHasAgentId(!!user?.agentId);
+        setRep(user?.agentId ? await getReputationSummary(user.agentId) : null);
+      } catch {
+        setRep(null);
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     }
@@ -97,6 +114,7 @@ export default function EvaluatorsPage() {
       setAction({ status: 'busy', label: 'Staking…' });
       await send('Staking…', () => buildStakeEvaluatorUnsigned(amt));
       setAction({ status: 'success' });
+      toast.success('Staked into the evaluator pool');
       await load();
     } catch (err) {
       setAction({ status: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -108,6 +126,7 @@ export default function EvaluatorsPage() {
       setAction({ status: 'busy', label: 'Unstaking…' });
       await send('Unstaking…', () => buildUnstakeEvaluatorUnsigned());
       setAction({ status: 'success' });
+      toast.success('Unstaked — funds returned');
       await load();
     } catch (err) {
       setAction({ status: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -149,6 +168,41 @@ export default function EvaluatorsPage() {
             <Stat label="Min stake" value={`${info.pool.minStake.usdc} USDC`} />
             <Stat label="Bond" value={`${info.pool.bondBps / 100}%`} />
             <Stat label="Per dispute" value={String(info.pool.evaluatorsPerDispute)} />
+          </section>
+
+          {/* Reputation — dispute alignment (on-chain counters) + ERC-8004 agent rep. */}
+          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+            <h2 className="text-sm font-medium text-neutral-100">Your reputation</h2>
+            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <Row
+                label="Dispute alignment"
+                value={
+                  info.totalVotes > 0
+                    ? `${Math.round((info.majorityVotes / info.totalVotes) * 100)}%`
+                    : '—'
+                }
+              />
+              <Row label="Disputes judged" value={String(info.totalVotes)} />
+              {hasAgentId && rep ? (
+                <>
+                  <Row label="ERC-8004 feedback" value={String(rep.summary.count)} />
+                  <Row
+                    label="ERC-8004 score"
+                    value={
+                      rep.summary.count > 0
+                        ? formatReputationValue(rep.summary.value, rep.summary.valueDecimals)
+                        : '—'
+                    }
+                  />
+                </>
+              ) : (
+                <div className="col-span-2 text-xs text-neutral-500">
+                  {hasAgentId
+                    ? 'No ERC-8004 feedback yet.'
+                    : 'Not a registered ERC-8004 agent — register an identity to build portable reputation.'}
+                </div>
+              )}
+            </dl>
           </section>
 
           {/* Your status */}

@@ -28,6 +28,7 @@ import {
   getPactEvents,
   getPactState,
   getDisputeState,
+  getEvaluatorInfo,
   registerAutoReveal,
   getOrCreateReadAuth,
   getReputationSummary,
@@ -53,8 +54,30 @@ import {
 } from '@/lib/vote';
 import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/pact-status';
 import { CountdownBanner, CountdownChip } from '@/components/countdown';
+import { useToast } from '@/components/toast';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { shortAddress } from '@/lib/format';
+
+// Maps an in-flight action label to its past-tense confirmation toast. Keeps the
+// toast copy in one place; runAction looks it up on success. (Falls back to a
+// generic "Done" for anything not listed.)
+const ACTION_TOAST: Record<string, string> = {
+  'Funding pact…': 'Pact funded',
+  'Releasing…': 'Funds released to the provider',
+  'Rejecting…': 'Pact rejected — refund issued',
+  'Cancelling…': 'Pact cancelled',
+  'Setting budget…': 'Quote updated',
+  'Opening dispute…': 'Dispute opened',
+  'Defending…': 'Dispute defended — evaluators selected',
+  'Conceding…': 'Conceded',
+  'Force-settling…': 'Dispute force-settled',
+  'Committing vote…': 'Vote committed',
+  'Revealing vote…': 'Vote revealed',
+  'Resolving…': 'Dispute resolved',
+  'Finalizing…': 'Pact finalized',
+  'Claiming refund…': 'Refund claimed',
+  'Approving USDC…': 'USDC approved',
+};
 
 // Minimal ABI fragment to read USDC allowance — saves a backend roundtrip.
 const erc20AllowanceAbi = [
@@ -285,6 +308,7 @@ function formatBytes(n: number): string {
 export default function PactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: pactId } = use(params);
   const signer = useSigner();
+  const toast = useToast();
   // Allowance + any other Arc reads must stay pinned to Arc even if the
   // user just bridged and the wallet is sitting on Base / Sepolia / etc.
   const publicClient = usePublicClient({ chainId: arcTestnet.id });
@@ -332,6 +356,10 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
   // Auto-reveal opt-in (default on) — when committing, also hand the agent the
   // secret so it reveals on the evaluator's behalf if they go offline.
   const [autoReveal, setAutoReveal] = useState(true);
+  // Per-selected-evaluator dispute alignment, as a trust signal on the panel.
+  const [evaluatorRep, setEvaluatorRep] = useState<
+    Record<string, { alignment: number | null; totalVotes: number }>
+  >({});
 
   const fetchPact = useCallback(async () => {
     setLoadingPact(true);
@@ -394,6 +422,34 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
     };
   }, [pact]);
 
+  // Pull each selected evaluator's lifetime alignment once a dispute is in the
+  // voting phase — shown on the panel so parties can gauge the jurors.
+  useEffect(() => {
+    if (!dispute || dispute.status !== 'Defended' || dispute.evaluators.length === 0) {
+      setEvaluatorRep({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      dispute.evaluators.map(async (addr) => {
+        const key = addr.toLowerCase();
+        try {
+          const info = await getEvaluatorInfo(key);
+          const alignment =
+            info.totalVotes > 0 ? Math.round((info.majorityVotes / info.totalVotes) * 100) : null;
+          return [key, { alignment, totalVotes: info.totalVotes }] as const;
+        } catch {
+          return [key, { alignment: null, totalVotes: 0 }] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (!cancelled) setEvaluatorRep(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dispute]);
+
   const status = useMemo(() => (pact ? effectiveStatus(pact, Date.now()) : null), [pact]);
   const roles = useMemo(
     () => (pact && signer.isConnected ? userRoles(pact, signer.address) : []),
@@ -418,6 +474,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
     try {
       const { txHash } = await fn();
       setActionState({ status: 'success', txHash });
+      toast.success(ACTION_TOAST[label] ?? 'Done');
       await fetchPact();
       return true;
     } catch (err) {
@@ -965,6 +1022,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                                   setDeliverableInput('');
                                   setDeliverableFile(null);
                                   setActionState({ status: 'success', txHash: onchainTxHash });
+                                  toast.success('Deliverable submitted');
                                   await fetchPact();
                                 } catch (uploadErr) {
                                   setPendingUpload(retry);
@@ -1153,6 +1211,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                 {pact.status === 'Disputed' && dispute && (
                   <DisputePanel
                     dispute={dispute}
+                    evaluatorRep={evaluatorRep}
                     signerAddress={signer.isConnected ? signer.address.toLowerCase() : undefined}
                     busy={actionState.status === 'busy'}
                     onConcede={() =>
@@ -1784,6 +1843,7 @@ const DISPUTE_BTN =
 
 function DisputePanel({
   dispute,
+  evaluatorRep,
   signerAddress,
   busy,
   onConcede,
@@ -1797,6 +1857,7 @@ function DisputePanel({
   hasStoredVote,
 }: {
   dispute: DisputeState;
+  evaluatorRep: Record<string, { alignment: number | null; totalVotes: number }>;
   signerAddress: string | undefined;
   busy: boolean;
   onConcede: () => void;
@@ -1894,6 +1955,23 @@ function DisputePanel({
             <Pill label="Committed" value={`${dispute.commitCount}/${dispute.evaluators.length}`} />
             <Pill label="Revealed" value={`${dispute.revealCount}/${dispute.evaluators.length}`} />
           </div>
+
+          {/* Juror trust signal — each selected evaluator's lifetime alignment. */}
+          <ul className="space-y-1 text-xs">
+            {dispute.evaluators.map((addr) => {
+              const r = evaluatorRep[addr.toLowerCase()];
+              return (
+                <li key={addr} className="flex items-center justify-between text-neutral-400">
+                  <span className="font-mono">{shortAddress(addr)}</span>
+                  <span className="text-neutral-500">
+                    {r && r.alignment !== null
+                      ? `${r.alignment}% aligned · ${r.totalVotes} disputes`
+                      : 'no track record yet'}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
 
           {isEvaluator && nowSec <= dispute.graceDeadline && (
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3">

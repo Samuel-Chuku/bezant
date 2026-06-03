@@ -8,6 +8,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { buildCreatePactUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { arcExplorerTxUrl } from '@/lib/explorers';
+import { useToast } from '@/components/toast';
 
 // Mirrors PactWrapper's PactCreated event. Used to parse the pactId out of the
 // tx receipt after a successful createPact.
@@ -44,6 +45,7 @@ type Submission =
 
 export default function CreatePactPage() {
   const signer = useSigner();
+  const toast = useToast();
   // Receipt parsing must read from Arc even if the wallet is currently on a
   // bridge source chain (Sepolia / Base / Arbitrum / OP).
   const publicClient = usePublicClient({ chainId: arcTestnet.id });
@@ -101,7 +103,9 @@ export default function CreatePactPage() {
         logs: receipt.logs,
       });
       if (!createdLog) throw new Error('PactCreated event missing from receipt');
-      setSubmission({ status: 'done', pactId: createdLog.args.pactId.toString(), txHash });
+      const newPactId = createdLog.args.pactId.toString();
+      setSubmission({ status: 'done', pactId: newPactId, txHash });
+      toast.success(`Pact #${newPactId} created`);
     } catch (err) {
       setSubmission({
         status: 'error',
