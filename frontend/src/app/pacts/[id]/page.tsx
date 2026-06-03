@@ -14,11 +14,21 @@ import {
   buildRejectUnsigned,
   buildSetBudgetUnsigned,
   buildSubmitUnsigned,
+  buildFinalizeUnsigned,
+  buildDisputeUnsigned,
+  buildConcedeUnsigned,
+  buildForceConcedeUnsigned,
+  buildDefendUnsigned,
+  buildCommitVoteUnsigned,
+  buildRevealVoteUnsigned,
+  buildResolveUnsigned,
   formatReputationValue,
   getDeliverable,
   getDeliverableFile,
   getPactEvents,
   getPactState,
+  getDisputeState,
+  registerAutoReveal,
   getOrCreateReadAuth,
   getReputationSummary,
   getUserByAddress,
@@ -26,15 +36,25 @@ import {
   uploadDeliverableFile,
   type Deliverable,
   type DeliverableContentType,
+  type DisputeState,
   type PactEvent,
   type PactLiveState,
   type PactRole,
   type ReputationSummary,
 } from '@/lib/api';
 import { WRAPPER_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
+import {
+  computeCommitHash,
+  generateSecret,
+  saveVote,
+  loadVote,
+  clearVote,
+  type VoteChoice,
+} from '@/lib/vote';
 import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/pact-status';
-import { CountdownBanner } from '@/components/countdown';
+import { CountdownBanner, CountdownChip } from '@/components/countdown';
 import { arcExplorerTxUrl } from '@/lib/explorers';
+import { shortAddress } from '@/lib/format';
 
 // Minimal ABI fragment to read USDC allowance — saves a backend roundtrip.
 const erc20AllowanceAbi = [
@@ -54,11 +74,16 @@ const STATUS_TINT: Record<string, string> = {
   Open: 'bg-sky-950/40 text-sky-300 border-sky-900/60',
   Funded: 'bg-amber-950/40 text-amber-300 border-amber-900/60',
   Submitted: 'bg-violet-950/40 text-violet-300 border-violet-900/60',
+  Disputed: 'bg-orange-950/40 text-orange-300 border-orange-900/60',
   Completed: 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60',
   Cancelled: 'bg-neutral-900 text-neutral-400 border-neutral-800',
   Rejected: 'bg-red-950/40 text-red-300 border-red-900/60',
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
 };
+
+// Mirrors the wrapper's immutable BOND_BPS (5%). Used to size the USDC approval
+// before dispute()/defend(); the contract pulls the exact bond.
+const DISPUTE_BOND_BPS = 500n;
 
 function effectiveStatus(live: PactLiveState, nowMs: number): string {
   const raw = live.status;
@@ -303,6 +328,11 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
   };
   const [pendingUpload, setPendingUpload] = useState<PendingTextUrl | PendingFile | null>(null);
 
+  const [dispute, setDispute] = useState<DisputeState | null>(null);
+  // Auto-reveal opt-in (default on) — when committing, also hand the agent the
+  // secret so it reveals on the evaluator's behalf if they go offline.
+  const [autoReveal, setAutoReveal] = useState(true);
+
   const fetchPact = useCallback(async () => {
     setLoadingPact(true);
     setLoadError(null);
@@ -310,6 +340,12 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
       const [live, evts] = await Promise.all([getPactState(pactId), getPactEvents(pactId)]);
       setPact(live);
       setEvents(evts);
+      // Pull live dispute state only when one exists (disputeId 0 = none).
+      if (live.disputeId && live.disputeId !== '0') {
+        setDispute(await getDisputeState(pactId));
+      } else {
+        setDispute(null);
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -468,6 +504,94 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
+  // Ensure the wrapper is approved for at least `raw` USDC before a bond/stake
+  // pull. Returns false (and surfaces the error) if the approve step fails.
+  const ensureAllowance = async (raw: bigint, usdc: string): Promise<boolean> => {
+    if (!publicClient || !signer.isConnected) return false;
+    const allowance = await publicClient.readContract({
+      address: USDC_ADDRESS,
+      abi: erc20AllowanceAbi,
+      functionName: 'allowance',
+      args: [signer.address as Hex, WRAPPER_ADDRESS],
+    });
+    if (allowance >= raw) return true;
+    return runAction('Approving USDC…', () =>
+      sendUnsigned('Approving USDC…', () => buildApproveUnsigned(usdc)),
+    );
+  };
+
+  // Open a dispute (client or provider). Pulls a 5% bond — approve first.
+  const openDispute = async () => {
+    if (!pact) return;
+    const bondRaw = (BigInt(pact.budget.raw) * DISPUTE_BOND_BPS) / 10000n;
+    const bondUsdc = formatUnits(bondRaw, 6);
+    try {
+      if (!(await ensureAllowance(bondRaw, bondUsdc))) return;
+      await runAction('Opening dispute…', () =>
+        sendUnsigned('Opening dispute…', () => buildDisputeUnsigned(pactId)),
+      );
+    } catch (err) {
+      setActionState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  // Defend a dispute (opponent posts a matching bond → evaluator vote).
+  const defendDispute = async () => {
+    if (!pact) return;
+    const bondRaw = (BigInt(pact.budget.raw) * DISPUTE_BOND_BPS) / 10000n;
+    const bondUsdc = formatUnits(bondRaw, 6);
+    try {
+      if (!(await ensureAllowance(bondRaw, bondUsdc))) return;
+      await runAction('Defending…', () =>
+        sendUnsigned('Defending…', () => buildDefendUnsigned(pactId)),
+      );
+    } catch (err) {
+      setActionState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  // Evaluator commit: generate a secret, save it locally, commit the hash. If
+  // auto-reveal is on, also hand the secret to the agent so it can reveal even
+  // if this browser is closed during the reveal window.
+  const commitVote = async (vote: VoteChoice) => {
+    if (!pact || !dispute || !signer.isConnected) return;
+    const secret = generateSecret();
+    const hash = computeCommitHash(vote, secret, signer.address);
+    saveVote(pactId, dispute.disputeId, signer.address, { vote, secret });
+    const evaluator = signer.address;
+    const disputeId = dispute.disputeId;
+    const ok = await runAction('Committing vote…', () =>
+      sendUnsigned('Committing vote…', () => buildCommitVoteUnsigned(pactId, hash)),
+    );
+    if (ok && autoReveal) {
+      try {
+        await registerAutoReveal(pactId, { disputeId, evaluator, vote, secret });
+      } catch {
+        // Non-fatal — the commit landed and the secret is saved locally, so the
+        // evaluator can still reveal manually. Don't surface over the success.
+      }
+    }
+  };
+
+  // Evaluator reveal: replay the locally-stored vote + secret.
+  const revealVote = async () => {
+    if (!pact || !dispute || !signer.isConnected) return;
+    const stored = loadVote(pactId, dispute.disputeId, signer.address);
+    if (!stored) {
+      setActionState({
+        status: 'error',
+        message: 'No saved vote found on this device — the secret was lost. Reveal must happen from the device that committed.',
+      });
+      return;
+    }
+    const ok = await runAction('Revealing vote…', () =>
+      sendUnsigned('Revealing vote…', () =>
+        buildRevealVoteUnsigned(pactId, signer.address, stored.vote, stored.secret),
+      ),
+    );
+    if (ok) clearVote(pactId, dispute.disputeId, signer.address);
+  };
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <header className="mb-6">
@@ -608,15 +732,6 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                 </div>
               )}
 
-              {/* Coming-soon hint — when the client is staring at a Submitted
-                  pact, surface that they'll soon be able to release directly
-                  (no evaluator wait) once our wrapper escrow ships. M36 just
-                  sets expectations; the actual contract function lands at M37. */}
-              {roles.includes('client') && status === 'Submitted' && !isOffArc && (
-                <p className="mt-3 text-[11px] italic text-neutral-500">
-                  Coming soon: direct client release (skip evaluator review) will land with arc-trade&apos;s wrapper escrow.
-                </p>
-              )}
 
               <div
                 className={`mt-4 space-y-4 ${isOffArc ? 'pointer-events-none opacity-50' : ''}`}
@@ -935,34 +1050,48 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* complete — evaluator only, while Submitted */}
-                {roles.includes('evaluator') && status === 'Submitted' && (
+                {/* Submitted — challenge-window status banner. */}
+                {pact.status === 'Submitted' && (
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-400">
+                    {Math.floor(Date.now() / 1000) < pact.submittedAt + pact.challengeWindow ? (
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        Challenge window closes
+                        <CountdownChip unix={pact.submittedAt + pact.challengeWindow} />
+                        — either party can dispute until then; the client can accept early.
+                      </span>
+                    ) : (
+                      <>Challenge window closed — anyone can finalize to release the budget to the provider.</>
+                    )}
+                  </div>
+                )}
+
+                {/* Accept & release — client only, while Submitted (instant payout). */}
+                {roles.includes('client') && pact.status === 'Submitted' && (
                   <ActionCard
-                    title="Release funds to provider"
-                    hint="Pays out the budget."
+                    title="Accept & release"
+                    hint="Pays the provider now, skipping the rest of the challenge window."
                   >
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!guardDeadline('Completing')) return;
-                        void runAction('Completing…', () =>
-                          sendUnsigned('Completing…', () => buildCompleteUnsigned(pactId)),
-                        );
-                      }}
+                      onClick={() =>
+                        runAction('Releasing…', () =>
+                          sendUnsigned('Releasing…', () => buildCompleteUnsigned(pactId)),
+                        )
+                      }
                       disabled={actionState.status === 'busy'}
                       className="rounded-lg bg-emerald-700/60 px-4 py-2 text-sm font-medium text-neutral-100 hover:bg-emerald-700/90 disabled:opacity-50"
                     >
-                      Complete
+                      Accept &amp; release
                     </button>
                   </ActionCard>
                 )}
 
-                {/* reject — evaluator only, while Funded or Submitted */}
-                {roles.includes('evaluator') &&
-                  (status === 'Funded' || status === 'Submitted') && (
+                {/* Reject & refund — client only, while Funded or Submitted. */}
+                {roles.includes('client') &&
+                  (pact.status === 'Funded' || pact.status === 'Submitted') && (
                     <ActionCard
-                      title="Reject and refund the client"
-                      hint="Full budget returned to the client."
+                      title="Reject &amp; refund"
+                      hint="Returns the budget to you. The platform fee taken at funding is retained."
                     >
                       <button
                         type="button"
@@ -974,14 +1103,91 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                         disabled={actionState.status === 'busy'}
                         className="rounded-lg bg-red-700/60 px-4 py-2 text-sm font-medium text-neutral-100 hover:bg-red-700/90 disabled:opacity-50"
                       >
-                        Reject
+                        Reject &amp; refund
                       </button>
                     </ActionCard>
                   )}
 
-                {/* claimRefund — anyone, when deadline passed + pact is Funded/Submitted */}
+                {/* Dispute — client or provider, while Submitted + within window. */}
+                {(roles.includes('client') || roles.includes('provider')) &&
+                  pact.status === 'Submitted' &&
+                  Math.floor(Date.now() / 1000) < pact.submittedAt + pact.challengeWindow && (
+                    <ActionCard
+                      title="Dispute the deliverable"
+                      hint="Posts a 5% bond and freezes the payout. The other side can concede or defend; if defended, staked evaluators vote."
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void openDispute()}
+                        disabled={actionState.status === 'busy'}
+                        className="rounded-lg bg-orange-700/60 px-4 py-2 text-sm font-medium text-neutral-100 hover:bg-orange-700/90 disabled:opacity-50"
+                      >
+                        Open dispute
+                      </button>
+                    </ActionCard>
+                  )}
+
+                {/* Finalize — anyone, while Submitted + challenge window closed. */}
+                {pact.status === 'Submitted' &&
+                  Math.floor(Date.now() / 1000) >= pact.submittedAt + pact.challengeWindow && (
+                    <ActionCard
+                      title="Finalize (challenge window closed)"
+                      hint="No dispute was raised — release the budget to the provider. Anyone can trigger."
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runAction('Finalizing…', () =>
+                            sendUnsigned('Finalizing…', () => buildFinalizeUnsigned(pactId)),
+                          )
+                        }
+                        disabled={actionState.status === 'busy'}
+                        className="rounded-lg bg-emerald-700/60 px-4 py-2 text-sm font-medium text-neutral-100 hover:bg-emerald-700/90 disabled:opacity-50"
+                      >
+                        Finalize
+                      </button>
+                    </ActionCard>
+                  )}
+
+                {/* Disputed — the full dispute panel. */}
+                {pact.status === 'Disputed' && dispute && (
+                  <DisputePanel
+                    dispute={dispute}
+                    signerAddress={signer.isConnected ? signer.address.toLowerCase() : undefined}
+                    busy={actionState.status === 'busy'}
+                    onConcede={() =>
+                      void runAction('Conceding…', () =>
+                        sendUnsigned('Conceding…', () => buildConcedeUnsigned(pactId)),
+                      )
+                    }
+                    onDefend={() => void defendDispute()}
+                    onForceConcede={() =>
+                      void runAction('Force-settling…', () =>
+                        sendUnsigned('Force-settling…', () => buildForceConcedeUnsigned(pactId)),
+                      )
+                    }
+                    onCommit={(vote) => void commitVote(vote)}
+                    autoReveal={autoReveal}
+                    onToggleAutoReveal={setAutoReveal}
+                    onReveal={() => void revealVote()}
+                    onResolve={() =>
+                      void runAction('Resolving…', () =>
+                        sendUnsigned('Resolving…', () => buildResolveUnsigned(pactId)),
+                      )
+                    }
+                    hasStoredVote={
+                      signer.isConnected
+                        ? loadVote(pactId, dispute.disputeId, signer.address) !== null
+                        : false
+                    }
+                  />
+                )}
+
+                {/* claimRefund — anyone, when deadline passed + pact is Funded/Submitted
+                    + no open dispute (the wrapper reverts claimRefund mid-dispute). */}
                 {status === 'Expired' &&
-                  (pact.status === 'Funded' || pact.status === 'Submitted') && (
+                  (pact.status === 'Funded' || pact.status === 'Submitted') &&
+                  pact.disputeId === '0' && (
                     <ActionCard
                       title="Claim refund (deadline passed)"
                       hint="Anyone can trigger; funds go to the client."
@@ -1569,6 +1775,224 @@ function ActionCard({
       <h3 className="text-sm font-medium text-neutral-100">{title}</h3>
       {hint && <p className="mt-1 text-xs text-neutral-500">{hint}</p>}
       <div className="mt-3">{children}</div>
+    </div>
+  );
+}
+
+const DISPUTE_BTN =
+  'rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
+
+function DisputePanel({
+  dispute,
+  signerAddress,
+  busy,
+  onConcede,
+  onDefend,
+  onForceConcede,
+  onCommit,
+  autoReveal,
+  onToggleAutoReveal,
+  onReveal,
+  onResolve,
+  hasStoredVote,
+}: {
+  dispute: DisputeState;
+  signerAddress: string | undefined;
+  busy: boolean;
+  onConcede: () => void;
+  onDefend: () => void;
+  onForceConcede: () => void;
+  onCommit: (vote: VoteChoice) => void;
+  autoReveal: boolean;
+  onToggleAutoReveal: (next: boolean) => void;
+  onReveal: () => void;
+  onResolve: () => void;
+  hasStoredVote: boolean;
+}) {
+  const [voteChoice, setVoteChoice] = useState<VoteChoice | null>(null);
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  const isDisputer = !!signerAddress && signerAddress === dispute.disputer.toLowerCase();
+  const isOpponent = !!signerAddress && signerAddress === dispute.opponent.toLowerCase();
+  const isEvaluator =
+    !!signerAddress && dispute.evaluators.some((e) => e.toLowerCase() === signerAddress);
+
+  const resolved = dispute.status.startsWith('Resolved') || dispute.status === 'Conceded_Disputer';
+  const allRevealed =
+    dispute.evaluators.length > 0 && dispute.revealCount >= dispute.evaluators.length;
+
+  return (
+    <div className="rounded-xl border border-orange-900/40 bg-orange-950/10 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-medium text-orange-200">Dispute #{dispute.disputeId}</h3>
+        <span className="rounded-md border border-orange-900/60 bg-orange-950/40 px-2 py-0.5 text-[11px] text-orange-300">
+          {dispute.status}
+        </span>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-400">
+        <div>
+          <dt className="text-neutral-500">Raised by</dt>
+          <dd className="font-mono text-neutral-300">{shortAddress(dispute.disputer)}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-500">Against</dt>
+          <dd className="font-mono text-neutral-300">{shortAddress(dispute.opponent)}</dd>
+        </div>
+      </dl>
+
+      {/* Phase: Open — opponent concedes/defends; anyone force-settles after the deadline. */}
+      {dispute.status === 'Open' && (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs text-neutral-400">
+            {nowSec < dispute.concedeDeadline ? (
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                The other side must respond before
+                <CountdownChip unix={dispute.concedeDeadline} />
+              </span>
+            ) : (
+              'Response deadline passed — anyone can settle this in the disputer’s favour.'
+            )}
+          </p>
+          {isOpponent && nowSec < dispute.concedeDeadline && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onConcede}
+                disabled={busy}
+                className={`${DISPUTE_BTN} border border-neutral-700 text-neutral-200 hover:bg-neutral-800`}
+              >
+                Concede
+              </button>
+              <button
+                type="button"
+                onClick={onDefend}
+                disabled={busy}
+                className={`${DISPUTE_BTN} bg-orange-700/60 text-neutral-100 hover:bg-orange-700/90`}
+              >
+                Defend (post 5% bond)
+              </button>
+            </div>
+          )}
+          {nowSec >= dispute.concedeDeadline && (
+            <button
+              type="button"
+              onClick={onForceConcede}
+              disabled={busy}
+              className={`${DISPUTE_BTN} bg-neutral-100 text-neutral-950 hover:bg-white`}
+            >
+              Force-settle
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Phase: Defended — commit/reveal voting. */}
+      {dispute.status === 'Defended' && (
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <Pill label="Evaluators" value={String(dispute.evaluators.length)} />
+            <Pill label="Committed" value={`${dispute.commitCount}/${dispute.evaluators.length}`} />
+            <Pill label="Revealed" value={`${dispute.revealCount}/${dispute.evaluators.length}`} />
+          </div>
+
+          {isEvaluator && nowSec <= dispute.graceDeadline && (
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3">
+              <p className="text-xs text-neutral-400">
+                You&apos;re a selected evaluator. Commit your vote before
+                <CountdownChip unix={dispute.graceDeadline} /> — you can re-commit until then.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([1, 2] as VoteChoice[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setVoteChoice(v)}
+                    className={`rounded-md border px-3 py-1.5 text-xs ${
+                      voteChoice === v
+                        ? 'border-neutral-400 bg-neutral-800 text-neutral-100'
+                        : 'border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                    }`}
+                  >
+                    {v === 1
+                      ? `For disputer (${shortAddress(dispute.disputer)})`
+                      : `For defender (${shortAddress(dispute.opponent)})`}
+                  </button>
+                ))}
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={autoReveal}
+                  onChange={(e) => onToggleAutoReveal(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-neutral-700 bg-neutral-950"
+                />
+                Auto-reveal — let arc-trade reveal this vote for me when the window opens
+              </label>
+              <button
+                type="button"
+                onClick={() => voteChoice && onCommit(voteChoice)}
+                disabled={busy || !voteChoice}
+                className={`${DISPUTE_BTN} mt-3 bg-neutral-100 text-neutral-950 hover:bg-white`}
+              >
+                Commit vote
+              </button>
+            </div>
+          )}
+
+          {isEvaluator && nowSec > dispute.graceDeadline && nowSec <= dispute.revealDeadline && (
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3">
+              <p className="text-xs text-neutral-400">
+                Reveal phase — closes <CountdownChip unix={dispute.revealDeadline} />.
+              </p>
+              <button
+                type="button"
+                onClick={onReveal}
+                disabled={busy || !hasStoredVote}
+                className={`${DISPUTE_BTN} mt-2 bg-neutral-100 text-neutral-950 hover:bg-white`}
+              >
+                Reveal vote
+              </button>
+              {!hasStoredVote && (
+                <p className="mt-2 text-[11px] text-amber-400">
+                  No saved vote on this device — reveal must happen where you committed.
+                </p>
+              )}
+            </div>
+          )}
+
+          {(allRevealed || nowSec > dispute.revealDeadline) && (
+            <button
+              type="button"
+              onClick={onResolve}
+              disabled={busy}
+              className={`${DISPUTE_BTN} bg-emerald-700/60 text-neutral-100 hover:bg-emerald-700/90`}
+            >
+              Resolve dispute
+            </button>
+          )}
+        </div>
+      )}
+
+      {resolved && (
+        <p className="mt-3 text-xs text-neutral-400">
+          This dispute is settled ({dispute.status}). The pact has moved to its final state.
+        </p>
+      )}
+
+      {!isDisputer && !isOpponent && !isEvaluator && !resolved && (
+        <p className="mt-3 text-[11px] text-neutral-500">
+          You&apos;re an observer on this dispute.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Pill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-2">
+      <div className="text-[10px] uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className="mt-0.5 font-mono text-neutral-200">{value}</div>
     </div>
   );
 }

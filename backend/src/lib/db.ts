@@ -228,6 +228,28 @@ db.exec(`
     indexed_at     TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (tx_hash, log_index)
   );
+  -- Pending auto-reveals for the auto-reveal agent. An evaluator who opts in at
+  -- commit time hands us (vote, secret); the agent reveals on their behalf once
+  -- the reveal window opens, via the operator wallet. One row per
+  -- (dispute, evaluator) — a re-commit replaces it. status:
+  -- pending | revealed | expired | failed.
+  CREATE TABLE IF NOT EXISTS auto_reveals (
+    dispute_id    TEXT NOT NULL,
+    evaluator     TEXT NOT NULL,
+    pact_id       TEXT NOT NULL,
+    vote          INTEGER NOT NULL,
+    secret        TEXT NOT NULL,
+    reveal_after  INTEGER NOT NULL,
+    reveal_before INTEGER NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    tx_hash       TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (dispute_id, evaluator)
+  );
+  CREATE INDEX IF NOT EXISTS idx_auto_reveals_status ON auto_reveals(status);
+
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);

@@ -46,6 +46,7 @@ import {
 } from './lib/db.js';
 import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
+import { startAutoRevealAgent, type AutoRevealRow } from './lib/auto-reveal-agent.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -151,6 +152,66 @@ async function readWrapperPact(pactId: bigint): Promise<WrapperPact> {
     submittedAt: r[14] as bigint,
     disputeId: r[15] as bigint,
     confidentialPayout: r[16] as boolean,
+  };
+}
+
+// getDisputeMeta(disputeId) is another multi-output getter → positional array.
+// Order matches the Dispute struct readout in PactWrapper.sol.
+type DisputeMeta = {
+  pactId: bigint;
+  disputer: `0x${string}`;
+  opponent: `0x${string}`;
+  bondDisputer: bigint;
+  bondOpponent: bigint;
+  reasonHash: `0x${string}`;
+  status: number;
+  openedAt: bigint;
+  concedeDeadline: bigint;
+  commitDeadline: bigint;
+  graceDeadline: bigint;
+  revealDeadline: bigint;
+  evaluators: readonly `0x${string}`[];
+  commitCount: number;
+  revealCount: number;
+  votesForDisputer: number;
+  votesForOpponent: number;
+};
+
+// Wrapper dispute status enum (PactWrapper.sol DisputeStatus).
+const DISPUTE_STATUS = [
+  'Open',
+  'Defended',
+  'Resolved_Disputer',
+  'Resolved_Opponent',
+  'Resolved_NoQuorum',
+  'Conceded_Disputer',
+] as const;
+
+async function readDisputeMeta(disputeId: bigint): Promise<DisputeMeta> {
+  const r = (await arcClient.readContract({
+    address: WRAPPER_ADDRESS,
+    abi: pactWrapperAbi,
+    functionName: 'getDisputeMeta',
+    args: [disputeId],
+  })) as readonly unknown[];
+  return {
+    pactId: r[0] as bigint,
+    disputer: r[1] as `0x${string}`,
+    opponent: r[2] as `0x${string}`,
+    bondDisputer: r[3] as bigint,
+    bondOpponent: r[4] as bigint,
+    reasonHash: r[5] as `0x${string}`,
+    status: Number(r[6]),
+    openedAt: r[7] as bigint,
+    concedeDeadline: r[8] as bigint,
+    commitDeadline: r[9] as bigint,
+    graceDeadline: r[10] as bigint,
+    revealDeadline: r[11] as bigint,
+    evaluators: r[12] as readonly `0x${string}`[],
+    commitCount: Number(r[13]),
+    revealCount: Number(r[14]),
+    votesForDisputer: Number(r[15]),
+    votesForOpponent: Number(r[16]),
   };
 }
 
@@ -1702,6 +1763,136 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, repl
   };
 });
 
+// Live dispute state for a pact. Reads the pact's disputeId, then getDisputeMeta.
+// Returns { dispute: null } when no dispute is or was open. Rich fields the
+// dispute panel needs (deadlines, selected evaluators, vote tallies) — kept as a
+// live read rather than indexed.
+app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id/dispute', async (request) => {
+  const pact = await readWrapperPact(BigInt(request.params.id));
+  if (pact.disputeId === 0n) return { dispute: null };
+
+  const d = await readDisputeMeta(pact.disputeId);
+  return {
+    dispute: {
+      disputeId: pact.disputeId.toString(),
+      pactId: d.pactId.toString(),
+      disputer: d.disputer,
+      opponent: d.opponent,
+      bondDisputer: d.bondDisputer.toString(),
+      bondOpponent: d.bondOpponent.toString(),
+      reasonHash: d.reasonHash,
+      status: DISPUTE_STATUS[d.status] ?? `Unknown(${d.status})`,
+      openedAt: Number(d.openedAt),
+      concedeDeadline: Number(d.concedeDeadline),
+      commitDeadline: Number(d.commitDeadline),
+      graceDeadline: Number(d.graceDeadline),
+      revealDeadline: Number(d.revealDeadline),
+      // Zero-address slots mean "not yet selected" (dispute still in Open phase).
+      evaluators: d.evaluators.filter((e) => e !== ZERO_ADDRESS),
+      commitCount: d.commitCount,
+      revealCount: d.revealCount,
+      votesForDisputer: d.votesForDisputer,
+      votesForOpponent: d.votesForOpponent,
+    },
+  };
+});
+
+// Opt in to auto-reveal: hand the agent (vote, secret) at commit time and it
+// reveals on your behalf once the reveal window opens. Validated against live
+// dispute state; one row per (dispute, evaluator) — a re-commit replaces it.
+const upsertAutoReveal = db.prepare(
+  `INSERT OR REPLACE INTO auto_reveals
+   (dispute_id, evaluator, pact_id, vote, secret, reveal_after, reveal_before, status, attempts, last_error, tx_hash)
+   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, NULL)`,
+);
+
+app.post<{
+  Params: { id: string };
+  Body: { disputeId: string; evaluator: string; vote: number; secret: string };
+}>('/arc/escrow/pacts/:id/auto-reveal', async (request, reply) => {
+  const pactId = request.params.id;
+  const { disputeId, evaluator, vote } = request.body;
+
+  if (!evaluator || !/^0x[0-9a-fA-F]{40}$/.test(evaluator)) {
+    return reply.code(400).send({ error: 'evaluator must be a 0x-prefixed 20-byte hex address' });
+  }
+  if (vote !== 1 && vote !== 2) {
+    return reply.code(400).send({ error: 'vote must be 1 (ForDisputer) or 2 (ForOpponent)' });
+  }
+  let secret: `0x${string}`;
+  try {
+    secret = toBytes32(request.body?.secret, 'secret');
+  } catch (e) {
+    return reply.code(400).send({ error: (e as Error).message });
+  }
+  if (secret === ZERO_BYTES32) {
+    return reply.code(400).send({ error: 'secret is required' });
+  }
+
+  // Validate against live state: the dispute must be in its voting phase and the
+  // caller must actually be one of the selected evaluators.
+  const pact = await readWrapperPact(BigInt(pactId));
+  if (pact.disputeId === 0n || pact.disputeId.toString() !== disputeId) {
+    return reply.code(400).send({ error: 'disputeId does not match the pact\'s open dispute' });
+  }
+  const d = await readDisputeMeta(pact.disputeId);
+  if (d.status !== 1) {
+    return reply.code(400).send({ error: 'dispute is not in the voting (Defended) phase' });
+  }
+  const ev = evaluator.toLowerCase();
+  if (!d.evaluators.some((e) => e.toLowerCase() === ev)) {
+    return reply.code(403).send({ error: 'address is not a selected evaluator on this dispute' });
+  }
+  if (Math.floor(Date.now() / 1000) >= Number(d.revealDeadline)) {
+    return reply.code(400).send({ error: 'reveal window has already closed' });
+  }
+
+  upsertAutoReveal.run(
+    disputeId,
+    ev,
+    pactId,
+    vote,
+    secret,
+    Number(d.graceDeadline),
+    Number(d.revealDeadline),
+  );
+  return { scheduled: true, revealAfter: Number(d.graceDeadline), revealBefore: Number(d.revealDeadline) };
+});
+
+// Evaluator pool state for an address + global pool params. Powers the stake
+// onboarding page and the "are you a selected evaluator" check.
+app.get<{ Params: { address: string } }>('/arc/escrow/evaluators/:address', async (request, reply) => {
+  const address = request.params.address;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    return reply.code(400).send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
+  }
+  const [me, activeCount, minStake, bondBps, perDispute] = await Promise.all([
+    arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'evaluators', args: [address as `0x${string}`] }) as Promise<readonly unknown[]>,
+    arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'getActiveEvaluatorCount' }),
+    arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'EVALUATOR_MIN_STAKE' }),
+    arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'BOND_BPS' }),
+    arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'EVALUATORS_PER_DISPUTE' }),
+  ]);
+
+  // evaluators(address) → [stake, stakedAt, totalVotes, majorityVotes, pendingDisputeRefs, active]
+  const stake = me[0] as bigint;
+  return {
+    address: address.toLowerCase(),
+    stake: { raw: stake.toString(), usdc: formatUnits(stake, 6) },
+    stakedAt: Number(me[1] as bigint),
+    totalVotes: Number(me[2]),
+    majorityVotes: Number(me[3]),
+    pendingDisputeRefs: Number(me[4]),
+    active: me[5] as boolean,
+    pool: {
+      activeCount: (activeCount as bigint).toString(),
+      minStake: { raw: (minStake as bigint).toString(), usdc: formatUnits(minStake as bigint, 6) },
+      bondBps: Number(bondBps),
+      evaluatorsPerDispute: Number(perDispute),
+    },
+  };
+});
+
 // ─── ERC-8004 reputation reads ─────────────────────────────────────────────
 // Live view-calls to the ReputationRegistry. No indexing yet — view reads
 // are cheap on a per-agent basis. Two routes:
@@ -2279,6 +2470,24 @@ app
   .then(() => {
     startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
+    // Auto-reveal agent: reveals opted-in evaluators' votes via the operator
+    // wallet once the reveal window opens. revealVote is permissionless, so the
+    // operator can reveal on anyone's behalf given (vote, secret).
+    startAutoRevealAgent({
+      log: app.log,
+      reveal: async (row: AutoRevealRow) => {
+        const exec = await circle.createContractExecutionTransaction({
+          walletId: CIRCLE_OPERATOR_WALLET_ID,
+          contractAddress: WRAPPER_ADDRESS,
+          abiFunctionSignature: 'revealVote(uint256,address,uint8,bytes32)',
+          abiParameters: [row.pact_id, row.evaluator, String(row.vote), row.secret],
+          fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+        });
+        const tx = await waitForCircleTx(exec.data!.id);
+        if (!tx.txHash) throw new Error('reveal tx confirmed without txHash');
+        return { txHash: tx.txHash };
+      },
+    });
   })
   .catch((err) => {
     app.log.error(err);

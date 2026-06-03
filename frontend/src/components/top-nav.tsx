@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/create', label: 'Create' },
   // Pacts hub: 'Mine' + 'Browse' tabs. 'Browse' absorbed the old /market page.
   { href: '/pacts', label: 'Pacts' },
+  { href: '/evaluators', label: 'Evaluate' },
   { href: '/bridge', label: 'Bridge' },
   { href: '/reputation', label: 'Reputation' },
 ];

@@ -661,3 +661,132 @@ export async function buildRejectUnsigned(pactId: string, reasonHash?: string): 
 export async function buildRefundUnsigned(pactId: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/refund/unsigned`);
 }
+
+// ─── Dispute system ──────────────────────────────────────────────────────────
+
+// Permissionless post-challenge finalize — pays the provider once the challenge
+// window closes with no dispute. (Client early-accept is buildCompleteUnsigned.)
+export async function buildFinalizeUnsigned(pactId: string, reasonHash?: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/finalize/unsigned`, {
+    reasonHash,
+  });
+}
+
+// Open a dispute (client or provider, within the challenge window). Pulls a 5%
+// bond — approve the wrapper for the bond first.
+export async function buildDisputeUnsigned(pactId: string, reasonHash?: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/dispute/unsigned`, {
+    reasonHash,
+  });
+}
+
+export async function buildConcedeUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/concede/unsigned`);
+}
+
+export async function buildForceConcedeUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/force-concede/unsigned`);
+}
+
+// Defend (opponent, within concede window). Posts a matching bond and triggers
+// evaluator selection — approve the wrapper for the bond first.
+export async function buildDefendUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/defend/unsigned`);
+}
+
+export async function buildCommitVoteUnsigned(pactId: string, commitHash: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/commit/unsigned`, {
+    commitHash,
+  });
+}
+
+// vote: 1 = ForDisputer, 2 = ForOpponent.
+export async function buildRevealVoteUnsigned(
+  pactId: string,
+  evaluator: string,
+  vote: 1 | 2,
+  secret: string,
+): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/reveal/unsigned`, {
+    evaluator,
+    vote,
+    secret,
+  });
+}
+
+export async function buildResolveUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/resolve/unsigned`);
+}
+
+export async function buildStakeEvaluatorUnsigned(amountUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', '/arc/escrow/evaluators/stake/unsigned', { amountUsdc });
+}
+
+export async function buildUnstakeEvaluatorUnsigned(): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', '/arc/escrow/evaluators/unstake/unsigned');
+}
+
+export type DisputeState = {
+  disputeId: string;
+  pactId: string;
+  disputer: string;
+  opponent: string;
+  bondDisputer: string;
+  bondOpponent: string;
+  reasonHash: string;
+  status:
+    | 'Open'
+    | 'Defended'
+    | 'Resolved_Disputer'
+    | 'Resolved_Opponent'
+    | 'Resolved_NoQuorum'
+    | 'Conceded_Disputer'
+    | string;
+  openedAt: number;
+  concedeDeadline: number;
+  commitDeadline: number;
+  graceDeadline: number;
+  revealDeadline: number;
+  evaluators: string[];
+  commitCount: number;
+  revealCount: number;
+  votesForDisputer: number;
+  votesForOpponent: number;
+};
+
+export async function getDisputeState(pactId: string): Promise<DisputeState | null> {
+  const res = await jsonFetch<{ dispute: DisputeState | null }>(
+    'GET',
+    `/arc/escrow/pact/${encodeURIComponent(pactId)}/dispute`,
+  );
+  return res.dispute;
+}
+
+export type EvaluatorInfo = {
+  address: string;
+  stake: { raw: string; usdc: string };
+  stakedAt: number;
+  totalVotes: number;
+  majorityVotes: number;
+  pendingDisputeRefs: number;
+  active: boolean;
+  pool: {
+    activeCount: string;
+    minStake: { raw: string; usdc: string };
+    bondBps: number;
+    evaluatorsPerDispute: number;
+  };
+};
+
+export async function getEvaluatorInfo(address: string): Promise<EvaluatorInfo> {
+  return jsonFetch<EvaluatorInfo>('GET', `/arc/escrow/evaluators/${encodeURIComponent(address)}`);
+}
+
+// Opt in to auto-reveal: the agent reveals this vote on the evaluator's behalf
+// once the reveal window opens, using the operator wallet.
+export async function registerAutoReveal(
+  pactId: string,
+  body: { disputeId: string; evaluator: string; vote: 1 | 2; secret: string },
+): Promise<{ scheduled: boolean; revealAfter: number; revealBefore: number }> {
+  return jsonFetch('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/auto-reveal`, body);
+}
