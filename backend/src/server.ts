@@ -21,12 +21,12 @@ import pkg from '../package.json' with { type: 'json' };
 import {
   arcClient,
   USDC_ADDRESS,
-  ERC8183_ADDRESS,
+  WRAPPER_ADDRESS,
   ERC8004_REPUTATION_ADDRESS,
   ARC_TESTNET_CHAIN_ID,
 } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
-import { erc8183Abi, JOB_STATUS, jobCreatedEvent } from './lib/abis/erc8183.js';
+import { pactWrapperAbi, PACT_STATUS } from './lib/abis/pact-wrapper.js';
 import {
   reputationRegistryAbi,
   identityRegistryAbi,
@@ -44,7 +44,7 @@ import {
   type DeliverableRow,
   type DeliverableContentType,
 } from './lib/db.js';
-import { startPactIndexer } from './lib/pact-indexer.js';
+import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
 
 function requireEnv(key: string): string {
@@ -100,6 +100,58 @@ async function waitForCircleTx(id: string, timeoutMs = 90_000) {
     await new Promise((r) => setTimeout(r, 2_000));
   }
   throw new Error(`Tx ${id} timed out after ${timeoutMs}ms`);
+}
+
+// The wrapper's pacts(pactId) auto-getter returns a positional array (viem does
+// not key multi-output getters by name, unlike the reference's single-struct
+// getJob). Decode by index — order matches the PactRecord struct in
+// PactWrapper.sol. description is NOT in the struct; source it from pacts_index.
+type WrapperPact = {
+  underlyingJobId: bigint;
+  client: `0x${string}`;
+  provider: `0x${string}`;
+  createdAt: bigint;
+  expiredAt: bigint;
+  submittedExtCount: number;
+  status: number;
+  terminationActor: `0x${string}`;
+  budget: bigint;
+  challengeWindow: bigint;
+  pendingBudget: bigint;
+  pendingChallengeWindow: bigint;
+  pendingProposedAt: bigint;
+  deliverableHash: `0x${string}`;
+  submittedAt: bigint;
+  disputeId: bigint;
+  confidentialPayout: boolean;
+};
+
+async function readWrapperPact(pactId: bigint): Promise<WrapperPact> {
+  const r = (await arcClient.readContract({
+    address: WRAPPER_ADDRESS,
+    abi: pactWrapperAbi,
+    functionName: 'pacts',
+    args: [pactId],
+  })) as readonly unknown[];
+  return {
+    underlyingJobId: r[0] as bigint,
+    client: r[1] as `0x${string}`,
+    provider: r[2] as `0x${string}`,
+    createdAt: r[3] as bigint,
+    expiredAt: r[4] as bigint,
+    submittedExtCount: Number(r[5]),
+    status: Number(r[6]),
+    terminationActor: r[7] as `0x${string}`,
+    budget: r[8] as bigint,
+    challengeWindow: r[9] as bigint,
+    pendingBudget: r[10] as bigint,
+    pendingChallengeWindow: r[11] as bigint,
+    pendingProposedAt: r[12] as bigint,
+    deliverableHash: r[13] as `0x${string}`,
+    submittedAt: r[14] as bigint,
+    disputeId: r[15] as bigint,
+    confidentialPayout: r[16] as boolean,
+  };
 }
 
 const app = Fastify({
@@ -640,22 +692,29 @@ app.get<{ Querystring: { address?: string } }>('/arc/usdc-balance', async (reque
   };
 });
 
+// Wrapper diagnostics. The wrapper has no standing evaluator fee (evaluators
+// are paid out of dispute bonds, not the job budget), so there's no
+// evaluatorFeeBP — only the single platform fee, its cap, the treasury, and the
+// escrowed treasury balance.
 app.get('/arc/escrow/info', async () => {
-  const [jobCount, paymentToken, platformFeeBP, evaluatorFeeBP, platformTreasury] = await Promise.all([
-    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'jobCounter' }),
-    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'paymentToken' }),
-    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'platformFeeBP' }),
-    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'evaluatorFeeBP' }),
-    arcClient.readContract({ address: ERC8183_ADDRESS, abi: erc8183Abi, functionName: 'platformTreasury' }),
-  ]);
+  const [pactCount, paymentToken, platformFeeBps, maxPlatformFeeBps, platformTreasury, treasuryBalance] =
+    await Promise.all([
+      arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'nextPactId' }),
+      arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'usdc' }),
+      arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'platformFeeBps' }),
+      arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'MAX_PLATFORM_FEE_BPS' }),
+      arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'platformTreasury' }),
+      arcClient.readContract({ address: WRAPPER_ADDRESS, abi: pactWrapperAbi, functionName: 'treasuryBalance' }),
+    ]);
 
   return {
-    address: ERC8183_ADDRESS,
-    jobCount: jobCount.toString(),
+    address: WRAPPER_ADDRESS,
+    pactCount: pactCount.toString(),
     paymentToken,
-    platformFeeBP: platformFeeBP.toString(),
-    evaluatorFeeBP: evaluatorFeeBP.toString(),
+    platformFeeBps: platformFeeBps.toString(),
+    maxPlatformFeeBps: maxPlatformFeeBps.toString(),
     platformTreasury,
+    treasuryBalance: treasuryBalance.toString(),
   };
 });
 
@@ -664,21 +723,26 @@ app.post<{
     userId?: string;
     handle?: string;
     provider: string;
-    evaluator: string;
     expiredInSeconds: number;
     description: string;
+    challengeWindowSeconds?: number;
   };
 }>('/arc/escrow/pacts', async (request, reply) => {
-  const { provider, evaluator, expiredInSeconds, description } = request.body;
+  const { provider, expiredInSeconds, description, challengeWindowSeconds } = request.body;
   const signer = requireSigner(reply, request.body);
   if (!signer) return;
+  if (typeof expiredInSeconds !== 'number' || expiredInSeconds < 1800) {
+    return reply.code(400).send({ error: 'expiredInSeconds must be a number >= 1800 (wrapper Rule 3 floor is 30 minutes)' });
+  }
   const expiredAt = Math.floor(Date.now() / 1000) + expiredInSeconds;
 
+  // Wrapper is the protocol-level evaluator (no evaluator arg); hook is unused
+  // at this layer; challengeWindow 0 = contract default (24h).
   const create = await circle.createContractExecutionTransaction({
     walletId: signer.circle_wallet_id,
-    contractAddress: ERC8183_ADDRESS,
-    abiFunctionSignature: 'createJob(address,address,uint256,string,address)',
-    abiParameters: [provider, evaluator, expiredAt.toString(), description, ZERO_ADDRESS],
+    contractAddress: WRAPPER_ADDRESS,
+    abiFunctionSignature: 'createPact(address,uint64,string,address,uint64)',
+    abiParameters: [provider, expiredAt.toString(), description, ZERO_ADDRESS, String(challengeWindowSeconds ?? 0)],
     fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
   });
 
@@ -687,34 +751,36 @@ app.post<{
 
   const receipt = await arcClient.getTransactionReceipt({ hash: tx.txHash as `0x${string}` });
   const [createdLog] = parseEventLogs({
-    abi: [jobCreatedEvent],
-    eventName: 'JobCreated',
+    abi: pactWrapperAbi,
+    eventName: 'PactCreated',
     logs: receipt.logs,
   });
-  if (!createdLog) return reply.code(500).send({ error: 'JobCreated event missing from receipt' });
+  if (!createdLog) return reply.code(500).send({ error: 'PactCreated event missing from receipt' });
 
   return {
-    pactId: createdLog.args.jobId.toString(),
+    pactId: createdLog.args.pactId.toString(),
     txId: tx.id,
     txHash: tx.txHash,
     state: tx.state,
   };
 });
 
-app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; budgetUsdc: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; budgetUsdc: string; challengeWindowSeconds?: number } }>(
   '/arc/escrow/pacts/:id/budget',
   async (request, reply) => {
-    const { budgetUsdc } = request.body;
+    const { budgetUsdc, challengeWindowSeconds } = request.body;
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
     const amountRaw = parseUnits(budgetUsdc, 6);
 
+    // challengeWindow 0 = keep current; provider's setBudget supersedes any
+    // pending client proposeTerms.
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'setBudget(uint256,uint256,bytes)',
-      abiParameters: [pactId, amountRaw.toString(), '0x'],
+      contractAddress: WRAPPER_ADDRESS,
+      abiFunctionSignature: 'setBudget(uint256,uint256,uint64)',
+      abiParameters: [pactId, amountRaw.toString(), String(challengeWindowSeconds ?? 0)],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
@@ -740,14 +806,14 @@ app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/a
     walletId: signer.circle_wallet_id,
     contractAddress: USDC_ADDRESS,
     abiFunctionSignature: 'approve(address,uint256)',
-    abiParameters: [ERC8183_ADDRESS, amountRaw.toString()],
+    abiParameters: [WRAPPER_ADDRESS, amountRaw.toString()],
     fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
   });
 
   const tx = await waitForCircleTx(exec.data!.id);
 
   return {
-    spender: ERC8183_ADDRESS,
+    spender: WRAPPER_ADDRESS,
     amount: { raw: amountRaw.toString(), usdc: amountUsdc },
     txId: tx.id,
     txHash: tx.txHash,
@@ -755,18 +821,28 @@ app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/a
   };
 });
 
-app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; expectedBudgetUsdc: string; expectedChallengeWindowSeconds: number } }>(
   '/arc/escrow/pacts/:id/fund',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
+    const { expectedBudgetUsdc, expectedChallengeWindowSeconds } = request.body;
+    if (!expectedBudgetUsdc || Number(expectedBudgetUsdc) <= 0) {
+      return reply.code(400).send({ error: 'expectedBudgetUsdc must be a positive number string' });
+    }
+    if (typeof expectedChallengeWindowSeconds !== 'number' || expectedChallengeWindowSeconds <= 0) {
+      return reply.code(400).send({ error: 'expectedChallengeWindowSeconds must be a positive number (the pact\'s current challenge window)' });
+    }
+    const expectedBudget = parseUnits(expectedBudgetUsdc, 6);
 
+    // Atomic acceptance — funding signs off on exactly the current live quote;
+    // the wrapper reverts WrongTerms if budget or window drifted.
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'fund(uint256,bytes)',
-      abiParameters: [pactId, '0x'],
+      contractAddress: WRAPPER_ADDRESS,
+      abiFunctionSignature: 'fund(uint256,uint256,uint64)',
+      abiParameters: [pactId, expectedBudget.toString(), String(expectedChallengeWindowSeconds)],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
@@ -799,9 +875,9 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; del
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'submit(uint256,bytes32,bytes)',
-      abiParameters: [pactId, deliverable, '0x'],
+      contractAddress: WRAPPER_ADDRESS,
+      abiFunctionSignature: 'submit(uint256,bytes32)',
+      abiParameters: [pactId, deliverable],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
@@ -817,24 +893,21 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; del
   }
 );
 
-app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; reasonHash?: string } }>(
+// complete now maps to clientAccept — the client's instant-payout button
+// during the challenge window. (The permissionless post-challenge complete()
+// path has no signed route; it's exposed via /finalize/unsigned.)
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/escrow/pacts/:id/complete',
   async (request, reply) => {
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
-    let reason: `0x${string}`;
-    try {
-      reason = toBytes32(request.body?.reasonHash, 'reasonHash');
-    } catch (e) {
-      return reply.code(400).send({ error: (e as Error).message });
-    }
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'complete(uint256,bytes32,bytes)',
-      abiParameters: [pactId, reason, '0x'],
+      contractAddress: WRAPPER_ADDRESS,
+      abiFunctionSignature: 'clientAccept(uint256)',
+      abiParameters: [pactId],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
@@ -842,7 +915,6 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
 
     return {
       pactId,
-      reasonHash: reason,
       txId: tx.id,
       txHash: tx.txHash,
       state: tx.state,
@@ -865,9 +937,9 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
-      abiFunctionSignature: 'reject(uint256,bytes32,bytes)',
-      abiParameters: [pactId, reason, '0x'],
+      contractAddress: WRAPPER_ADDRESS,
+      abiFunctionSignature: 'reject(uint256,bytes32)',
+      abiParameters: [pactId, reason],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
     });
 
@@ -892,7 +964,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
 
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
-      contractAddress: ERC8183_ADDRESS,
+      contractAddress: WRAPPER_ADDRESS,
       abiFunctionSignature: 'claimRefund(uint256)',
       abiParameters: [pactId],
       fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
@@ -917,44 +989,56 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
 // connected.
 // ────────────────────────────────────────────────────────────────────────────
 
+// createPact — wrapper is the protocol-level evaluator, so no evaluator arg.
+// challengeWindow (seconds) is optional; 0 lets the contract apply its default
+// (CHALLENGE_DEFAULT = 24h). hook is unused at this layer → ZERO_ADDRESS.
 app.post<{
   Body: {
     provider: string;
-    evaluator: string;
     expiredInSeconds: number;
     description: string;
+    challengeWindowSeconds?: number;
   };
 }>('/arc/escrow/pacts/unsigned', async (request, reply) => {
-  const { provider, evaluator, expiredInSeconds, description } = request.body;
+  const { provider, expiredInSeconds, description, challengeWindowSeconds } = request.body;
   if (!provider || !/^0x[0-9a-fA-F]{40}$/.test(provider)) {
     return reply.code(400).send({ error: 'provider must be a 0x-prefixed 20-byte hex address' });
   }
-  if (!evaluator || !/^0x[0-9a-fA-F]{40}$/.test(evaluator)) {
-    return reply.code(400).send({ error: 'evaluator must be a 0x-prefixed 20-byte hex address' });
+  if (typeof expiredInSeconds !== 'number' || expiredInSeconds < 1800) {
+    return reply.code(400).send({ error: 'expiredInSeconds must be a number >= 1800 (wrapper Rule 3 floor is 30 minutes)' });
   }
-  if (typeof expiredInSeconds !== 'number' || expiredInSeconds <= 300) {
-    return reply.code(400).send({ error: 'expiredInSeconds must be a number > 300 (reference contract floor is 5 minutes)' });
+  if (challengeWindowSeconds != null && (typeof challengeWindowSeconds !== 'number' || challengeWindowSeconds < 0)) {
+    return reply.code(400).send({ error: 'challengeWindowSeconds must be a non-negative number (0 = contract default)' });
   }
   const expiredAt = BigInt(Math.floor(Date.now() / 1000) + expiredInSeconds);
-  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'createJob', [
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'createPact', [
     provider as `0x${string}`,
-    evaluator as `0x${string}`,
     expiredAt,
     description ?? '',
     ZERO_ADDRESS as `0x${string}`,
+    BigInt(challengeWindowSeconds ?? 0),
   ]);
 });
 
-app.post<{ Params: { id: string }; Body: { budgetUsdc: string } }>(
+// setBudget — provider's quote. challengeWindow (seconds) optional; 0 keeps the
+// current window. The provider's setBudget supersedes any client proposeTerms.
+app.post<{ Params: { id: string }; Body: { budgetUsdc: string; challengeWindowSeconds?: number } }>(
   '/arc/escrow/pacts/:id/budget/unsigned',
   async (request, reply) => {
     const pactId = BigInt(request.params.id);
-    const { budgetUsdc } = request.body;
+    const { budgetUsdc, challengeWindowSeconds } = request.body;
     if (!budgetUsdc || Number(budgetUsdc) <= 0) {
       return reply.code(400).send({ error: 'budgetUsdc must be a positive number string' });
     }
+    if (challengeWindowSeconds != null && (typeof challengeWindowSeconds !== 'number' || challengeWindowSeconds < 0)) {
+      return reply.code(400).send({ error: 'challengeWindowSeconds must be a non-negative number (0 = keep current)' });
+    }
     const amountRaw = parseUnits(budgetUsdc, 6);
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'setBudget', [pactId, amountRaw, '0x']);
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'setBudget', [
+      pactId,
+      amountRaw,
+      BigInt(challengeWindowSeconds ?? 0),
+    ]);
   },
 );
 
@@ -964,13 +1048,33 @@ app.post<{ Body: { amountUsdc: string } }>('/arc/usdc/approve/unsigned', async (
     return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
   }
   const amountRaw = parseUnits(amountUsdc, 6);
-  return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [ERC8183_ADDRESS, amountRaw]);
+  // Spender is the wrapper — it pulls (budget + fee) on fund(), bonds on
+  // dispute()/defend(), and stake on stakeEvaluator().
+  return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [WRAPPER_ADDRESS, amountRaw]);
 });
 
-app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/fund/unsigned', async (request) => {
-  const pactId = BigInt(request.params.id);
-  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'fund', [pactId, '0x']);
-});
+// fund — atomic acceptance. The client signs off on exactly the current live
+// quote; the wrapper reverts WrongTerms if either field drifted. The frontend
+// must read the pact's current budget + challengeWindow and pass them here.
+app.post<{ Params: { id: string }; Body: { expectedBudgetUsdc: string; expectedChallengeWindowSeconds: number } }>(
+  '/arc/escrow/pacts/:id/fund/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    const { expectedBudgetUsdc, expectedChallengeWindowSeconds } = request.body;
+    if (!expectedBudgetUsdc || Number(expectedBudgetUsdc) <= 0) {
+      return reply.code(400).send({ error: 'expectedBudgetUsdc must be a positive number string' });
+    }
+    if (typeof expectedChallengeWindowSeconds !== 'number' || expectedChallengeWindowSeconds <= 0) {
+      return reply.code(400).send({ error: 'expectedChallengeWindowSeconds must be a positive number (the pact\'s current challenge window)' });
+    }
+    const expectedBudget = parseUnits(expectedBudgetUsdc, 6);
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'fund', [
+      pactId,
+      expectedBudget,
+      BigInt(expectedChallengeWindowSeconds),
+    ]);
+  },
+);
 
 app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
   '/arc/escrow/pacts/:id/submit/unsigned',
@@ -985,21 +1089,18 @@ app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
     if (deliverable === ZERO_BYTES32) {
       return reply.code(400).send({ error: 'deliverableHash is required' });
     }
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'submit', [pactId, deliverable, '0x']);
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'submit', [pactId, deliverable]);
   },
 );
 
-app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+// complete/unsigned now maps to clientAccept — the client's instant-payout
+// button during the challenge window. (The wrapper's complete() is the separate
+// permissionless post-challenge auto-finalize path; see /finalize/unsigned.)
+app.post<{ Params: { id: string } }>(
   '/arc/escrow/pacts/:id/complete/unsigned',
-  async (request, reply) => {
+  async (request) => {
     const pactId = BigInt(request.params.id);
-    let reason: `0x${string}`;
-    try {
-      reason = toBytes32(request.body.reasonHash, 'reasonHash');
-    } catch (err) {
-      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
-    }
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'complete', [pactId, reason, '0x']);
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'clientAccept', [pactId]);
   },
 );
 
@@ -1013,14 +1114,190 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
-    return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'reject', [pactId, reason, '0x']);
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'reject', [pactId, reason]);
   },
 );
 
 app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/refund/unsigned', async (request) => {
   const pactId = BigInt(request.params.id);
-  return buildUnsignedTx(ERC8183_ADDRESS, erc8183Abi as Abi, 'claimRefund', [pactId]);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'claimRefund', [pactId]);
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Wrapper-only unsigned routes (no ERC-8183 reference equivalent): client-side
+// negotiation, deadline extension, post-challenge finalize, the full dispute
+// system, and evaluator staking. All return { to, data, value, chainId } for a
+// client-side signer. Bond/stake-pulling routes (dispute, defend, stake) assume
+// the caller has already approved the wrapper via /arc/usdc/approve/unsigned.
+// ────────────────────────────────────────────────────────────────────────────
+
+// proposeTerms — client's quote-and-accept counter. challengeWindow is required
+// here (unlike setBudget, proposeTerms has no 0-default) and must sit within the
+// contract's CHALLENGE_FLOOR..CHALLENGE_CEILING band.
+app.post<{ Params: { id: string }; Body: { budgetUsdc: string; challengeWindowSeconds: number } }>(
+  '/arc/escrow/pacts/:id/terms/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    const { budgetUsdc, challengeWindowSeconds } = request.body;
+    if (!budgetUsdc || Number(budgetUsdc) <= 0) {
+      return reply.code(400).send({ error: 'budgetUsdc must be a positive number string' });
+    }
+    if (typeof challengeWindowSeconds !== 'number' || challengeWindowSeconds <= 0) {
+      return reply.code(400).send({ error: 'challengeWindowSeconds must be a positive number' });
+    }
+    const amountRaw = parseUnits(budgetUsdc, 6);
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'proposeTerms', [
+      pactId,
+      amountRaw,
+      BigInt(challengeWindowSeconds),
+    ]);
+  },
+);
+
+// extendDeadline — Rule 1. newExpiredAt is an absolute unix timestamp. In
+// Submitted state the contract only accepts exactly current+1h (max 3 times);
+// in Open/Funded/Disputed any strictly-forward value is allowed. The frontend
+// computes the target and the contract enforces the bounds.
+app.post<{ Params: { id: string }; Body: { newExpiredAt: number } }>(
+  '/arc/escrow/pacts/:id/extend/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    const { newExpiredAt } = request.body;
+    if (typeof newExpiredAt !== 'number' || newExpiredAt <= Math.floor(Date.now() / 1000)) {
+      return reply.code(400).send({ error: 'newExpiredAt must be a unix timestamp (seconds) in the future' });
+    }
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'extendDeadline', [pactId, BigInt(newExpiredAt)]);
+  },
+);
+
+// finalize — permissionless post-challenge auto-completion. Pays the provider
+// once the challenge window has closed with no dispute. (Client early-accept is
+// the separate /complete/unsigned → clientAccept path.)
+app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+  '/arc/escrow/pacts/:id/finalize/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    let reason: `0x${string}`;
+    try {
+      reason = toBytes32(request.body?.reasonHash, 'reasonHash');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'complete', [pactId, reason]);
+  },
+);
+
+// ── Dispute system ──────────────────────────────────────────────────────────
+
+// dispute — client or provider opens a dispute during the challenge window.
+// Pulls a 5% bond (approve the wrapper first).
+app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
+  '/arc/escrow/pacts/:id/dispute/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    let reason: `0x${string}`;
+    try {
+      reason = toBytes32(request.body?.reasonHash, 'reasonHash');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'dispute', [pactId, reason]);
+  },
+);
+
+// concede — the opponent gives up within the concede window (opponent wins).
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/concede/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'concede', [pactId]);
+});
+
+// forceConcede — permissionless; anyone can settle a dispute the opponent
+// ignored once the concede deadline has passed (treated as a concede).
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/force-concede/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'forceConcede', [pactId]);
+});
+
+// defend — opponent posts a matching bond, triggering evaluator selection and
+// the commit-reveal vote (approve the wrapper first).
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/defend/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'defend', [pactId]);
+});
+
+// commitVote — selected evaluator commits keccak256(abi.encode(vote, secret,
+// evaluator)). The frontend computes the hash; the secret stays client-side
+// until reveal.
+app.post<{ Params: { id: string }; Body: { commitHash: string } }>(
+  '/arc/escrow/pacts/:id/commit/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    let commitHash: `0x${string}`;
+    try {
+      commitHash = toBytes32(request.body?.commitHash, 'commitHash');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    if (commitHash === ZERO_BYTES32) {
+      return reply.code(400).send({ error: 'commitHash is required' });
+    }
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'commitVote', [pactId, commitHash]);
+  },
+);
+
+// revealVote — permissionless (anyone with the secret, incl. the auto-reveal
+// agent). vote: 1 = ForDisputer, 2 = ForOpponent (0/None is rejected).
+app.post<{ Params: { id: string }; Body: { evaluator: string; vote: number; secret: string } }>(
+  '/arc/escrow/pacts/:id/reveal/unsigned',
+  async (request, reply) => {
+    const pactId = BigInt(request.params.id);
+    const { evaluator, vote } = request.body;
+    if (!evaluator || !/^0x[0-9a-fA-F]{40}$/.test(evaluator)) {
+      return reply.code(400).send({ error: 'evaluator must be a 0x-prefixed 20-byte hex address' });
+    }
+    if (vote !== 1 && vote !== 2) {
+      return reply.code(400).send({ error: 'vote must be 1 (ForDisputer) or 2 (ForOpponent)' });
+    }
+    let secret: `0x${string}`;
+    try {
+      secret = toBytes32(request.body?.secret, 'secret');
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'revealVote', [
+      pactId,
+      evaluator as `0x${string}`,
+      vote,
+      secret,
+    ]);
+  },
+);
+
+// resolve — permissionless tally once the reveal window closes (or all N have
+// revealed). Settles the pact in the winning side's favour.
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/resolve/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'resolve', [pactId]);
+});
+
+// ── Evaluator pool ──────────────────────────────────────────────────────────
+
+// stakeEvaluator — join the evaluator pool (approve the wrapper for `amount`
+// first). Must be >= EVALUATOR_MIN_STAKE.
+app.post<{ Body: { amountUsdc: string } }>('/arc/escrow/evaluators/stake/unsigned', async (request, reply) => {
+  const { amountUsdc } = request.body;
+  if (!amountUsdc || Number(amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amountRaw = parseUnits(amountUsdc, 6);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'stakeEvaluator', [amountRaw]);
+});
+
+// unstakeEvaluator — withdraw the full stake (reverts if the evaluator still
+// has pending dispute references).
+app.post('/arc/escrow/evaluators/unstake/unsigned', async () =>
+  buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'unstakeEvaluator', []),
+);
 
 // Lookup pacts by participant address. Indexed locally by polling JobCreated
 // events from the reference contract; live state (status, budget) still comes
@@ -1089,6 +1366,7 @@ type FeedRow = {
     status: string;
     budget: { raw: string; usdc: string };
     expiredAt: { unix: number; iso: string };
+    challengeWindow: number;
     description: string;
   } | null;
   events: ReturnType<typeof rowToPactEvent>[];
@@ -1119,16 +1397,7 @@ app.get<{
 
   // Live read + events fetched per pact in parallel. Tolerates per-call
   // failures — a single dead RPC shouldn't take the whole bell down.
-  const live = await Promise.allSettled(
-    pageRows.map((row) =>
-      arcClient.readContract({
-        address: ERC8183_ADDRESS,
-        abi: erc8183Abi,
-        functionName: 'getJob',
-        args: [BigInt(row.pact_id)],
-      }),
-    ),
-  );
+  const live = await Promise.allSettled(pageRows.map((row) => readWrapperPact(BigInt(row.pact_id))));
 
   const eventsByPact = new Map<string, ReturnType<typeof rowToPactEvent>[]>();
   if (pageRows.length > 0) {
@@ -1158,7 +1427,7 @@ app.get<{
     const liveData =
       result.status === 'fulfilled'
         ? {
-            status: JOB_STATUS[result.value.status] ?? `Unknown(${result.value.status})`,
+            status: PACT_STATUS[result.value.status] ?? `Unknown(${result.value.status})`,
             budget: {
               raw: result.value.budget.toString(),
               usdc: formatUnits(result.value.budget, 6),
@@ -1167,7 +1436,8 @@ app.get<{
               unix: Number(result.value.expiredAt),
               iso: new Date(Number(result.value.expiredAt) * 1000).toISOString(),
             },
-            description: result.value.description,
+            challengeWindow: Number(result.value.challengeWindow),
+            description: base.description,
           }
         : null;
 
@@ -1279,6 +1549,7 @@ type OpenPactEntry = {
   description: string;
   budget: { raw: string; usdc: string };
   expiredAt: { unix: number; iso: string };
+  challengeWindow: number;
   status: string;
   hook: string;
   createdAt: { blockNumber: number; txHash: string; indexedAt: string };
@@ -1311,16 +1582,7 @@ app.get<{
 
   // Live-read budget + status for every candidate in parallel. ERC-8183
   // doesn't emit a BudgetSet event, so we can't index this — see M30 note.
-  const liveStates = await Promise.allSettled(
-    indexRows.map((row) =>
-      arcClient.readContract({
-        address: ERC8183_ADDRESS,
-        abi: erc8183Abi,
-        functionName: 'getJob',
-        args: [BigInt(row.pact_id)],
-      }),
-    ),
-  );
+  const liveStates = await Promise.allSettled(indexRows.map((row) => readWrapperPact(BigInt(row.pact_id))));
 
   const nowUnix = Math.floor(Date.now() / 1000);
   const open: OpenPactEntry[] = [];
@@ -1330,24 +1592,27 @@ app.get<{
     const result = liveStates[i];
     if (result.status !== 'fulfilled') continue;
     const pact = result.value;
-    const status = JOB_STATUS[pact.status] ?? `Unknown(${pact.status})`;
+    const status = PACT_STATUS[pact.status] ?? `Unknown(${pact.status})`;
     if (status !== 'Open') continue;
     if (Number(pact.expiredAt) <= nowUnix) continue;
     if (minBudgetRaw !== null && pact.budget < minBudgetRaw) continue;
     if (maxBudgetRaw !== null && pact.budget > maxBudgetRaw) continue;
+    // evaluator/hook/description aren't in the wrapper's pacts() struct — they
+    // come from the local index (PactCreated). evaluator is always the wrapper.
     open.push({
       pactId: row.pact_id,
       client: pact.client,
       provider: pact.provider,
-      evaluator: pact.evaluator,
-      description: pact.description,
+      evaluator: row.evaluator,
+      description: row.description,
       budget: { raw: pact.budget.toString(), usdc: formatUnits(pact.budget, 6) },
       expiredAt: {
         unix: Number(pact.expiredAt),
         iso: new Date(Number(pact.expiredAt) * 1000).toISOString(),
       },
+      challengeWindow: Number(pact.challengeWindow),
       status,
-      hook: pact.hook,
+      hook: row.hook,
       createdAt: {
         blockNumber: row.block_number,
         txHash: row.tx_hash,
@@ -1371,32 +1636,25 @@ function clampInt(value: string | undefined, fallback: number, min: number, max:
 app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, reply) => {
   const pactId = BigInt(request.params.id);
 
-  const pact = await arcClient.readContract({
-    address: ERC8183_ADDRESS,
-    abi: erc8183Abi,
-    functionName: 'getJob',
-    args: [pactId],
-  });
+  const pact = await readWrapperPact(pactId);
 
-  if (pact.id === 0n && pact.client === '0x0000000000000000000000000000000000000000') {
+  if (pact.client === ZERO_ADDRESS) {
     return reply.code(404).send({ error: `Pact ${request.params.id} not found` });
   }
 
-  // Bolt on the creation metadata from the local index so the frontend can
-  // render a lifecycle timeline without a second roundtrip. null if the
-  // indexer hasn't caught up yet (~10s window after a fresh JobCreated).
+  // Bolt on creation metadata from the local index so the frontend can render a
+  // lifecycle timeline without a second roundtrip. evaluator/hook/description
+  // aren't in the wrapper's pacts() struct — they live in the index (from
+  // PactCreated). null if the indexer hasn't caught up (~10s after creation).
   const createdRow = db
-    .prepare('SELECT block_number, tx_hash, indexed_at FROM pacts_index WHERE pact_id = ?')
+    .prepare('SELECT evaluator, hook, description, block_number, tx_hash, indexed_at FROM pacts_index WHERE pact_id = ?')
     .get(request.params.id) as
-    | { block_number: number; tx_hash: string; indexed_at: string }
+    | { evaluator: string; hook: string; description: string; block_number: number; tx_hash: string; indexed_at: string }
     | undefined;
 
-  // For terminal states (Completed / Rejected) include the actor address
-  // from pact_events so the frontend can disambiguate semantic cases like
-  // "client cancelled an Open pact" (label as Cancelled) vs. "evaluator
-  // rejected a Submitted deliverable" (label as Rejected). Both emit the
-  // same Rejected event on the reference contract.
-  const status = JOB_STATUS[pact.status] ?? `Unknown(${pact.status})`;
+  // For terminal states (Completed / Rejected) include the actor address from
+  // pact_events so the frontend can disambiguate who ended the pact.
+  const status = PACT_STATUS[pact.status] ?? `Unknown(${pact.status})`;
   let terminationActor: string | null = null;
   if (status === 'Rejected' || status === 'Completed') {
     const eventType = status; // 'Rejected' or 'Completed'
@@ -1412,11 +1670,11 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, repl
   }
 
   return {
-    id: pact.id.toString(),
+    id: request.params.id,
     client: pact.client,
     provider: pact.provider,
-    evaluator: pact.evaluator,
-    description: pact.description,
+    evaluator: createdRow?.evaluator ?? WRAPPER_ADDRESS.toLowerCase(),
+    description: createdRow?.description ?? '',
     budget: {
       raw: pact.budget.toString(),
       usdc: formatUnits(pact.budget, 6),
@@ -1425,8 +1683,14 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, repl
       unix: Number(pact.expiredAt),
       iso: new Date(Number(pact.expiredAt) * 1000).toISOString(),
     },
+    // Atomic-acceptance + dispute fields the frontend needs: challengeWindow is
+    // required to fund(), submittedAt drives the challenge-window countdown, and
+    // disputeId (0 = none) gates the dispute panel.
+    challengeWindow: Number(pact.challengeWindow),
+    submittedAt: Number(pact.submittedAt),
+    disputeId: pact.disputeId.toString(),
     status,
-    hook: pact.hook,
+    hook: createdRow?.hook ?? '',
     terminationActor,
     createdAt: createdRow
       ? {
@@ -2013,7 +2277,7 @@ const port = Number(process.env.PORT ?? 3001);
 app
   .listen({ port, host: '0.0.0.0' })
   .then(() => {
-    startPactIndexer(app.log);
+    startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
   })
   .catch((err) => {

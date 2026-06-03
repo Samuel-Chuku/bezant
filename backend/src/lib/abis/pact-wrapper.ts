@@ -4,7 +4,19 @@
 //   jq ".abi" contracts/out/PactWrapper.sol/PactWrapper.json > backend/src/lib/abis/_tmp.json
 //   then paste the contents below.
 
-export const pactWrapperAbi = 
+// Wrapper Status enum (PactWrapper.sol), indexed by the uint8 from pacts().
+export const PACT_STATUS = [
+  'Open',
+  'Funded',
+  'Submitted',
+  'Disputed',
+  'Completed',
+  'Rejected',
+  'Refunded',
+  'Expired',
+] as const;
+
+export const pactWrapperAbi =
 [
   {
     "type": "constructor",
@@ -2150,5 +2162,4 @@ export const pactWrapperAbi =
     "name": "ZeroAddress",
     "inputs": []
   }
-]
- as const;
+] as const;

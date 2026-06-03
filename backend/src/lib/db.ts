@@ -160,6 +160,7 @@ db.exec(`
     evaluator     TEXT NOT NULL,
     expired_at    INTEGER NOT NULL,
     hook          TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
     block_number  INTEGER NOT NULL,
     tx_hash       TEXT NOT NULL,
     indexed_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -258,6 +259,23 @@ if (!pactEventColNames.has('amount_raw')) {
   db.exec('ALTER TABLE pact_events ADD COLUMN amount_raw TEXT');
 }
 
+// Adds dispute_id to pact_events so the wrapper indexer can tag dispute-system
+// events (DisputeOpened/Defended/CommitSubmitted/VoteRevealed/Resolved/Conceded)
+// with their on-chain dispute id. NULL for all lifecycle (non-dispute) rows.
+if (!pactEventColNames.has('dispute_id')) {
+  db.exec('ALTER TABLE pact_events ADD COLUMN dispute_id TEXT');
+}
+
+// Adds description to pacts_index so per-pact reads can source it from the
+// PactCreated event (the wrapper's pacts() struct has no description field,
+// unlike the old reference's getJob). Backfills empty for pre-existing rows.
+const pactsIndexCols = db
+  .prepare("SELECT name FROM pragma_table_info('pacts_index')")
+  .all() as { name: string }[];
+if (!new Set(pactsIndexCols.map((c) => c.name)).has('description')) {
+  db.exec("ALTER TABLE pacts_index ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+}
+
 // M41a rename: migrate indexer cursor keys so the indexer resumes from
 // where it stopped instead of re-scanning the lookback window.
 db.exec(`
@@ -272,6 +290,7 @@ export type PactIndexRow = {
   evaluator: string;
   expired_at: number;
   hook: string;
+  description: string;
   block_number: number;
   tx_hash: string;
   indexed_at: string;
@@ -284,6 +303,7 @@ export type PactIndex = {
   evaluator: string;
   expiredAt: number;
   hook: string;
+  description: string;
   blockNumber: number;
   txHash: string;
   indexedAt: string;
@@ -297,6 +317,7 @@ export function rowToPactIndex(row: PactIndexRow): PactIndex {
     evaluator: row.evaluator,
     expiredAt: row.expired_at,
     hook: row.hook,
+    description: row.description,
     blockNumber: row.block_number,
     txHash: row.tx_hash,
     indexedAt: row.indexed_at,
