@@ -243,5 +243,4 @@ export const financingPoolAbi = [
     "name": "NotOwner",
     "inputs": []
   }
-]
- as const;
+] as const;

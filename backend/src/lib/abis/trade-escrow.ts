@@ -802,5 +802,4 @@ export const tradeEscrowAbi = [
     "name": "NotSeller",
     "inputs": []
   }
-]
- as const;
+] as const;

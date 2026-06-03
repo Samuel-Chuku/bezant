@@ -241,5 +241,4 @@ export const tradePassportAbi = [
     "name": "NotWriter",
     "inputs": []
   }
-]
- as const;
+] as const;
