@@ -212,11 +212,13 @@ export type UnsignedTx = {
   chainId: number;
 };
 
+// No evaluator — the wrapper is the protocol-level evaluator. challengeWindow
+// (seconds) is optional; omit/0 lets the contract apply its 24h default.
 export async function buildCreatePactUnsigned(input: {
   provider: `0x${string}`;
-  evaluator: `0x${string}`;
   expiredInSeconds: number;
   description: string;
+  challengeWindowSeconds?: number;
 }): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', '/arc/escrow/pacts/unsigned', input);
 }
@@ -258,8 +260,15 @@ export type PactLiveState = {
   description: string;
   budget: { raw: string; usdc: string };
   expiredAt: { unix: number; iso: string };
-  status: 'Open' | 'Funded' | 'Submitted' | 'Completed' | 'Rejected' | 'Expired' | string;
+  status: 'Open' | 'Funded' | 'Submitted' | 'Disputed' | 'Completed' | 'Rejected' | 'Expired' | string;
   hook: string;
+  // Wrapper challenge window (seconds). Required when funding — the wrapper's
+  // atomic acceptance reverts if the funder's expected value drifts from this.
+  challengeWindow: number;
+  // Unix seconds the deliverable was submitted (0 until Submitted) — drives the
+  // challenge-window countdown. disputeId is 0 when no dispute is open.
+  submittedAt: number;
+  disputeId: string;
   // Address of the actor who emitted the terminal-state event (Completed
   // or Rejected). null otherwise (in-flight) or if the indexer hasn't
   // caught up. Used to distinguish "client cancelled" from "evaluator
@@ -614,8 +623,18 @@ export async function buildApproveUnsigned(amountUsdc: string): Promise<Unsigned
   return jsonFetch<UnsignedTx>('POST', '/arc/usdc/approve/unsigned', { amountUsdc });
 }
 
-export async function buildFundUnsigned(pactId: string): Promise<UnsignedTx> {
-  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/fund/unsigned`);
+// Atomic acceptance — the caller signs off on exactly the current live quote.
+// Pass the pact's current budget + challengeWindow; the wrapper reverts
+// WrongTerms if either drifted (e.g. the provider re-quoted mid-flight).
+export async function buildFundUnsigned(
+  pactId: string,
+  expectedBudgetUsdc: string,
+  expectedChallengeWindowSeconds: number,
+): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/fund/unsigned`, {
+    expectedBudgetUsdc,
+    expectedChallengeWindowSeconds,
+  });
 }
 
 export async function buildSubmitUnsigned(

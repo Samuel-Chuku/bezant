@@ -31,7 +31,7 @@ import {
   type PactRole,
   type ReputationSummary,
 } from '@/lib/api';
-import { ERC8183_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
+import { WRAPPER_ADDRESS, USDC_ADDRESS } from '@/lib/chains';
 import { actionVerbForMe, describeCurrentStep, displayStatus } from '@/lib/pact-status';
 import { CountdownBanner } from '@/components/countdown';
 import { arcExplorerTxUrl } from '@/lib/explorers';
@@ -445,7 +445,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
         address: USDC_ADDRESS,
         abi: erc20AllowanceAbi,
         functionName: 'allowance',
-        args: [signer.address as Hex, ERC8183_ADDRESS],
+        args: [signer.address as Hex, WRAPPER_ADDRESS],
       });
       if (allowance < budgetRaw) {
         const approvedOk = await runAction('Approving USDC…', () =>
@@ -453,8 +453,12 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
         );
         if (!approvedOk) return;
       }
+      // Atomic acceptance — pass the current quote so the wrapper can reject a
+      // mid-flight re-quote rather than silently funding stale terms.
       await runAction('Funding pact…', () =>
-        sendUnsigned('Funding pact…', () => buildFundUnsigned(pactId)),
+        sendUnsigned('Funding pact…', () =>
+          buildFundUnsigned(pactId, pact.budget.usdc, pact.challengeWindow),
+        ),
       );
     } catch (err) {
       setActionState({

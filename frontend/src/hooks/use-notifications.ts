@@ -118,6 +118,11 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
       expiredAt: row.live.expiredAt,
       status: row.live.status,
       hook: '',
+      // Not needed for notification-derived items (fund/dispute flows read the
+      // full single-pact state); defaulted to satisfy the type.
+      challengeWindow: 0,
+      submittedAt: 0,
+      disputeId: '0',
       createdAt: {
         blockNumber: row.index.blockNumber,
         txHash: row.index.txHash,

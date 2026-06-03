@@ -9,26 +9,30 @@ import { buildCreatePactUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 
-// Mirrors the on-chain JobCreated event from the AgenticCommerce contract.
-// Used to parse the pactId out of the tx receipt after a successful createJob.
-const jobCreatedEventAbi = [
+// Mirrors PactWrapper's PactCreated event. Used to parse the pactId out of the
+// tx receipt after a successful createPact.
+const pactCreatedEventAbi = [
   {
     type: 'event',
-    name: 'JobCreated',
+    name: 'PactCreated',
     inputs: [
-      { name: 'jobId', type: 'uint256', indexed: true },
+      { name: 'pactId', type: 'uint256', indexed: true },
+      { name: 'underlyingJobId', type: 'uint256', indexed: true },
       { name: 'client', type: 'address', indexed: true },
-      { name: 'provider', type: 'address', indexed: true },
-      { name: 'evaluator', type: 'address' },
-      { name: 'expiredAt', type: 'uint256' },
-      { name: 'hook', type: 'address' },
+      { name: 'provider', type: 'address' },
+      { name: 'expiredAt', type: 'uint64' },
+      { name: 'challengeWindow', type: 'uint64' },
+      { name: 'description', type: 'string' },
     ],
   },
 ] as const;
 
-// Reference contract deadline floor is exactly 5 minutes. UI default is 1 hour.
-const MIN_EXPIRES_IN_SECONDS = 301;
+// Wrapper Rule 3: minimum 30-minute deadline at creation. UI default is 1 hour.
+const MIN_EXPIRES_IN_SECONDS = 1800;
 const DEFAULT_EXPIRES_IN_SECONDS = 3600;
+// Challenge window the client proposes at creation (the provider can adjust it
+// via setBudget). Wrapper default is 24h; floor 1h, ceiling 14d.
+const DEFAULT_CHALLENGE_WINDOW_SECONDS = 86400;
 
 type Submission =
   | { status: 'idle' }
@@ -45,8 +49,8 @@ export default function CreatePactPage() {
   const publicClient = usePublicClient({ chainId: arcTestnet.id });
   const [description, setDescription] = useState('');
   const [providerInput, setProviderInput] = useState('');
-  const [evaluatorInput, setEvaluatorInput] = useState('');
   const [expiresIn, setExpiresIn] = useState<number>(DEFAULT_EXPIRES_IN_SECONDS);
+  const [challengeWindow, setChallengeWindow] = useState<number>(DEFAULT_CHALLENGE_WINDOW_SECONDS);
   const [submission, setSubmission] = useState<Submission>({ status: 'idle' });
 
   const submit = async () => {
@@ -58,10 +62,10 @@ export default function CreatePactPage() {
       setSubmission({ status: 'error', message: 'Description is required.' });
       return;
     }
-    if (expiresIn <= MIN_EXPIRES_IN_SECONDS - 1) {
+    if (expiresIn < MIN_EXPIRES_IN_SECONDS) {
       setSubmission({
         status: 'error',
-        message: `Deadline must be > ${MIN_EXPIRES_IN_SECONDS - 1} seconds (reference contract floor).`,
+        message: `Deadline must be at least ${MIN_EXPIRES_IN_SECONDS} seconds (wrapper 30-minute floor).`,
       });
       return;
     }
@@ -69,13 +73,12 @@ export default function CreatePactPage() {
     try {
       setSubmission({ status: 'resolving' });
       const provider = await resolveAddress(providerInput);
-      const evaluator = await resolveAddress(evaluatorInput);
 
       const unsigned = await buildCreatePactUnsigned({
         provider,
-        evaluator,
         expiredInSeconds: expiresIn,
         description: description.trim(),
+        challengeWindowSeconds: challengeWindow,
       });
 
       setSubmission({ status: 'signing' });
@@ -89,16 +92,16 @@ export default function CreatePactPage() {
       const { txHash, status } = await sent.wait();
       if (status !== 'success') throw new Error(`Tx ${status}`);
 
-      // Pull pactId from the on-chain JobCreated event in the receipt.
+      // Pull pactId from the on-chain PactCreated event in the receipt.
       if (!publicClient) throw new Error('No public client available');
       const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
       const [createdLog] = parseEventLogs({
-        abi: jobCreatedEventAbi,
-        eventName: 'JobCreated',
+        abi: pactCreatedEventAbi,
+        eventName: 'PactCreated',
         logs: receipt.logs,
       });
-      if (!createdLog) throw new Error('JobCreated event missing from receipt');
-      setSubmission({ status: 'done', pactId: createdLog.args.jobId.toString(), txHash });
+      if (!createdLog) throw new Error('PactCreated event missing from receipt');
+      setSubmission({ status: 'done', pactId: createdLog.args.pactId.toString(), txHash });
     } catch (err) {
       setSubmission({
         status: 'error',
@@ -120,8 +123,8 @@ export default function CreatePactPage() {
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a pact</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Post a pact to the open ERC-8183 escrow on Arc. You're the <strong>client</strong>: you set
-          the parties and the deadline. The provider quotes the price next (
+          Post a pact to the escrow on Arc. You're the <strong>client</strong>: you set the provider,
+          the deadline, and the challenge window. The provider quotes the price next (
           <code className="text-neutral-500">setBudget</code>), and you fund to accept.
         </p>
       </header>
@@ -164,22 +167,8 @@ export default function CreatePactPage() {
           </Field>
 
           <Field
-            label="Evaluator"
-            hint="Who approves or rejects on delivery. Address (0x…) or handle. Often the client themselves while testing."
-          >
-            <input
-              type="text"
-              value={evaluatorInput}
-              onChange={(e) => setEvaluatorInput(e.target.value)}
-              placeholder="smoke-evaluator or 0x…"
-              disabled={isBusy}
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
-            />
-          </Field>
-
-          <Field
             label="Deadline"
-            hint={`Seconds from now until the pact expires. Reference contract requires > ${MIN_EXPIRES_IN_SECONDS - 1}.`}
+            hint={`Seconds from now until the pact expires. Minimum ${MIN_EXPIRES_IN_SECONDS} (30 min).`}
           >
             <div className="flex items-center gap-3">
               <input
@@ -200,6 +189,39 @@ export default function CreatePactPage() {
                     key={label as string}
                     type="button"
                     onClick={() => setExpiresIn(value as number)}
+                    disabled={isBusy}
+                    className="rounded-md border border-neutral-800 px-2 py-1 text-neutral-400 hover:text-neutral-100"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Field>
+
+          <Field
+            label="Challenge window"
+            hint="After the provider submits, how long the client can dispute before payout auto-releases. The provider can adjust this when quoting. 1h–14d."
+          >
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={3600}
+                value={challengeWindow}
+                onChange={(e) => setChallengeWindow(Number(e.target.value))}
+                disabled={isBusy}
+                className="w-32 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-neutral-600 focus:outline-none"
+              />
+              <div className="flex gap-2 text-xs">
+                {[
+                  ['1h', 3600],
+                  ['24h', 86400],
+                  ['7d', 604800],
+                ].map(([label, value]) => (
+                  <button
+                    key={label as string}
+                    type="button"
+                    onClick={() => setChallengeWindow(value as number)}
                     disabled={isBusy}
                     className="rounded-md border border-neutral-800 px-2 py-1 text-neutral-400 hover:text-neutral-100"
                   >

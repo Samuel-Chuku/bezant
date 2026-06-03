@@ -14,9 +14,9 @@ import { WalletPill } from './wallet-pill';
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
-  { href: '/market', label: 'Market' },
   { href: '/create', label: 'Create' },
-  { href: '/pacts', label: 'My pacts' },
+  // Pacts hub: 'Mine' + 'Browse' tabs. 'Browse' absorbed the old /market page.
+  { href: '/pacts', label: 'Pacts' },
   { href: '/bridge', label: 'Bridge' },
   { href: '/reputation', label: 'Reputation' },
 ];

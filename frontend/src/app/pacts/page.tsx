@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSigner } from '@/hooks/use-signer';
 import {
@@ -13,6 +13,9 @@ import {
 import { CountdownChip } from '@/components/countdown';
 import { displayStatus } from '@/lib/pact-status';
 import { ErrorBanner, ListItemSkeleton } from '@/components/async-state';
+import { BrowsePacts } from '@/components/browse-pacts';
+
+type Tab = 'mine' | 'browse';
 
 type EnrichedPact = PactIndexEntry & {
   live: PactLiveState | null;
@@ -83,6 +86,22 @@ export default function MyPactsPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [sortKey, setSortKey] = useState<SortKey>('date_desc');
+  const [tab, setTab] = useState<Tab>('mine');
+
+  // Honour ?tab=browse on first load (the old /market route redirects here, and
+  // it keeps the tab deep-linkable). Read directly off the URL to avoid a
+  // useSearchParams Suspense boundary on this client page.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'browse') {
+      setTab('browse');
+    }
+  }, []);
+
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    const url = next === 'browse' ? '/pacts?tab=browse' : '/pacts';
+    window.history.replaceState(null, '', url);
+  };
 
   const fetchPacts = useCallback(async () => {
     if (!signer.isConnected) return;
@@ -142,34 +161,44 @@ export default function MyPactsPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <header className="mb-8 flex items-center justify-between gap-4">
+      <header className="mb-6 flex items-center justify-between gap-4">
         <div>
           <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
             ← back
           </Link>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">My pacts</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">Pacts</h1>
           <p className="mt-2 text-sm text-neutral-400">
-            Every pact on Arc where you&apos;re a client, provider, or evaluator.
+            {tab === 'mine'
+              ? "Every pact on Arc where you're a client, provider, or evaluator."
+              : 'Every open pact on Arc the indexer has seen — including ones created outside arc-trade.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void fetchPacts()}
-          disabled={loading || !signer.isConnected}
-          className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-300 transition hover:text-neutral-100 disabled:opacity-50"
-        >
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        {tab === 'mine' && (
+          <button
+            type="button"
+            onClick={() => void fetchPacts()}
+            disabled={loading || !signer.isConnected}
+            className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-300 transition hover:text-neutral-100 disabled:opacity-50"
+          >
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        )}
       </header>
 
-      {/* Tabs — only "My pacts" today; "All pacts" tab will land in a future iteration. */}
+      {/* Tabs — Mine (your pacts) | Browse (all open pacts; absorbed /market). */}
       <nav className="mb-6 flex gap-1 border-b border-neutral-800 text-sm">
-        <span className="rounded-t-md border-b-2 border-neutral-100 px-3 py-2 text-neutral-100">
-          My pacts
-        </span>
-        <span className="rounded-t-md px-3 py-2 text-neutral-600">All pacts (coming soon)</span>
+        <TabButton active={tab === 'mine'} onClick={() => selectTab('mine')}>
+          Mine
+        </TabButton>
+        <TabButton active={tab === 'browse'} onClick={() => selectTab('browse')}>
+          Browse
+        </TabButton>
       </nav>
 
+      {tab === 'browse' && <BrowsePacts />}
+
+      {tab === 'mine' && (
+        <>
       {!signer.isConnected && (
         <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
           Connect a wallet or sign in with a passkey to see your pacts.{' '}
@@ -238,6 +267,8 @@ export default function MyPactsPage() {
               <PactCard key={pact.pactId} pact={pact} />
             ))}
           </ul>
+        </>
+      )}
         </>
       )}
     </main>
@@ -372,6 +403,30 @@ function PactCard({ pact }: { pact: EnrichedPact }) {
       )}
       </Link>
     </li>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? 'rounded-t-md border-b-2 border-neutral-100 px-3 py-2 text-neutral-100'
+          : 'rounded-t-md px-3 py-2 text-neutral-500 hover:text-neutral-200'
+      }
+    >
+      {children}
+    </button>
   );
 }
 
