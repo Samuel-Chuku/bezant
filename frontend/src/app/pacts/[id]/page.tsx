@@ -8,6 +8,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { arcTestnet } from '@/lib/chains';
 import {
   buildApproveUnsigned,
+  buildCancelUnsigned,
   buildCompleteUnsigned,
   buildFundUnsigned,
   buildRefundUnsigned,
@@ -856,10 +857,9 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* cancel — client can call reject() while on-chain status is still Open
-                    (covers both "before anyone acts" and "stuck past deadline"). The
-                    reference contract has no deadline-extension function, so this is
-                    the only way out for an expired-Open pact. */}
+                {/* cancel — client withdraws an Open (unfunded) pact via the
+                    wrapper's cancel(). reject() is the Funded/Submitted refund
+                    path and reverts on Open, so these are deliberately distinct. */}
                 {roles.includes('client') && pact.status === 'Open' && (
                   <ActionCard
                     title="Cancel pact"
@@ -873,7 +873,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                       type="button"
                       onClick={() =>
                         runAction('Cancelling…', () =>
-                          sendUnsigned('Cancelling…', () => buildRejectUnsigned(pactId)),
+                          sendUnsigned('Cancelling…', () => buildCancelUnsigned(pactId)),
                         )
                       }
                       disabled={actionState.status === 'busy'}

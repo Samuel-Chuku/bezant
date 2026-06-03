@@ -1184,6 +1184,13 @@ app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/refund/unsigned', as
   return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'claimRefund', [pactId]);
 });
 
+// cancel — client withdraws an Open (unfunded) pact. Distinct from reject(),
+// which is the Funded/Submitted refund path. Lands the pact in Status.Expired.
+app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/cancel/unsigned', async (request) => {
+  const pactId = BigInt(request.params.id);
+  return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'cancel', [pactId]);
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // Wrapper-only unsigned routes (no ERC-8183 reference equivalent): client-side
 // negotiation, deadline extension, post-challenge finalize, the full dispute

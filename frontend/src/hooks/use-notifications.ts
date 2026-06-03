@@ -205,6 +205,20 @@ function formatEventSummary(ev: PactEvent, row: FeedRow, isSelf: boolean): strin
     }
     case 'Refunded':
       return `Refund returned to client on pact #${row.pactId}.`;
+    case 'BudgetSet':
+      return `Provider set a quote on pact #${row.pactId}.`;
+    case 'DisputeOpened':
+      return `${subject} opened a dispute on pact #${row.pactId}.`;
+    case 'DisputeDefended':
+      return `Dispute on pact #${row.pactId} was defended — evaluators are voting.`;
+    case 'DisputeConceded':
+      return `Dispute on pact #${row.pactId} was conceded.`;
+    case 'DisputeResolved':
+      return `Dispute on pact #${row.pactId} was resolved.`;
+    case 'CommitSubmitted':
+      return `An evaluator committed a vote on pact #${row.pactId}.`;
+    case 'VoteRevealed':
+      return `An evaluator revealed a vote on pact #${row.pactId}.`;
     default:
       return `Pact #${row.pactId}: ${ev.eventType}.`;
   }

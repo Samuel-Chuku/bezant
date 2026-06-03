@@ -15,13 +15,18 @@ export function describeCurrentStep(
 ): string | null {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
-  const isEvaluator = roles.includes('evaluator');
   const budgetSet = pact.budget.usdc !== '0';
 
+  // Terminal states. On-chain Expired = client cancelled an Open pact;
+  // Refunded = post-deadline claimRefund. Both terminal.
   if (status === 'Completed' || status === 'Rejected') return null;
-  // On-chain Expired is reached only via claimRefund(); terminal.
-  if (pact.status === 'Expired') return null;
+  if (pact.status === 'Expired' || pact.status === 'Refunded') return null;
 
+  if (status === 'Disputed') {
+    return 'A dispute is open — open the pact to respond or follow the evaluator vote.';
+  }
+
+  // Soft-Expired: past the pact deadline but not yet acted on.
   if (status === 'Expired') {
     if (pact.status === 'Funded' || pact.status === 'Submitted') {
       return `Anyone can claim the ${pact.budget.usdc} USDC refund for the client.`;
@@ -45,14 +50,18 @@ export function describeCurrentStep(
 
   if (status === 'Funded') {
     return isProvider
-      ? 'Submit your deliverable so the evaluator can review and release the funds.'
+      ? 'Submit your deliverable to start the challenge window.'
       : 'Waiting for the provider to submit a deliverable.';
   }
 
   if (status === 'Submitted') {
-    if (isEvaluator) return 'Review the deliverable, then complete or reject.';
-    if (isProvider) return 'Waiting for the evaluator to review your submission.';
-    return 'Waiting for the evaluator to complete or reject.';
+    // Wrapper model: the client accepts (instant release) or disputes during the
+    // challenge window; either party can dispute; after it closes anyone finalizes.
+    if (isClient)
+      return 'Review the deliverable — accept to release the funds, or open a dispute before the challenge window closes.';
+    if (isProvider)
+      return 'Delivered. Waiting for the client to accept, or for the challenge window to close so the payout can finalize.';
+    return 'Waiting for the client to accept or the challenge window to close.';
   }
 
   return `Status: ${status}.`;
@@ -74,39 +83,36 @@ export function isActionRequiredByMe(
 ): boolean {
   const isClient = roles.includes('client');
   const isProvider = roles.includes('provider');
-  const isEvaluator = roles.includes('evaluator');
   const budgetSet = pact.budget.usdc !== '0';
 
   if (status === 'Completed' || status === 'Rejected') return false;
-  if (pact.status === 'Expired') return false;
+  if (pact.status === 'Expired' || pact.status === 'Refunded') return false;
+
+  // A party to an open dispute likely owes a move (concede / defend / resolve).
+  // Over-flags the side that's only waiting, but missing a concede deadline is
+  // worse than a redundant nudge. Precise per-phase routing is the job of the
+  // action-required push layer (which reads full dispute state).
+  if (status === 'Disputed') return isClient || isProvider;
 
   if (status === 'Expired') {
-    // Anyone can claim the refund on behalf of the client; only the client
-    // sees this as "their action" — non-clients can technically call it too
-    // but it's not their pact. Surface this only to client.
     if (pact.status === 'Funded' || pact.status === 'Submitted') return isClient;
     return isClient;
   }
   if (status === 'Open' && !budgetSet) return isProvider;
   if (status === 'Open' && budgetSet) return isClient;
   if (status === 'Funded') return isProvider;
-  if (status === 'Submitted') return isEvaluator;
+  // Submitted: the client is the one expected to act (accept or dispute).
+  if (status === 'Submitted') return isClient;
 
   return false;
 }
 
-// Display status that distinguishes a client cancellation from an evaluator
-// rejection. The ERC-8183 reference contract has a single reject() function
-// for both, so the raw on-chain status is "Rejected" in both cases. Compare
-// the indexed terminationActor with pact.client to recover the semantic case.
-// Falls back to the raw status when terminationActor isn't available yet
-// (~10s window while the indexer catches up).
-export function displayStatus(pact: PactLiveState, status: string): string {
-  if (status !== 'Rejected') return status;
-  if (!pact.terminationActor) return status;
-  if (pact.terminationActor.toLowerCase() === pact.client.toLowerCase()) {
-    return 'Cancelled';
-  }
+// Display status. The wrapper splits the old single-reject into distinct states:
+// cancel() of an Open pact lands in Status.Expired (surface as "Cancelled"),
+// while reject() of a Funded/Submitted deliverable stays "Rejected". So unlike
+// the reference, we no longer need terminationActor to disambiguate.
+export function displayStatus(_pact: PactLiveState, status: string): string {
+  if (status === 'Expired') return 'Cancelled';
   return status;
 }
 

@@ -407,7 +407,24 @@ export async function getBridgeHistory(
 
 export type PactEvent = {
   pactId: string;
-  eventType: 'Submitted' | 'Completed' | 'Rejected' | 'Funded' | 'Refunded';
+  // Wrapper Pact* events the indexer records. The dispute/negotiation events
+  // were added with the PactWrapper migration.
+  eventType:
+    | 'Submitted'
+    | 'Completed'
+    | 'Rejected'
+    | 'Funded'
+    | 'Refunded'
+    | 'Expired'
+    | 'BudgetSet'
+    | 'TermsProposed'
+    | 'DeadlineExtended'
+    | 'DisputeOpened'
+    | 'DisputeConceded'
+    | 'DisputeDefended'
+    | 'CommitSubmitted'
+    | 'VoteRevealed'
+    | 'DisputeResolved';
   hashValue: string;
   // Set for Funded + Refunded rows (uint256 USDC amount as decimal string);
   // null for hash-bearing rows.
@@ -660,6 +677,12 @@ export async function buildRejectUnsigned(pactId: string, reasonHash?: string): 
 
 export async function buildRefundUnsigned(pactId: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/refund/unsigned`);
+}
+
+// cancel() — client withdraws an Open (unfunded) pact. The wrapper's reject()
+// only works on Funded/Submitted, so Open uses this separate path.
+export async function buildCancelUnsigned(pactId: string): Promise<UnsignedTx> {
+  return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/cancel/unsigned`);
 }
 
 // ─── Dispute system ──────────────────────────────────────────────────────────

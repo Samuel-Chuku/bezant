@@ -38,7 +38,7 @@ function effectiveStatus(pact: EnrichedPact, nowMs: number): string {
   return raw;
 }
 
-const STATUS_OPTIONS = ['All', 'Open', 'Funded', 'Submitted', 'Completed', 'Cancelled', 'Rejected', 'Expired'] as const;
+const STATUS_OPTIONS = ['All', 'Open', 'Funded', 'Submitted', 'Disputed', 'Completed', 'Cancelled', 'Rejected', 'Refunded', 'Expired'] as const;
 type StatusFilter = (typeof STATUS_OPTIONS)[number];
 
 const SORT_OPTIONS = [
@@ -59,17 +59,19 @@ const STATUS_TINT: Record<string, string> = {
   Open: 'bg-sky-950/40 text-sky-300 border-sky-900/60',
   Funded: 'bg-amber-950/40 text-amber-300 border-amber-900/60',
   Submitted: 'bg-violet-950/40 text-violet-300 border-violet-900/60',
+  Disputed: 'bg-orange-950/40 text-orange-300 border-orange-900/60',
   Completed: 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60',
   // Cancelled is a client-cancelled-before-funding case; softer than Rejected
   // since no work was rejected, just an unfunded pact withdrawn.
   Cancelled: 'bg-neutral-900 text-neutral-400 border-neutral-800',
   Rejected: 'bg-red-950/40 text-red-300 border-red-900/60',
+  Refunded: 'bg-neutral-900 text-neutral-400 border-neutral-800',
   Expired: 'bg-neutral-900 text-neutral-400 border-neutral-800',
 };
 
 // Waiting-cue color matches the status badge so card + cue read as one.
 // Only non-terminal statuses have entries — terminal states don't pulse.
-const WAITING_TINT: Record<'Open' | 'Funded' | 'Submitted', {
+const WAITING_TINT: Record<'Open' | 'Funded' | 'Submitted' | 'Disputed', {
   ping: string;
   solid: string;
   text: string;
@@ -77,6 +79,7 @@ const WAITING_TINT: Record<'Open' | 'Funded' | 'Submitted', {
   Open: { ping: 'bg-sky-400', solid: 'bg-sky-500', text: 'text-sky-300' },
   Funded: { ping: 'bg-amber-400', solid: 'bg-amber-500', text: 'text-amber-300' },
   Submitted: { ping: 'bg-violet-400', solid: 'bg-violet-500', text: 'text-violet-300' },
+  Disputed: { ping: 'bg-orange-400', solid: 'bg-orange-500', text: 'text-orange-300' },
 };
 
 export default function MyPactsPage() {
@@ -284,6 +287,8 @@ function pactWaitingLine(live: PactLiveState | null, effectiveStatus: string): s
   if (
     effectiveStatus === 'Completed' ||
     effectiveStatus === 'Rejected' ||
+    effectiveStatus === 'Cancelled' ||
+    effectiveStatus === 'Refunded' ||
     effectiveStatus === 'Expired'
   ) {
     return null;
@@ -297,7 +302,10 @@ function pactWaitingLine(live: PactLiveState | null, effectiveStatus: string): s
     return 'Waiting for the provider to submit a deliverable…';
   }
   if (live.status === 'Submitted') {
-    return 'Waiting for the evaluator to complete or reject…';
+    return 'Waiting for the client to accept or the challenge window to close…';
+  }
+  if (live.status === 'Disputed') {
+    return 'A dispute is open — awaiting resolution…';
   }
   return null;
 }
