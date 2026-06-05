@@ -57,6 +57,7 @@ import {
   approveEscrowSpec,
   type ExecSpec,
 } from './lib/tradepass.js';
+import { evaluateDelivery, type DeliveryDoc } from './lib/trade-officer.js';
 import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
 import { startAutoRevealAgent, type AutoRevealRow } from './lib/auto-reveal-agent.js';
@@ -2624,6 +2625,57 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, requestFinancingSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Trade Officer agent — skill 1: ingest a delivery document, run the documentary
+// check, and either auto-attest from the operator (agent) wallet or escalate to a
+// staked human verifier. No signer in the body: the agent acts autonomously as
+// the trade's assigned attester (the operator wallet set at deploy).
+app.post<{ Params: { id: string }; Body: { document: DeliveryDoc } }>(
+  '/arc/trade/:id/officer-attest',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const { document } = request.body;
+    if (!document || typeof document.content !== 'string') {
+      return reply.code(400).send({ error: 'document with a content string is required' });
+    }
+
+    const id = BigInt(request.params.id);
+    const trade = await getTrade(id);
+    if (trade.status !== 'Funded') {
+      return reply.code(409).send({ error: `trade is '${trade.status}', expected 'Funded' to attest` });
+    }
+
+    const decision = evaluateDelivery(
+      { amountUsdc: Number(formatUnits(trade.amount, 6)), seller: trade.seller },
+      document,
+    );
+
+    if (decision.decision === 'escalate') {
+      return {
+        tradeId: request.params.id,
+        decision: 'escalate',
+        attested: false,
+        confidence: decision.confidence,
+        reasons: decision.reasons,
+        note: 'withheld — routed to a staked human verifier (Arm 2)',
+      };
+    }
+
+    // PASS — the agent signs the attestation from its own (operator) wallet.
+    const tx = await runExec(CIRCLE_OPERATOR_WALLET_ID, attestSpec(id, decision.proofHash, true));
+    return {
+      tradeId: request.params.id,
+      decision: 'pass',
+      attested: true,
+      confidence: decision.confidence,
+      reasons: decision.reasons,
+      proofHash: decision.proofHash,
+      txId: tx.id,
+      txHash: tx.txHash,
+      state: tx.state,
+    };
   },
 );
 

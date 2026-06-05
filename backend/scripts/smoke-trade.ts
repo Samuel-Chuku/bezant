@@ -14,6 +14,7 @@ const BASE = process.env.SMOKE_BASE ?? 'http://localhost:3001';
 const AMOUNT = process.env.SMOKE_TRADE_AMOUNT ?? '0.5'; // USDC trade value
 const DEADLINE_SECONDS = Number(process.env.SMOKE_TRADE_DEADLINE ?? 3600);
 const DO_FINANCE = (process.env.SMOKE_TRADE_FINANCE ?? 'false').toLowerCase() === 'true';
+const USE_OFFICER = (process.env.SMOKE_USE_OFFICER ?? 'true').toLowerCase() === 'true';
 const OPERATOR_HANDLE = process.env.SMOKE_OPERATOR_HANDLE ?? 'operator';
 const BUYER_HANDLE = process.env.SMOKE_BUYER_HANDLE ?? 'smoke-buyer';
 const SELLER_HANDLE = process.env.SMOKE_SELLER_HANDLE ?? 'smoke-seller';
@@ -124,14 +125,35 @@ async function main() {
   step('4. Fund trade (buyer: approve + lock)');
   await req('POST', `/arc/trade/${tradeId}/fund`, { handle: BUYER_HANDLE });
 
+  const attest = async () => {
+    if (USE_OFFICER) {
+      step('Attest via Trade Officer agent (doc-ingest → auto-attest or escalate)');
+      const r = await req<{ decision: string; attested: boolean }>('POST', `/arc/trade/${tradeId}/officer-attest`, {
+        document: {
+          kind: 'bill_of_lading',
+          reference: 'MAEU123456789',
+          content: 'Bill of Lading MAEU123456789 — 2000kg textiles, Jebel Ali to Lagos, carrier Maersk, cleared.',
+          carrier: 'Maersk',
+          origin: 'Jebel Ali',
+          destination: 'Lagos',
+        },
+      });
+      if (!r.attested) {
+        console.error(`${RED}✗ officer escalated instead of attesting (decision=${r.decision}); lower SMOKE_TRADE_AMOUNT below OFFICER_HIGH_VALUE_USDC${RESET}`);
+        process.exit(1);
+      }
+    } else {
+      step('Attest delivery (operator, direct)');
+      await req('POST', `/arc/trade/${tradeId}/attest`, { handle: OPERATOR_HANDLE, proof: 'BoL#smoke', passed: true });
+    }
+  };
+
   if (DO_FINANCE) {
-    step('5. (attest first so the receivable exists) Attest delivery (operator)');
-    await req('POST', `/arc/trade/${tradeId}/attest`, { handle: OPERATOR_HANDLE, proof: 'BoL#smoke', passed: true });
+    await attest();
     step('6. Request financing (seller)');
     await req('POST', `/arc/trade/${tradeId}/finance`, { handle: SELLER_HANDLE });
   } else {
-    step('5. Attest delivery (operator = Trade Officer agent)');
-    await req('POST', `/arc/trade/${tradeId}/attest`, { handle: OPERATOR_HANDLE, proof: 'BoL#smoke', passed: true });
+    await attest();
   }
 
   step('7. Release (operator)');
