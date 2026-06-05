@@ -2696,6 +2696,49 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc } }>(
 );
 
 
+// ---- Unsigned variants: the buyer/seller signs with their own wallet ----
+// (Agent attestation stays a backend dev-controlled call; release is permissionless.)
+
+app.post<{ Body: { seller: string; amountUsdc: string; milestone?: string; deadlineSeconds?: number; attester?: string } }>(
+  '/arc/trade/create/unsigned',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const { seller, amountUsdc, milestone, deadlineSeconds, attester } = request.body;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(seller ?? '')) return reply.code(400).send({ error: 'seller must be a 0x address' });
+    if (!amountUsdc || Number(amountUsdc) <= 0) return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+    const amount = parseUnits(amountUsdc, 6);
+    const milestoneHash = keccak256(stringToBytes(milestone ?? 'delivery'));
+    const deadline = Math.floor(Date.now() / 1000) + (deadlineSeconds ?? 7 * 24 * 3600);
+    const attesterAddr = (attester ?? CIRCLE_OPERATOR_ADDRESS) as `0x${string}`;
+    return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'createTrade', [seller, amount, milestoneHash, deadline, attesterAddr]);
+  },
+);
+
+app.post<{ Body: { amountUsdc: string } }>('/arc/trade/approve/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amount = parseUnits(request.body.amountUsdc, 6);
+  return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [TRADE_ESCROW_ADDRESS, amount]);
+});
+
+app.post<{ Params: { id: string } }>('/arc/trade/:id/fund/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'fund', [BigInt(request.params.id)]);
+});
+
+app.post<{ Params: { id: string } }>('/arc/trade/:id/release/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'release', [BigInt(request.params.id)]);
+});
+
+app.post<{ Params: { id: string } }>('/arc/trade/:id/finance/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'requestFinancing', [BigInt(request.params.id)]);
+});
+
+
 const port = Number(process.env.PORT ?? 3001);
 
 app

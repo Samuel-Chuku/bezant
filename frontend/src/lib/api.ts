@@ -813,3 +813,69 @@ export async function registerAutoReveal(
 ): Promise<{ scheduled: boolean; revealAfter: number; revealBefore: number }> {
   return jsonFetch('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/auto-reveal`, body);
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Standalone trade-finance escrow (TradeEscrow). Buyer/seller sign with their
+// own wallet via the /unsigned builders; the Trade Officer agent attests via a
+// backend dev-controlled call.
+// ──────────────────────────────────────────────────────────────────────────
+
+export type TradeState = {
+  buyer: `0x${string}`;
+  seller: `0x${string}`;
+  attester: `0x${string}`;
+  amountUsdc: string;
+  depositUsdc: string;
+  financedRepayUsdc: string;
+  milestoneHash: string;
+  deadline: number;
+  financingAdvanced: boolean;
+  status: 'None' | 'Created' | 'Funded' | 'Attested' | 'Released' | 'Disputed' | 'Refunded';
+};
+
+export type DeliveryDoc = {
+  kind: 'bill_of_lading' | 'tracking' | 'customs' | 'other';
+  reference?: string;
+  content: string;
+  carrier?: string;
+  origin?: string;
+  destination?: string;
+};
+
+export async function getTrade(tradeId: string): Promise<TradeState> {
+  return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}`);
+}
+
+export async function buildCreateTradeUnsigned(input: {
+  seller: `0x${string}`;
+  amountUsdc: string;
+  milestone?: string;
+  deadlineSeconds?: number;
+}): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/trade/create/unsigned', input);
+}
+
+export async function buildApproveTradeUnsigned(amountUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/trade/approve/unsigned', { amountUsdc });
+}
+
+export async function buildFundTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/fund/unsigned`);
+}
+
+export async function buildReleaseTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/release/unsigned`);
+}
+
+export async function buildRequestFinancingUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/finance/unsigned`);
+}
+
+// The Trade Officer agent ingests a delivery doc and either auto-attests
+// (from its own wallet) or escalates to a human verifier.
+export async function officerAttest(
+  tradeId: string,
+  document: DeliveryDoc,
+): Promise<{ decision: 'pass' | 'escalate'; attested: boolean; confidence: number; reasons: string[]; txHash?: string }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/officer-attest`, { document });
+}
