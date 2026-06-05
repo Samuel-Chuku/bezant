@@ -55,6 +55,9 @@ import {
   releaseSpec,
   requestFinancingSpec,
   approveEscrowSpec,
+  approveSpec,
+  poolFundSpec,
+  FINANCING_POOL_ADDRESS,
   type ExecSpec,
 } from './lib/tradepass.js';
 import { evaluateDelivery, type DeliveryDoc } from './lib/trade-officer.js';
@@ -2627,6 +2630,19 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
   },
 );
+
+// Seed the financing pool's USDC reserve from the operator (treasury) wallet.
+app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const { amountUsdc } = request.body;
+  if (!amountUsdc || Number(amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amount = parseUnits(amountUsdc, 6);
+  const approveTx = await runExec(CIRCLE_OPERATOR_WALLET_ID, approveSpec(FINANCING_POOL_ADDRESS, amount));
+  const fundTx = await runExec(CIRCLE_OPERATOR_WALLET_ID, poolFundSpec(amount));
+  return { amountUsdc, approveTxHash: approveTx.txHash, fundTxHash: fundTx.txHash, state: fundTx.state };
+});
 
 // Trade Officer agent — skill 1: ingest a delivery document, run the documentary
 // check, and either auto-attest from the operator (agent) wallet or escalate to a

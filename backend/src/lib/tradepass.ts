@@ -152,11 +152,27 @@ export function requestFinancingSpec(id: bigint | number): ExecSpec {
   };
 }
 
+export const TP_USDC = (process.env.TP_USDC ?? '0x3600000000000000000000000000000000000000') as `0x${string}`;
+
+/// USDC approval for an arbitrary spender.
+export function approveSpec(spender: `0x${string}`, amount: bigint): ExecSpec {
+  return {
+    contractAddress: TP_USDC,
+    abiFunctionSignature: 'approve(address,uint256)',
+    abiParameters: [spender, amount.toString()],
+  };
+}
+
 /// USDC approval the buyer must grant the escrow before `fund`.
 export function approveEscrowSpec(amount: bigint): ExecSpec {
+  return approveSpec(TRADE_ESCROW_ADDRESS, amount);
+}
+
+/// Top up the financing pool's USDC reserve (LP / treasury).
+export function poolFundSpec(amount: bigint): ExecSpec {
   return {
-    contractAddress: (process.env.TP_USDC ?? '0x3600000000000000000000000000000000000000') as `0x${string}`,
-    abiFunctionSignature: 'approve(address,uint256)',
-    abiParameters: [TRADE_ESCROW_ADDRESS, amount.toString()],
+    contractAddress: FINANCING_POOL_ADDRESS,
+    abiFunctionSignature: 'fund(uint256)',
+    abiParameters: [amount.toString()],
   };
 }
