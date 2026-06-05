@@ -15,6 +15,9 @@ const AMOUNT = process.env.SMOKE_TRADE_AMOUNT ?? '0.5'; // USDC trade value
 const DEADLINE_SECONDS = Number(process.env.SMOKE_TRADE_DEADLINE ?? 3600);
 const DO_FINANCE = (process.env.SMOKE_TRADE_FINANCE ?? 'false').toLowerCase() === 'true';
 const USE_OFFICER = (process.env.SMOKE_USE_OFFICER ?? 'true').toLowerCase() === 'true';
+const YIELD_USDC = process.env.SMOKE_YIELD_USDC ?? '0'; // simulate USYC yield while locked
+const YIELD_VAULT = process.env.SMOKE_YIELD_VAULT ?? ''; // MockYieldVault address
+const POOL_ADDR = process.env.FINANCING_POOL_ADDRESS ?? '';
 const OPERATOR_HANDLE = process.env.SMOKE_OPERATOR_HANDLE ?? 'operator';
 const BUYER_HANDLE = process.env.SMOKE_BUYER_HANDLE ?? 'smoke-buyer';
 const SELLER_HANDLE = process.env.SMOKE_SELLER_HANDLE ?? 'smoke-seller';
@@ -110,6 +113,8 @@ async function main() {
   await ensureBalance(seller, operator, gasBuffer, 'seller');
 
   const sellerBalBefore = await usdcRaw(seller.walletAddress);
+  const yieldRaw = toRaw(YIELD_USDC);
+  const poolBalBefore = POOL_ADDR && yieldRaw > 0n ? await usdcRaw(POOL_ADDR) : 0n;
 
   step('3. Create trade (buyer)');
   const created = await req<{ tradeId: string; depositUsdc: string; attester: string }>('POST', '/arc/trade/create', {
@@ -124,6 +129,15 @@ async function main() {
 
   step('4. Fund trade (buyer: approve + lock)');
   await req('POST', `/arc/trade/${tradeId}/fund`, { handle: BUYER_HANDLE });
+
+  if (yieldRaw > 0n && YIELD_VAULT) {
+    step('4b. Simulate USYC yield — operator sends USDC into the vault while funds are locked');
+    await req('POST', '/wallet/transfer-usdc', {
+      fromHandle: OPERATOR_HANDLE,
+      toAddress: YIELD_VAULT,
+      amountUsdc: YIELD_USDC,
+    });
+  }
 
   const attest = async () => {
     if (USE_OFFICER) {
@@ -173,6 +187,30 @@ async function main() {
     console.error(`${RED}✗ seller balance did not increase${RESET}`);
     process.exit(1);
   }
+
+  // Yield split verification (non-finance flow: seller + pool pay no gas, so deltas are exact).
+  if (yieldRaw > 0n && !DO_FINANCE && POOL_ADDR) {
+    const poolBalAfter = await usdcRaw(POOL_ADDR);
+    const poolDelta = poolBalAfter - poolBalBefore;
+    const buyerCut = (yieldRaw * 4000n) / 10000n;
+    const poolCut = (yieldRaw * 3000n) / 10000n;
+    const sellerCut = yieldRaw - buyerCut - poolCut;
+    const depositRaw = toRaw(created.depositUsdc);
+    const expectedSellerGain = depositRaw + sellerCut;
+    step('9. Verify USYC yield split (buyer 40 / seller 30 / pool 30)');
+    console.log(`${GREEN}→ yield=${yieldRaw} | pool slice got=${poolDelta} expect=${poolCut}${RESET}`);
+    console.log(`${GREEN}→ seller gained=${gained} expect=${expectedSellerGain} (deposit ${depositRaw} + 30% yield ${sellerCut})${RESET}`);
+    if (poolDelta !== poolCut) {
+      console.error(`${RED}✗ pool yield slice mismatch${RESET}`);
+      process.exit(1);
+    }
+    if (gained !== expectedSellerGain) {
+      console.error(`${RED}✗ seller yield slice mismatch${RESET}`);
+      process.exit(1);
+    }
+    console.log(`${GREEN}${BOLD}✓ yield split verified on-chain${RESET}`);
+  }
+
   console.log(`\n${GREEN}${BOLD}✓ trade loop OK — status Released, seller paid${RESET}`);
 }
 
