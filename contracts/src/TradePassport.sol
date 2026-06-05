@@ -14,7 +14,10 @@ contract TradePassport is IPassport {
     mapping(address => uint32) public failed;
 
     /// depositBps by completed-trade count; index >= length uses the last tier.
-    /// default: 0 -> 100%, 1 -> 30%, 2 -> 20%, 3+ -> 10%.
+    /// Conservative progressive-trust curve — collateral only earns down over a
+    /// long track record, with widening gaps; the 40% floor needs 30 clean trades.
+    ///   0-2 -> 100%, 3-5 -> 90%, 6-10 -> 80%, 11-16 -> 70%, 17-22 -> 60%,
+    ///   23-29 -> 50%, 30+ -> 40%.
     uint16[] public tiers;
 
     event WriterSet(address indexed writer, bool allowed);
@@ -25,10 +28,17 @@ contract TradePassport is IPassport {
 
     constructor() {
         owner = msg.sender;
-        tiers.push(10000);
-        tiers.push(3000);
-        tiers.push(2000);
-        tiers.push(1000);
+        _pushN(10000, 3); // 0-2   100%
+        _pushN(9000, 3); //  3-5    90%
+        _pushN(8000, 5); //  6-10   80%
+        _pushN(7000, 6); //  11-16  70%
+        _pushN(6000, 6); //  17-22  60%
+        _pushN(5000, 7); //  23-29  50%
+        tiers.push(4000); // 30+    40% floor
+    }
+
+    function _pushN(uint16 v, uint256 n) private {
+        for (uint256 i; i < n; ++i) tiers.push(v);
     }
 
     modifier onlyOwner() {

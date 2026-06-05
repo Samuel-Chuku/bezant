@@ -62,9 +62,30 @@ contract TradeEscrowTest is Test {
         assertEq(usdc.balanceOf(seller), AMT, "seller paid in full");
         assertEq(passport.completed(buyer), 1, "passport recorded the completion");
 
-        // trade 2: same buyer, deposit now floored to tier 1 (30%)
+        // trade 2: probation — first 3 trades stay at 100%, no early reduction
         uint256 id2 = _open(AMT);
-        assertEq(escrow.depositOf(id2), 3_000 * USD, "trade 2 = 30% deposit (passport priced)");
+        assertEq(escrow.depositOf(id2), AMT, "trade 2 still 100% (probation)");
+    }
+
+    // Conservative curve: 100% for 3 trades, widening gaps, 40% floor at 30 trades.
+    function test_Passport_CurveSchedule() public {
+        passport.setWriter(address(this), true);
+        address b = makeAddr("curveBuyer");
+
+        uint16[31] memory exp;
+        for (uint256 i = 0; i < 3; i++) exp[i] = 10000; // 0-2
+        for (uint256 i = 3; i < 6; i++) exp[i] = 9000; //  3-5
+        for (uint256 i = 6; i < 11; i++) exp[i] = 8000; // 6-10
+        for (uint256 i = 11; i < 17; i++) exp[i] = 7000; // 11-16
+        for (uint256 i = 17; i < 23; i++) exp[i] = 6000; // 17-22
+        for (uint256 i = 23; i < 30; i++) exp[i] = 5000; // 23-29
+        exp[30] = 4000; //                                  30 (floor)
+
+        for (uint256 c = 0; c < 31; c++) {
+            assertEq(passport.depositBps(b), exp[c], "tier mismatch");
+            passport.recordTrade(b, address(0), true);
+        }
+        assertEq(passport.depositBps(b), 4000, "floor holds beyond 30 trades");
     }
 
     function test_Attest_OnlyAssignedAttester() public {
