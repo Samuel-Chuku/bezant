@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "smoke:escrow": "tsx scripts/smoke-escrow.ts"
+    "smoke:escrow": "tsx scripts/smoke-escrow.ts",
+    "smoke:trade": "tsx scripts/smoke-trade.ts"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^7.0.0",

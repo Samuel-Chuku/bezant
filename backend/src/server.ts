@@ -44,6 +44,19 @@ import {
   type DeliverableRow,
   type DeliverableContentType,
 } from './lib/db.js';
+import { tradeEscrowAbi } from './lib/abis/trade-escrow.js';
+import {
+  TRADE_ESCROW_ADDRESS,
+  getTrade,
+  depositOf,
+  createTradeSpec,
+  fundSpec,
+  attestSpec,
+  releaseSpec,
+  requestFinancingSpec,
+  approveEscrowSpec,
+  type ExecSpec,
+} from './lib/tradepass.js';
 import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
 import { startAutoRevealAgent, type AutoRevealRow } from './lib/auto-reveal-agent.js';
@@ -2468,6 +2481,151 @@ app.get<{
     .header('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
   return reply.send(createReadStream(absolutePath));
 });
+
+
+// --------------------------------------------------------------------------
+// Standalone trade-finance escrow (TradeEscrow) — no ERC-8183 dependency.
+// Lifecycle: create -> fund (approve+lock, passport-priced) -> attest (the
+// Trade Officer agent / operator wallet) -> release (yield split + passport
+// write); optional requestFinancing advances the seller at attestation.
+// --------------------------------------------------------------------------
+
+function escrowReady(reply: FastifyReply): boolean {
+  if (TRADE_ESCROW_ADDRESS === ZERO_ADDRESS) {
+    reply.code(503).send({ error: 'escrow not deployed — set TRADE_ESCROW_ADDRESS in backend/.env after forge deploy' });
+    return false;
+  }
+  return true;
+}
+
+async function runExec(walletId: string, spec: ExecSpec) {
+  const exec = await circle.createContractExecutionTransaction({
+    walletId,
+    contractAddress: spec.contractAddress,
+    abiFunctionSignature: spec.abiFunctionSignature,
+    abiParameters: spec.abiParameters,
+    fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+  });
+  return waitForCircleTx(exec.data!.id);
+}
+
+app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const t = await getTrade(BigInt(request.params.id));
+  return {
+    buyer: t.buyer,
+    seller: t.seller,
+    attester: t.attester,
+    amountUsdc: formatUnits(t.amount, 6),
+    depositUsdc: formatUnits(t.deposit, 6),
+    financedRepayUsdc: formatUnits(t.financedRepay, 6),
+    milestoneHash: t.milestoneHash,
+    deadline: t.deadline,
+    financingAdvanced: t.financingAdvanced,
+    status: t.status,
+  };
+});
+
+app.post<{
+  Body: { userId?: string; handle?: string; seller: string; amountUsdc: string; milestone?: string; deadlineSeconds?: number; attester?: string };
+}>('/arc/trade/create', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const signer = requireSigner(reply, request.body);
+  if (!signer) return;
+  const { seller, amountUsdc, milestone, deadlineSeconds, attester } = request.body;
+
+  if (!/^0x[0-9a-fA-F]{40}$/.test(seller ?? '')) {
+    return reply.code(400).send({ error: 'seller must be a 0x address' });
+  }
+  if (!amountUsdc || Number(amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amount = parseUnits(amountUsdc, 6);
+  const milestoneHash = keccak256(stringToBytes(milestone ?? 'delivery'));
+  const deadline = Math.floor(Date.now() / 1000) + (deadlineSeconds ?? 7 * 24 * 3600);
+  const attesterAddr = (attester ?? CIRCLE_OPERATOR_ADDRESS) as `0x${string}`;
+
+  const tx = await runExec(
+    signer.circle_wallet_id,
+    createTradeSpec(seller as `0x${string}`, amount, milestoneHash, deadline, attesterAddr),
+  );
+  if (!tx.txHash) return reply.code(500).send({ error: 'create tx confirmed without txHash' });
+
+  const receipt = await arcClient.getTransactionReceipt({ hash: tx.txHash as `0x${string}` });
+  const [created] = parseEventLogs({ abi: tradeEscrowAbi, eventName: 'TradeCreated', logs: receipt.logs });
+  if (!created) return reply.code(500).send({ error: 'TradeCreated event missing from receipt' });
+
+  return {
+    tradeId: created.args.id.toString(),
+    depositUsdc: formatUnits(created.args.deposit, 6),
+    attester: attesterAddr,
+    txId: tx.id,
+    txHash: tx.txHash,
+    state: tx.state,
+  };
+});
+
+// Buyer locks the passport-priced deposit: approve the escrow, then fund.
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+  '/arc/trade/:id/fund',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const id = BigInt(request.params.id);
+
+    const deposit = await depositOf(id);
+    const approveTx = await runExec(signer.circle_wallet_id, approveEscrowSpec(deposit));
+    const fundTx = await runExec(signer.circle_wallet_id, fundSpec(id));
+
+    return {
+      tradeId: request.params.id,
+      depositUsdc: formatUnits(deposit, 6),
+      approveTxHash: approveTx.txHash,
+      fundTxHash: fundTx.txHash,
+      state: fundTx.state,
+    };
+  },
+);
+
+// The trade's assigned attester (Trade Officer agent / operator) confirms delivery.
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; proof?: string; passed?: boolean } }>(
+  '/arc/trade/:id/attest',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const proofHash = keccak256(stringToBytes(request.body.proof ?? 'attested'));
+    const passed = request.body.passed ?? true;
+
+    const tx = await runExec(signer.circle_wallet_id, attestSpec(BigInt(request.params.id), proofHash, passed));
+    return { tradeId: request.params.id, passed, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Settle an attested trade (permissionless — any dev-controlled signer).
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+  '/arc/trade/:id/release',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const tx = await runExec(signer.circle_wallet_id, releaseSpec(BigInt(request.params.id)));
+    return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Seller pulls an advance against the attested receivable.
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+  '/arc/trade/:id/finance',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const tx = await runExec(signer.circle_wallet_id, requestFinancingSpec(BigInt(request.params.id)));
+    return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
 
 
 const port = Number(process.env.PORT ?? 3001);
