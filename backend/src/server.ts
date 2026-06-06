@@ -57,10 +57,13 @@ import {
   approveEscrowSpec,
   approveSpec,
   poolFundSpec,
+  getPassport,
   FINANCING_POOL_ADDRESS,
+  TRADE_PASSPORT_ADDRESS,
   type ExecSpec,
 } from './lib/tradepass.js';
 import { evaluateDelivery, type DeliveryDoc } from './lib/trade-officer.js';
+import { startTradeIndexer } from './lib/trade-indexer.js';
 import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
 import { startAutoRevealAgent, type AutoRevealRow } from './lib/auto-reveal-agent.js';
@@ -2738,6 +2741,42 @@ app.post<{ Params: { id: string } }>('/arc/trade/:id/finance/unsigned', async (r
   return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'requestFinancing', [BigInt(request.params.id)]);
 });
 
+// List a user's trades (as buyer or seller) from the trade index, with live status.
+app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+
+  const rows = db
+    .prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ? ORDER BY trade_id DESC')
+    .all(address, address) as { trade_id: number }[];
+
+  const trades = await Promise.all(
+    rows.map(async (r) => {
+      const t = await getTrade(BigInt(r.trade_id));
+      return {
+        tradeId: String(r.trade_id),
+        status: t.status,
+        amountUsdc: formatUnits(t.amount, 6),
+        depositUsdc: formatUnits(t.deposit, 6),
+        role: t.buyer.toLowerCase() === address ? 'buyer' : 'seller',
+        counterparty: t.buyer.toLowerCase() === address ? t.seller : t.buyer,
+      };
+    }),
+  );
+  return { trades };
+});
+
+// Credit passport snapshot for the UI panel.
+app.get<{ Params: { address: string } }>('/arc/passport/:address', async (request, reply) => {
+  if (TRADE_PASSPORT_ADDRESS === ZERO_ADDRESS) {
+    return reply.code(503).send({ error: 'passport not deployed — set TRADE_PASSPORT_ADDRESS' });
+  }
+  const address = request.params.address;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return reply.code(400).send({ error: 'address must be 0x…' });
+  return getPassport(address as `0x${string}`);
+});
+
 
 const port = Number(process.env.PORT ?? 3001);
 
@@ -2746,6 +2785,7 @@ app
   .then(() => {
     startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
+    startTradeIndexer(app.log);
     // Auto-reveal agent: reveals opted-in evaluators' votes via the operator
     // wallet once the reveal window opens. revealVote is permissionless, so the
     // operator can reveal on anyone's behalf given (vote, secret).

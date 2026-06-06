@@ -879,3 +879,29 @@ export async function officerAttest(
 ): Promise<{ decision: 'pass' | 'escalate'; attested: boolean; confidence: number; reasons: string[]; txHash?: string }> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/officer-attest`, { document });
 }
+
+export type TradeListItem = {
+  tradeId: string;
+  status: TradeState['status'];
+  amountUsdc: string;
+  depositUsdc: string;
+  role: 'buyer' | 'seller';
+  counterparty: `0x${string}`;
+};
+
+export async function getTradesByAddress(address: string): Promise<TradeListItem[]> {
+  const r = await jsonFetch<{ trades: TradeListItem[] }>('GET', `/arc/trades?address=${encodeURIComponent(address)}`);
+  return r.trades;
+}
+
+export type PassportSnapshot = {
+  address: `0x${string}`;
+  completedTrades: number;
+  failedTrades: number;
+  depositBps: number;
+  depositPct: number;
+};
+
+export async function getPassport(address: string): Promise<PassportSnapshot> {
+  return jsonFetch('GET', `/arc/passport/${encodeURIComponent(address)}`);
+}

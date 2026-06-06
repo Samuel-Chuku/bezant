@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
+import { BridgeWidget } from '@/components/bridge-widget';
+import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
   getTrade,
   officerAttest,
@@ -37,6 +39,8 @@ export default function TradeDetailPage() {
   const [doc, setDoc] = useState(
     'Bill of Lading MAEU123456789 — 2000kg textiles, Jebel Ali to Lagos, carrier Maersk, cleared.',
   );
+  const [showBridge, setShowBridge] = useState(false);
+  const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
 
   const refresh = useCallback(async () => {
     try {
@@ -124,9 +128,27 @@ export default function TradeDetailPage() {
 
           <div className="mt-8 space-y-4">
             {trade.status === 'Created' && (
-              <Action onClick={fund} busy={busy === 'fund'} disabled={!signer.isConnected}>
-                Fund {trade.depositUsdc} USDC (approve + lock)
-              </Action>
+              <div className="space-y-3">
+                <Action onClick={fund} busy={busy === 'fund'} disabled={!signer.isConnected}>
+                  Fund {trade.depositUsdc} USDC (approve + lock)
+                </Action>
+                <div>
+                  <button
+                    onClick={() => setShowBridge((s) => !s)}
+                    className="text-sm text-sky-300 hover:underline"
+                  >
+                    {showBridge ? 'Hide bridge' : 'Need USDC? Fund from another chain →'}
+                  </button>
+                  {showBridge && (
+                    <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+                      <p className="mb-2 text-xs text-neutral-500">
+                        Bridge USDC from Ethereum / Base / Arbitrum / Optimism / Solana to your Arc wallet via CCTP, then fund.
+                      </p>
+                      <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} />
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {trade.status === 'Funded' && (

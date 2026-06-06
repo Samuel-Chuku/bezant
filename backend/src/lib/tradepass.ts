@@ -97,6 +97,22 @@ export async function passportTier(account: `0x${string}`): Promise<number> {
   })) as number;
 }
 
+/// Full passport snapshot for the UI panel.
+export async function getPassport(address: `0x${string}`) {
+  const [completed, failed, depositBps] = (await Promise.all([
+    arcClient.readContract({ address: TRADE_PASSPORT_ADDRESS, abi: tradePassportAbi, functionName: 'completed', args: [address] }),
+    arcClient.readContract({ address: TRADE_PASSPORT_ADDRESS, abi: tradePassportAbi, functionName: 'failed', args: [address] }),
+    arcClient.readContract({ address: TRADE_PASSPORT_ADDRESS, abi: tradePassportAbi, functionName: 'depositBps', args: [address] }),
+  ])) as [number, number, number];
+  return {
+    address,
+    completedTrades: Number(completed),
+    failedTrades: Number(failed),
+    depositBps: Number(depositBps),
+    depositPct: Number(depositBps) / 100,
+  };
+}
+
 // ------------------------------------------------------------ write specs ---
 // Each returns the args for `circle.createContractExecutionTransaction`.
 

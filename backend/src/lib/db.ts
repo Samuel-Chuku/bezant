@@ -228,6 +228,16 @@ db.exec(`
     indexed_at     TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (tx_hash, log_index)
   );
+  -- Standalone-escrow trade index: one row per TradeCreated event, used to list
+  -- a user's trades (as buyer or seller). Live status is read on demand.
+  CREATE TABLE IF NOT EXISTS trade_index (
+    trade_id      INTEGER PRIMARY KEY,
+    buyer         TEXT NOT NULL,
+    seller        TEXT NOT NULL,
+    created_block INTEGER NOT NULL,
+    tx_hash       TEXT NOT NULL,
+    indexed_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
   -- Pending auto-reveals for the auto-reveal agent. An evaluator who opts in at
   -- commit time hands us (vote, secret); the agent reveals on their behalf once
   -- the reveal window opens, via the operator wallet. One row per

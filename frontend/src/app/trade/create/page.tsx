@@ -9,6 +9,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { buildCreateTradeUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { useToast } from '@/components/toast';
+import { PassportPanel } from '@/components/passport-panel';
 
 // Mirrors TradeEscrow's TradeCreated event — used to pull the tradeId from the receipt.
 const tradeCreatedEventAbi = [
@@ -106,6 +107,12 @@ export default function CreateTradePage() {
           <Link href="/" className="underline">
             Go to sign-in
           </Link>
+        </div>
+      )}
+
+      {signer.isConnected && (
+        <div className="mb-6">
+          <PassportPanel address={signer.address} />
         </div>
       )}
 
