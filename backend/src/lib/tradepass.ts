@@ -81,6 +81,17 @@ export async function depositOf(id: bigint | number): Promise<bigint> {
   })) as bigint;
 }
 
+/// Deposit the buyer would lock if funding now (passport-priced) — the actual
+/// deposit is only set inside fund(), so use this to size the pre-fund approval.
+export async function estimatedDepositOf(id: bigint | number): Promise<bigint> {
+  return (await arcClient.readContract({
+    address: TRADE_ESCROW_ADDRESS,
+    abi: tradeEscrowAbi,
+    functionName: 'estimatedDeposit',
+    args: [BigInt(id)],
+  })) as bigint;
+}
+
 /// depositBps the passport will price a buyer's next trade at (10000 = 100%).
 export async function passportDepositBps(buyer: `0x${string}`): Promise<number> {
   return (await arcClient.readContract({

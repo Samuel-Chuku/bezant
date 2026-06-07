@@ -49,6 +49,7 @@ import {
   TRADE_ESCROW_ADDRESS,
   getTrade,
   depositOf,
+  estimatedDepositOf,
   createTradeSpec,
   fundSpec,
   attestSpec,
@@ -2593,9 +2594,11 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     if (!signer) return;
     const id = BigInt(request.params.id);
 
-    const deposit = await depositOf(id);
-    const approveTx = await runExec(signer.circle_wallet_id, approveEscrowSpec(deposit));
+    // Deposit is set inside fund(); approve the estimate, then read the actual.
+    const est = await estimatedDepositOf(id);
+    const approveTx = await runExec(signer.circle_wallet_id, approveEscrowSpec(est));
     const fundTx = await runExec(signer.circle_wallet_id, fundSpec(id));
+    const deposit = await depositOf(id);
 
     return {
       tradeId: request.params.id,
