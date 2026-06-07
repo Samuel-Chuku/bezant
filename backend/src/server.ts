@@ -58,6 +58,9 @@ import {
   counterSpec,
   cancelSpec,
   requestFinancingSpec,
+  raiseDisputeSpec,
+  refundSpec,
+  resolveDisputeSpec,
   approveEscrowSpec,
   approveSpec,
   poolFundSpec,
@@ -2675,6 +2678,43 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, requestFinancingSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Either party flags a problem on a Funded trade → parks it in Disputed.
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+  '/arc/trade/:id/dispute',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const tx = await runExec(signer.circle_wallet_id, raiseDisputeSpec(BigInt(request.params.id)));
+    return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Buyer reclaims their deposit on a Funded trade whose deadline has passed.
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+  '/arc/trade/:id/refund',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const tx = await runExec(signer.circle_wallet_id, refundSpec(BigInt(request.params.id)));
+    return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Arbitrator settles a Disputed trade. Signer must be the on-chain arbitrator
+// (the contract reverts NotArbitrator otherwise).
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; releaseToSeller?: boolean } }>(
+  '/arc/trade/:id/resolve',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const tx = await runExec(signer.circle_wallet_id, resolveDisputeSpec(BigInt(request.params.id), Boolean(request.body.releaseToSeller)));
+    return { tradeId: request.params.id, releaseToSeller: Boolean(request.body.releaseToSeller), txId: tx.id, txHash: tx.txHash, state: tx.state };
   },
 );
 

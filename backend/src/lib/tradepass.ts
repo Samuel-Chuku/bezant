@@ -207,6 +207,30 @@ export function requestFinancingSpec(id: bigint | number): ExecSpec {
   };
 }
 
+export function raiseDisputeSpec(id: bigint | number): ExecSpec {
+  return {
+    contractAddress: TRADE_ESCROW_ADDRESS,
+    abiFunctionSignature: 'raiseDispute(uint256)',
+    abiParameters: [id.toString()],
+  };
+}
+
+export function refundSpec(id: bigint | number): ExecSpec {
+  return {
+    contractAddress: TRADE_ESCROW_ADDRESS,
+    abiFunctionSignature: 'refund(uint256)',
+    abiParameters: [id.toString()],
+  };
+}
+
+export function resolveDisputeSpec(id: bigint | number, releaseToSeller: boolean): ExecSpec {
+  return {
+    contractAddress: TRADE_ESCROW_ADDRESS,
+    abiFunctionSignature: 'resolveDispute(uint256,bool)',
+    abiParameters: [id.toString(), releaseToSeller],
+  };
+}
+
 export const TP_USDC = (process.env.TP_USDC ?? '0x3600000000000000000000000000000000000000') as `0x${string}`;
 
 /// USDC approval for an arbitrary spender.

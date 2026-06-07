@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts",
     "smoke:escrow": "tsx scripts/smoke-escrow.ts",
     "smoke:trade": "tsx scripts/smoke-trade.ts",
+    "smoke:dispute": "tsx scripts/smoke-dispute.ts",
     "demo:progressive": "tsx scripts/demo-progressive.ts"
   },
   "dependencies": {
