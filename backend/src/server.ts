@@ -48,6 +48,7 @@ import { tradeEscrowAbi } from './lib/abis/trade-escrow.js';
 import {
   TRADE_ESCROW_ADDRESS,
   getTrade,
+  getArbitrator,
   depositOf,
   estimatedDepositOf,
   createTradeSpec,
@@ -2522,7 +2523,7 @@ async function runExec(walletId: string, spec: ExecSpec) {
 app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => {
   if (!escrowReady(reply)) return;
   const id = BigInt(request.params.id);
-  const t = await getTrade(id);
+  const [t, arbitrator] = await Promise.all([getTrade(id), getArbitrator()]);
   // What the buyer would lock if they funded now (passport-priced), shown pre-fund.
   let estDeposit = t.deposit;
   if (t.status === 'Proposing' || t.status === 'Agreed') {
@@ -2534,6 +2535,7 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => 
     buyer: t.buyer,
     seller: t.seller,
     attester: t.attester,
+    arbitrator,
     lastProposer: t.lastProposer,
     amountUsdc: formatUnits(t.amount, 6),
     depositUsdc: formatUnits(t.deposit, 6),
@@ -2796,6 +2798,33 @@ app.post<{ Params: { id: string } }>('/arc/trade/:id/finance/unsigned', async (r
   return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'requestFinancing', [BigInt(request.params.id)]);
 });
 
+// Either party flags a problem on a Funded trade (e.g. goods never arrived,
+// or the officer rejected delivery) — parks it in Disputed for the arbitrator.
+app.post<{ Params: { id: string } }>('/arc/trade/:id/dispute/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'raiseDispute', [BigInt(request.params.id)]);
+});
+
+// Buyer reclaims their deposit on a Funded trade whose deadline passed with no
+// attestation (permissionless on-chain; the buyer is the beneficiary).
+app.post<{ Params: { id: string } }>('/arc/trade/:id/refund/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'refund', [BigInt(request.params.id)]);
+});
+
+// Arbitrator settles a Disputed trade either way. On-chain gated to the
+// arbitrator address, so the UI only offers this to the connected arbitrator.
+app.post<{ Params: { id: string }; Body: { releaseToSeller: boolean } }>(
+  '/arc/trade/:id/resolve/unsigned',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'resolveDispute', [
+      BigInt(request.params.id),
+      Boolean(request.body?.releaseToSeller),
+    ]);
+  },
+);
+
 // List a user's trades (as buyer or seller) from the trade index, with live status.
 app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, reply) => {
   if (!escrowReady(reply)) return;
@@ -2854,6 +2883,8 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
       action = `Trade #${id} — fund the escrow`;
     } else if (t.status === 'Funded' && isSeller) {
       action = `Trade #${id} — submit your delivery document`;
+    } else if (t.status === 'Funded' && isBuyer && Date.now() / 1000 > t.deadline) {
+      action = `Trade #${id} — deadline passed, claim your refund`;
     }
     if (action) items.push({ tradeId: String(id), key: `trade:${id}:action:${t.status}`, kind: 'action', summary: action, whenMs: Date.now() });
 

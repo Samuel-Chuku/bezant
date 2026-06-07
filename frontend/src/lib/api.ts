@@ -834,6 +834,7 @@ export type TradeState = {
   buyer: `0x${string}`;
   seller: `0x${string}`;
   attester: `0x${string}`;
+  arbitrator: `0x${string}`;
   lastProposer: `0x${string}`;
   amountUsdc: string;
   depositUsdc: string;
@@ -889,6 +890,21 @@ export async function buildCancelTradeUnsigned(tradeId: string): Promise<Unsigne
 
 export async function buildRequestFinancingUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/finance/unsigned`);
+}
+
+// Either party flags a problem on a Funded trade → parks it in Disputed.
+export async function buildRaiseDisputeUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/dispute/unsigned`);
+}
+
+// Buyer reclaims their deposit on a Funded trade whose deadline has passed.
+export async function buildRefundTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/refund/unsigned`);
+}
+
+// Arbitrator settles a Disputed trade — release to seller or refund the buyer.
+export async function buildResolveDisputeUnsigned(tradeId: string, releaseToSeller: boolean): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/resolve/unsigned`, { releaseToSeller });
 }
 
 export type TradeEvent = {

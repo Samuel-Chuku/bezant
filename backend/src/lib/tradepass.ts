@@ -92,6 +92,15 @@ export async function estimatedDepositOf(id: bigint | number): Promise<bigint> {
   })) as bigint;
 }
 
+/// The address allowed to resolve a disputed trade (deployer EOA by default).
+export async function getArbitrator(): Promise<`0x${string}`> {
+  return (await arcClient.readContract({
+    address: TRADE_ESCROW_ADDRESS,
+    abi: tradeEscrowAbi,
+    functionName: 'arbitrator',
+  })) as `0x${string}`;
+}
+
 /// depositBps the passport will price a buyer's next trade at (10000 = 100%).
 export async function passportDepositBps(buyer: `0x${string}`): Promise<number> {
   return (await arcClient.readContract({

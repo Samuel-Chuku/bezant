@@ -19,6 +19,9 @@ import {
   buildCounterTradeUnsigned,
   buildCancelTradeUnsigned,
   buildRequestFinancingUnsigned,
+  buildRaiseDisputeUnsigned,
+  buildRefundTradeUnsigned,
+  buildResolveDisputeUnsigned,
   type TradeState,
   type TradeEvent,
   type UnsignedTx,
@@ -117,6 +120,14 @@ export default function TradeDetailPage() {
       return signAndWait(await buildFundTradeUnsigned(id));
     }, 'Funded');
   const doFinance = () => run('finance', async () => signAndWait(await buildRequestFinancingUnsigned(id)), 'Financing advanced');
+  const doRaiseDispute = () => run('dispute', async () => signAndWait(await buildRaiseDisputeUnsigned(id)), 'Dispute raised');
+  const doRefund = () => run('refund', async () => signAndWait(await buildRefundTradeUnsigned(id)), 'Refunded to buyer');
+  const doResolve = (releaseToSeller: boolean) =>
+    run(
+      releaseToSeller ? 'resolve-seller' : 'resolve-buyer',
+      async () => signAndWait(await buildResolveDisputeUnsigned(id, releaseToSeller)),
+      releaseToSeller ? 'Released to seller' : 'Refunded to buyer',
+    );
   const doSubmitDelivery = () =>
     run('attest', async () => {
       if (doc.trim().length < 8) throw new Error('Paste your delivery document (with a reference number).');
@@ -131,6 +142,8 @@ export default function TradeDetailPage() {
   const myRole = isBuyer ? 'buyer' : isSeller ? 'seller' : me ? 'observer' : null;
   const myOffer = !!trade && me === trade.lastProposer.toLowerCase();
   const myTurn = !!trade && trade.status === 'Proposing' && (isBuyer || isSeller) && !myOffer;
+  const isArbitrator = !!trade && me === trade.arbitrator.toLowerCase();
+  const deadlinePassed = !!trade && Date.now() / 1000 > trade.deadline;
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
@@ -270,6 +283,22 @@ export default function TradeDetailPage() {
               <Waiting>Funded. Awaiting delivery documents from the seller; settlement is automatic once the officer attests.</Waiting>
             )}
 
+            {/* FUNDED — either party can flag a problem; buyer can reclaim after the deadline */}
+            {trade.status === 'Funded' && (isBuyer || isSeller) && (
+              <div className="space-y-2 border-t border-neutral-900 pt-3">
+                {isBuyer && deadlinePassed && (
+                  <div>
+                    <p className="mb-2 text-xs text-neutral-500">The deadline passed with no attestation — reclaim your deposit.</p>
+                    <Action onClick={doRefund} busy={busy === 'refund'} variant="ghost">Claim refund</Action>
+                  </div>
+                )}
+                <div>
+                  <p className="mb-2 text-xs text-neutral-500">Something wrong with this trade? Flag it for the arbitrator to resolve.</p>
+                  <Action onClick={doRaiseDispute} busy={busy === 'dispute'} variant="ghost">Raise a dispute</Action>
+                </div>
+              </div>
+            )}
+
             {trade.status === 'Released' && (
               <p className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm text-emerald-200">
                 Settled — funds released to the seller and the buyer&apos;s credit passport updated.
@@ -277,7 +306,20 @@ export default function TradeDetailPage() {
             )}
             {trade.status === 'Cancelled' && <Waiting>This trade was cancelled before funding.</Waiting>}
             {trade.status === 'Refunded' && <Waiting>Refunded to the buyer (no attestation by the deadline).</Waiting>}
-            {trade.status === 'Disputed' && <Waiting>Under dispute — awaiting resolution.</Waiting>}
+            {trade.status === 'Disputed' && isArbitrator && (
+              <div className="space-y-3 rounded-lg border border-red-900/40 bg-red-950/20 p-4">
+                <p className="text-sm text-red-200">
+                  You are the arbitrator for this disputed trade. Decide the outcome — the escrowed funds go to whichever party you choose.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Action onClick={() => doResolve(true)} busy={busy === 'resolve-seller'}>Release to seller</Action>
+                  <Action onClick={() => doResolve(false)} busy={busy === 'resolve-buyer'} variant="ghost">Refund the buyer</Action>
+                </div>
+              </div>
+            )}
+            {trade.status === 'Disputed' && !isArbitrator && (
+              <Waiting>Under dispute — awaiting the arbitrator&apos;s decision.</Waiting>
+            )}
 
             {!signer.isConnected && <p className="text-sm text-amber-300">Connect a wallet to act on this trade.</p>}
           </div>
