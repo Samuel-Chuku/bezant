@@ -939,3 +939,16 @@ export type PassportSnapshot = {
 export async function getPassport(address: string): Promise<PassportSnapshot> {
   return jsonFetch('GET', `/arc/passport/${encodeURIComponent(address)}`);
 }
+
+export type TradeNotification = {
+  tradeId: string;
+  key: string;
+  kind: 'action' | 'event';
+  summary: string;
+  whenMs: number;
+};
+
+export async function getTradeNotifications(address: string): Promise<TradeNotification[]> {
+  const r = await jsonFetch<{ items: TradeNotification[] }>('GET', `/arc/trades/notifications?address=${encodeURIComponent(address)}`);
+  return r.items;
+}

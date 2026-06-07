@@ -102,7 +102,7 @@ export function NotificationsBell() {
                     onClick={() => {
                       markRead(item.key);
                       setOpen(false);
-                      router.push(`/pacts/${encodeURIComponent(item.pactId)}`);
+                      router.push(item.href ?? `/pacts/${encodeURIComponent(item.pactId)}`);
                     }}
                   />
                 ))}

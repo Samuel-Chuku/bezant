@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Address } from 'viem';
 import {
   getNotificationFeed,
+  getTradeNotifications,
   type FeedRow,
   type PactEvent,
   type PactLiveState,
   type PactRole,
+  type TradeNotification,
 } from '@/lib/api';
 import { describeCurrentStep, isActionRequiredByMe } from '@/lib/pact-status';
 import { loadReadKeys, markReadKeys } from '@/lib/notifications-read';
@@ -26,6 +28,8 @@ export type NotificationItem = {
   // Human-readable absolute or relative for display.
   whenIso: string | null;
   read: boolean;
+  // Where clicking the item navigates. Defaults to the pact page; trade items set /trade/:id.
+  href?: string;
 };
 
 type LoadState =
@@ -236,6 +240,7 @@ function bucketFor(remainingMs: number): { key: string; label: string } | null {
 export function useNotifications() {
   const signer = useSigner();
   const [state, setState] = useState<LoadState>({ status: 'idle' });
+  const [tradeRaw, setTradeRaw] = useState<TradeNotification[]>([]);
   const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
   const addressRef = useRef<Address | null>(null);
 
@@ -261,6 +266,13 @@ export function useNotifications() {
       setState({ status: 'ready', rows: data.feed });
     } catch (err) {
       setState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+    // Trade notifications are a separate source; failures here (e.g. escrow not
+    // deployed) must not break the pact feed.
+    try {
+      setTradeRaw(await getTradeNotifications(address));
+    } catch {
+      setTradeRaw([]);
     }
   }, [address]);
 
@@ -290,10 +302,27 @@ export function useNotifications() {
   }, [address, fetchFeed]);
 
   const items = useMemo<NotificationItem[]>(() => {
-    if (state.status !== 'ready' || !address) return [];
-    const derived = deriveItems(state.rows, address);
-    return derived.map((it) => ({ ...it, read: readKeys.has(it.key) }));
-  }, [state, address, readKeys]);
+    if (!address) return [];
+    const pactItems =
+      state.status === 'ready'
+        ? deriveItems(state.rows, address).map((it) => ({
+            ...it,
+            read: readKeys.has(it.key),
+            href: it.href ?? `/pacts/${it.pactId}`,
+          }))
+        : [];
+    const tradeItems: NotificationItem[] = tradeRaw.map((t) => ({
+      key: t.key,
+      pactId: t.tradeId,
+      kind: t.kind,
+      summary: t.summary,
+      whenMs: t.whenMs,
+      whenIso: null,
+      read: readKeys.has(t.key),
+      href: `/trade/${t.tradeId}`,
+    }));
+    return [...pactItems, ...tradeItems].sort((a, b) => b.whenMs - a.whenMs);
+  }, [state, tradeRaw, address, readKeys]);
 
   const unreadCount = useMemo(() => items.filter((it) => !it.read).length, [items]);
 

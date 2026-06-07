@@ -2819,6 +2819,60 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, re
   return { trades };
 });
 
+// Notification feed across a user's trades: recent activity + pending actions
+// (what they need to do next). Feeds the global bell.
+app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+
+  const ids = (db.prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ?').all(address, address) as { trade_id: number }[]).map((r) => r.trade_id);
+
+  const EVENT_LABEL: Record<string, string> = {
+    TradeProposed: 'proposed', TradeCountered: 'counter-offer', TradeAgreed: 'agreed', TradeCancelled: 'cancelled',
+    TradeFunded: 'funded', FinancingAdvanced: 'financing advanced', Attested: 'delivery attested',
+    Released: 'settled — paid to seller', Disputed: 'disputed', Resolved: 'dispute resolved', Refunded: 'refunded',
+  };
+
+  const items: { tradeId: string; key: string; kind: 'action' | 'event'; summary: string; whenMs: number }[] = [];
+
+  for (const id of ids) {
+    const t = await getTrade(BigInt(id));
+    const isBuyer = t.buyer.toLowerCase() === address;
+    const isSeller = t.seller.toLowerCase() === address;
+    const myOffer = t.lastProposer.toLowerCase() === address;
+
+    // Pending action for me (sorts to top as "fresh").
+    let action: string | null = null;
+    if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer) {
+      const offerBy = t.lastProposer.toLowerCase() === t.buyer.toLowerCase() ? 'buyer' : 'seller';
+      action = `Trade #${id} — respond to the ${offerBy}'s offer of ${formatUnits(t.amount, 6)} USDC`;
+    } else if (t.status === 'Agreed' && isBuyer) {
+      action = `Trade #${id} — fund the escrow`;
+    } else if (t.status === 'Funded' && isSeller) {
+      action = `Trade #${id} — submit your delivery document`;
+    }
+    if (action) items.push({ tradeId: String(id), key: `trade:${id}:action:${t.status}`, kind: 'action', summary: action, whenMs: Date.now() });
+
+    // Recent activity (last 3 events on this trade).
+    const evs = db
+      .prepare('SELECT kind, tx_hash, indexed_at FROM trade_events WHERE trade_id = ? ORDER BY block_number DESC, log_index DESC LIMIT 3')
+      .all(id) as { kind: string; tx_hash: string; indexed_at: string }[];
+    for (const e of evs) {
+      items.push({
+        tradeId: String(id),
+        key: `trade:${id}:event:${e.tx_hash}`,
+        kind: 'event',
+        summary: `Trade #${id} ${EVENT_LABEL[e.kind] ?? e.kind}`,
+        whenMs: new Date(e.indexed_at + 'Z').getTime() || Date.now(),
+      });
+    }
+  }
+
+  items.sort((a, b) => b.whenMs - a.whenMs);
+  return { items };
+});
+
 // Per-trade event timeline (what happened, by whom, with tx hashes).
 app.get<{ Params: { id: string } }>('/arc/trades/:id/events', async (request, reply) => {
   if (!escrowReady(reply)) return;
