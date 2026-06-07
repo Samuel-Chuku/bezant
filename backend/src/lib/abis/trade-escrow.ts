@@ -19,6 +19,38 @@ export const tradeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "accept",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "amountOf",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "arbitrator",
     "inputs": [],
     "outputs": [
@@ -74,6 +106,37 @@ export const tradeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "cancel",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "counter",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "newAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "createTrade",
     "inputs": [
       {
@@ -114,6 +177,25 @@ export const tradeEscrowAbi = [
   {
     "type": "function",
     "name": "depositOf",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "estimatedDeposit",
     "inputs": [
       {
         "name": "id",
@@ -224,19 +306,6 @@ export const tradeEscrowAbi = [
   {
     "type": "function",
     "name": "refund",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "release",
     "inputs": [
       {
         "name": "id",
@@ -399,6 +468,25 @@ export const tradeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "statusOf",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum TradeEscrow.Status"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "trades",
     "inputs": [
       {
@@ -420,6 +508,11 @@ export const tradeEscrowAbi = [
       },
       {
         "name": "attester",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "lastProposer",
         "type": "address",
         "internalType": "address"
       },
@@ -549,12 +642,6 @@ export const tradeEscrowAbi = [
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
-      },
-      {
-        "name": "passed",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
       }
     ],
     "anonymous": false
@@ -602,31 +689,6 @@ export const tradeEscrowAbi = [
       },
       {
         "name": "fee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "Funded",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "deposit",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "shares",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -711,7 +773,101 @@ export const tradeEscrowAbi = [
   },
   {
     "type": "event",
-    "name": "TradeCreated",
+    "name": "TradeAgreed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TradeCancelled",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TradeCountered",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TradeFunded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "deposit",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TradeProposed",
     "inputs": [
       {
         "name": "id",
@@ -733,12 +889,6 @@ export const tradeEscrowAbi = [
       },
       {
         "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "deposit",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -789,6 +939,11 @@ export const tradeEscrowAbi = [
   },
   {
     "type": "error",
+    "name": "NotBuyer",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotOwner",
     "inputs": []
   },
@@ -800,6 +955,11 @@ export const tradeEscrowAbi = [
   {
     "type": "error",
     "name": "NotSeller",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotYourTurn",
     "inputs": []
   }
 ] as const;
