@@ -116,8 +116,8 @@ async function main() {
   const yieldRaw = toRaw(YIELD_USDC);
   const poolBalBefore = POOL_ADDR && yieldRaw > 0n ? await usdcRaw(POOL_ADDR) : 0n;
 
-  step('3. Create trade (buyer)');
-  const created = await req<{ tradeId: string; depositUsdc: string; attester: string }>('POST', '/arc/trade/create', {
+  step('3. Create trade (buyer proposes)');
+  const created = await req<{ tradeId: string; amountUsdc: string }>('POST', '/arc/trade/create', {
     handle: BUYER_HANDLE,
     seller: seller.walletAddress,
     amountUsdc: AMOUNT,
@@ -125,7 +125,10 @@ async function main() {
     deadlineSeconds: DEADLINE_SECONDS,
   });
   const tradeId = created.tradeId;
-  console.log(`${GREEN}→ tradeId=${tradeId}, deposit=${created.depositUsdc} USDC, attester=${created.attester}${RESET}`);
+  console.log(`${GREEN}→ tradeId=${tradeId}, amount=${created.amountUsdc} USDC${RESET}`);
+
+  step('3b. Seller accepts the offer');
+  await req('POST', `/arc/trade/${tradeId}/accept`, { handle: SELLER_HANDLE });
 
   step('4. Fund trade (buyer: approve + lock)');
   await req('POST', `/arc/trade/${tradeId}/fund`, { handle: BUYER_HANDLE });
@@ -137,6 +140,11 @@ async function main() {
       toAddress: YIELD_VAULT,
       amountUsdc: YIELD_USDC,
     });
+  }
+
+  if (DO_FINANCE) {
+    step('5. Request financing (seller, during Funded phase)');
+    await req('POST', `/arc/trade/${tradeId}/finance`, { handle: SELLER_HANDLE });
   }
 
   const attest = async () => {
@@ -162,18 +170,10 @@ async function main() {
     }
   };
 
-  if (DO_FINANCE) {
-    await attest();
-    step('6. Request financing (seller)');
-    await req('POST', `/arc/trade/${tradeId}/finance`, { handle: SELLER_HANDLE });
-  } else {
-    await attest();
-  }
+  // Officer attestation AUTO-SETTLES the trade (no separate release step).
+  await attest();
 
-  step('7. Release (operator)');
-  await req('POST', `/arc/trade/${tradeId}/release`, { handle: OPERATOR_HANDLE });
-
-  step('8. Verify final state');
+  step('6. Verify final state (attest auto-settled)');
   const trade = await req<{ status: string }>('GET', `/arc/trade/${tradeId}`);
   const sellerBalAfter = await usdcRaw(seller.walletAddress);
   const gained = sellerBalAfter - sellerBalBefore;
@@ -195,7 +195,7 @@ async function main() {
     const buyerCut = (yieldRaw * 4000n) / 10000n;
     const poolCut = (yieldRaw * 3000n) / 10000n;
     const sellerCut = yieldRaw - buyerCut - poolCut;
-    const depositRaw = toRaw(created.depositUsdc);
+    const depositRaw = toRaw(AMOUNT); // fresh buyer => 100% deposit
     const expectedSellerGain = depositRaw + sellerCut;
     step('9. Verify USYC yield split (buyer 40 / seller 30 / pool 30)');
     console.log(`${GREEN}→ yield=${yieldRaw} | pool slice got=${poolDelta} expect=${poolCut}${RESET}`);

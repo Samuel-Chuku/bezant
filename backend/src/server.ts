@@ -52,7 +52,9 @@ import {
   createTradeSpec,
   fundSpec,
   attestSpec,
-  releaseSpec,
+  acceptSpec,
+  counterSpec,
+  cancelSpec,
   requestFinancingSpec,
   approveEscrowSpec,
   approveSpec,
@@ -2518,13 +2520,23 @@ async function runExec(walletId: string, spec: ExecSpec) {
 
 app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const t = await getTrade(BigInt(request.params.id));
+  const id = BigInt(request.params.id);
+  const t = await getTrade(id);
+  // What the buyer would lock if they funded now (passport-priced), shown pre-fund.
+  let estDeposit = t.deposit;
+  if (t.status === 'Proposing' || t.status === 'Agreed') {
+    estDeposit = (await arcClient.readContract({
+      address: TRADE_ESCROW_ADDRESS, abi: tradeEscrowAbi, functionName: 'estimatedDeposit', args: [id],
+    })) as bigint;
+  }
   return {
     buyer: t.buyer,
     seller: t.seller,
     attester: t.attester,
+    lastProposer: t.lastProposer,
     amountUsdc: formatUnits(t.amount, 6),
     depositUsdc: formatUnits(t.deposit, 6),
+    estimatedDepositUsdc: formatUnits(estDeposit, 6),
     financedRepayUsdc: formatUnits(t.financedRepay, 6),
     milestoneHash: t.milestoneHash,
     deadline: t.deadline,
@@ -2559,12 +2571,12 @@ app.post<{
   if (!tx.txHash) return reply.code(500).send({ error: 'create tx confirmed without txHash' });
 
   const receipt = await arcClient.getTransactionReceipt({ hash: tx.txHash as `0x${string}` });
-  const [created] = parseEventLogs({ abi: tradeEscrowAbi, eventName: 'TradeCreated', logs: receipt.logs });
-  if (!created) return reply.code(500).send({ error: 'TradeCreated event missing from receipt' });
+  const [proposed] = parseEventLogs({ abi: tradeEscrowAbi, eventName: 'TradeProposed', logs: receipt.logs });
+  if (!proposed) return reply.code(500).send({ error: 'TradeProposed event missing from receipt' });
 
   return {
-    tradeId: created.args.id.toString(),
-    depositUsdc: formatUnits(created.args.deposit, 6),
+    tradeId: proposed.args.id.toString(),
+    amountUsdc: formatUnits(proposed.args.amount, 6),
     attester: attesterAddr,
     txId: tx.id,
     txHash: tx.txHash,
@@ -2610,19 +2622,46 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; pro
   },
 );
 
-// Settle an attested trade (permissionless — any dev-controlled signer).
+// Negotiation: the counterparty accepts the standing offer.
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
-  '/arc/trade/:id/release',
+  '/arc/trade/:id/accept',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
     const signer = requireSigner(reply, request.body);
     if (!signer) return;
-    const tx = await runExec(signer.circle_wallet_id, releaseSpec(BigInt(request.params.id)));
+    const tx = await runExec(signer.circle_wallet_id, acceptSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
   },
 );
 
-// Seller pulls an advance against the attested receivable.
+// Negotiation: propose a new amount (not allowed when it's your offer on the table).
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; amountUsdc: string } }>(
+  '/arc/trade/:id/counter',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
+      return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+    }
+    const tx = await runExec(signer.circle_wallet_id, counterSpec(BigInt(request.params.id), parseUnits(request.body.amountUsdc, 6)));
+    return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Either party walks away before funding.
+app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
+  '/arc/trade/:id/cancel',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const signer = requireSigner(reply, request.body);
+    if (!signer) return;
+    const tx = await runExec(signer.circle_wallet_id, cancelSpec(BigInt(request.params.id)));
+    return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
+  },
+);
+
+// Seller draws an advance while goods are in transit (Funded phase).
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/trade/:id/finance',
   async (request, reply) => {
@@ -2731,9 +2770,22 @@ app.post<{ Params: { id: string } }>('/arc/trade/:id/fund/unsigned', async (requ
   return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'fund', [BigInt(request.params.id)]);
 });
 
-app.post<{ Params: { id: string } }>('/arc/trade/:id/release/unsigned', async (request, reply) => {
+app.post<{ Params: { id: string } }>('/arc/trade/:id/accept/unsigned', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'release', [BigInt(request.params.id)]);
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'accept', [BigInt(request.params.id)]);
+});
+
+app.post<{ Params: { id: string }; Body: { amountUsdc: string } }>('/arc/trade/:id/counter/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'counter', [BigInt(request.params.id), parseUnits(request.body.amountUsdc, 6)]);
+});
+
+app.post<{ Params: { id: string } }>('/arc/trade/:id/cancel/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'cancel', [BigInt(request.params.id)]);
 });
 
 app.post<{ Params: { id: string } }>('/arc/trade/:id/finance/unsigned', async (request, reply) => {
@@ -2765,6 +2817,28 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, re
     }),
   );
   return { trades };
+});
+
+// Per-trade event timeline (what happened, by whom, with tx hashes).
+app.get<{ Params: { id: string } }>('/arc/trades/:id/events', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const id = Number(request.params.id);
+  const rows = db
+    .prepare(
+      `SELECT kind, actor, amount_raw, block_number, tx_hash, indexed_at
+       FROM trade_events WHERE trade_id = ? ORDER BY block_number ASC, log_index ASC`,
+    )
+    .all(id) as { kind: string; actor: string | null; amount_raw: string | null; block_number: number; tx_hash: string; indexed_at: string }[];
+  return {
+    events: rows.map((r) => ({
+      kind: r.kind,
+      actor: r.actor,
+      amountUsdc: r.amount_raw ? formatUnits(BigInt(r.amount_raw), 6) : null,
+      blockNumber: r.block_number,
+      txHash: r.tx_hash,
+      at: r.indexed_at,
+    })),
+  };
 });
 
 // Credit passport snapshot for the UI panel.

@@ -24,12 +24,13 @@ export const FINANCING_POOL_ADDRESS = (process.env.FINANCING_POOL_ADDRESS ?? ZER
 // Trade lifecycle status — index matches TradeEscrow.Status.
 export const TRADE_STATUS = [
   'None',
-  'Created',
+  'Proposing',
+  'Agreed',
   'Funded',
-  'Attested',
   'Released',
   'Disputed',
   'Refunded',
+  'Cancelled',
 ] as const;
 export type TradeStatus = (typeof TRADE_STATUS)[number];
 
@@ -45,6 +46,7 @@ export async function getTrade(id: bigint | number) {
     `0x${string}`, // buyer
     `0x${string}`, // seller
     `0x${string}`, // attester
+    `0x${string}`, // lastProposer
     bigint, // amount
     bigint, // deposit
     bigint, // shares
@@ -58,14 +60,15 @@ export async function getTrade(id: bigint | number) {
     buyer: t[0],
     seller: t[1],
     attester: t[2],
-    amount: t[3],
-    deposit: t[4],
-    shares: t[5],
-    financedRepay: t[6],
-    milestoneHash: t[7],
-    deadline: t[8],
-    financingAdvanced: t[9],
-    status: TRADE_STATUS[t[10]] ?? 'None',
+    lastProposer: t[3],
+    amount: t[4],
+    deposit: t[5],
+    shares: t[6],
+    financedRepay: t[7],
+    milestoneHash: t[8],
+    deadline: t[9],
+    financingAdvanced: t[10],
+    status: TRADE_STATUS[t[11]] ?? 'None',
   };
 }
 
@@ -152,10 +155,26 @@ export function attestSpec(id: bigint | number, proofHash: `0x${string}`, passed
   };
 }
 
-export function releaseSpec(id: bigint | number): ExecSpec {
+export function acceptSpec(id: bigint | number): ExecSpec {
   return {
     contractAddress: TRADE_ESCROW_ADDRESS,
-    abiFunctionSignature: 'release(uint256)',
+    abiFunctionSignature: 'accept(uint256)',
+    abiParameters: [id.toString()],
+  };
+}
+
+export function counterSpec(id: bigint | number, newAmount: bigint): ExecSpec {
+  return {
+    contractAddress: TRADE_ESCROW_ADDRESS,
+    abiFunctionSignature: 'counter(uint256,uint256)',
+    abiParameters: [id.toString(), newAmount.toString()],
+  };
+}
+
+export function cancelSpec(id: bigint | number): ExecSpec {
+  return {
+    contractAddress: TRADE_ESCROW_ADDRESS,
+    abiFunctionSignature: 'cancel(uint256)',
     abiParameters: [id.toString()],
   };
 }

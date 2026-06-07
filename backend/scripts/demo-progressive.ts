@@ -77,25 +77,37 @@ async function main() {
     await req('POST', '/wallet/transfer-usdc', { fromHandle: OPERATOR_HANDLE, toAddress: buyer.walletAddress, amountUsdc: topup });
   }
 
+  // Seller signs `accept` each trade, so it needs gas (Arc pays gas in USDC).
+  const sellerNeeded = toRaw(GAS_BUFFER_USDC) * BigInt(N);
+  const sBal = await usdcRaw(seller.walletAddress);
+  if (sBal < sellerNeeded) {
+    const topup = (Number(sellerNeeded - sBal) / 1_000_000).toFixed(6);
+    console.log(`${YELLOW}topping up seller with ${topup} USDC (gas)${RESET}`);
+    await req('POST', '/wallet/transfer-usdc', { fromHandle: OPERATOR_HANDLE, toAddress: seller.walletAddress, amountUsdc: topup });
+  }
+
   const rows: { n: number; completedBefore: number; deposit: string; pct: string }[] = [];
 
   for (let n = 1; n <= N; n++) {
-    const created = await req<{ tradeId: string; depositUsdc: string }>('POST', '/arc/trade/create', {
+    const created = await req<{ tradeId: string }>('POST', '/arc/trade/create', {
       handle: BUYER_HANDLE,
       seller: seller.walletAddress,
       amountUsdc: AMOUNT,
       milestone: `progressive demo trade ${n}`,
     });
-    const pct = ((Number(created.depositUsdc) / Number(AMOUNT)) * 100).toFixed(0);
-    rows.push({ n, completedBefore: n - 1, deposit: created.depositUsdc, pct: `${pct}%` });
-    console.log(`${GREEN}trade ${n}: ${n - 1} prior completions → deposit ${created.depositUsdc} USDC (${pct}%)${RESET}`);
+    const tradeId = created.tradeId;
 
-    await req('POST', `/arc/trade/${created.tradeId}/fund`, { handle: BUYER_HANDLE });
-    const att = await req<{ attested: boolean }>('POST', `/arc/trade/${created.tradeId}/officer-attest`, {
+    await req('POST', `/arc/trade/${tradeId}/accept`, { handle: SELLER_HANDLE });
+    const funded = await req<{ depositUsdc: string }>('POST', `/arc/trade/${tradeId}/fund`, { handle: BUYER_HANDLE });
+    const pct = ((Number(funded.depositUsdc) / Number(AMOUNT)) * 100).toFixed(0);
+    rows.push({ n, completedBefore: n - 1, deposit: funded.depositUsdc, pct: `${pct}%` });
+    console.log(`${GREEN}trade ${n}: ${n - 1} prior completions → deposit ${funded.depositUsdc} USDC (${pct}%)${RESET}`);
+
+    const att = await req<{ attested: boolean }>('POST', `/arc/trade/${tradeId}/officer-attest`, {
       document: { kind: 'bill_of_lading', reference: `MAEU${1000000 + n}`, content: `BoL MAEU${1000000 + n} cleared, demo trade ${n}.` },
     });
     if (!att.attested) throw new Error(`trade ${n}: officer escalated unexpectedly`);
-    await req('POST', `/arc/trade/${created.tradeId}/release`, { handle: OPERATOR_HANDLE });
+    // officer attestation auto-settles — no release step
   }
 
   console.log(`\n${BOLD}Progressive-trust schedule (this run):${RESET}`);

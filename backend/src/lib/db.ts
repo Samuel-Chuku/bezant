@@ -238,6 +238,20 @@ db.exec(`
     tx_hash       TEXT NOT NULL,
     indexed_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  -- Every trade lifecycle event (propose/counter/agree/fund/finance/attest/
+  -- release/dispute/refund/cancel), for the per-trade timeline + notifications.
+  -- PK (tx_hash, log_index) so re-indexing a range is a no-op.
+  CREATE TABLE IF NOT EXISTS trade_events (
+    trade_id     INTEGER NOT NULL,
+    kind         TEXT NOT NULL,
+    actor        TEXT,
+    amount_raw   TEXT,
+    block_number INTEGER NOT NULL,
+    tx_hash      TEXT NOT NULL,
+    log_index    INTEGER NOT NULL,
+    indexed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tx_hash, log_index)
+  );
   -- Pending auto-reveals for the auto-reveal agent. An evaluator who opts in at
   -- commit time hands us (vote, secret); the agent reveals on their behalf once
   -- the reveal window opens, via the operator wallet. One row per
