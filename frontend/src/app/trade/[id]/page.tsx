@@ -5,26 +5,47 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
+import { CountdownChip } from '@/components/countdown';
+import { arcExplorerTxUrl, arcExplorerAddressUrl } from '@/lib/explorers';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
   getTrade,
+  getTradeEvents,
   officerAttest,
   buildApproveTradeUnsigned,
   buildFundTradeUnsigned,
-  buildReleaseTradeUnsigned,
+  buildAcceptTradeUnsigned,
+  buildCounterTradeUnsigned,
+  buildCancelTradeUnsigned,
   buildRequestFinancingUnsigned,
   type TradeState,
+  type TradeEvent,
   type UnsignedTx,
 } from '@/lib/api';
 
 const STATUS_COLOR: Record<string, string> = {
-  Created: 'text-sky-300',
-  Funded: 'text-amber-300',
-  Attested: 'text-violet-300',
+  Proposing: 'text-sky-300',
+  Agreed: 'text-amber-300',
+  Funded: 'text-violet-300',
   Released: 'text-emerald-300',
   Disputed: 'text-red-300',
   Refunded: 'text-neutral-300',
+  Cancelled: 'text-neutral-400',
+};
+
+const EVENT_LABEL: Record<string, string> = {
+  TradeProposed: 'Proposed',
+  TradeCountered: 'Countered',
+  TradeAgreed: 'Agreed',
+  TradeCancelled: 'Cancelled',
+  TradeFunded: 'Funded',
+  FinancingAdvanced: 'Financing advanced',
+  Attested: 'Delivery attested',
+  Released: 'Settled — paid to seller',
+  Disputed: 'Disputed',
+  Resolved: 'Dispute resolved',
+  Refunded: 'Refunded',
 };
 
 export default function TradeDetailPage() {
@@ -34,15 +55,20 @@ export default function TradeDetailPage() {
   const toast = useToast();
 
   const [trade, setTrade] = useState<TradeState | null>(null);
+  const [events, setEvents] = useState<TradeEvent[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastTx, setLastTx] = useState<string | null>(null);
   const [doc, setDoc] = useState('');
+  const [counterAmount, setCounterAmount] = useState('');
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
 
   const refresh = useCallback(async () => {
     try {
-      setTrade(await getTrade(id));
+      const [t, evs] = await Promise.all([getTrade(id), getTradeEvents(id).catch(() => [])]);
+      setTrade(t);
+      setEvents(evs);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -52,70 +78,75 @@ export default function TradeDetailPage() {
     void refresh();
   }, [refresh]);
 
-  const signAndWait = async (unsigned: UnsignedTx) => {
+  const signAndWait = async (unsigned: UnsignedTx): Promise<string> => {
     if (!signer.isConnected) throw new Error('Connect a wallet first.');
     const sent = await signer.sendCall({ to: unsigned.to, data: unsigned.data, value: BigInt(unsigned.value) });
-    const { status } = await sent.wait();
+    const { txHash, status } = await sent.wait();
     if (status !== 'success') throw new Error(`Tx ${status}`);
+    return txHash;
   };
 
-  const run = async (label: string, fn: () => Promise<void>) => {
+  const run = async (label: string, fn: () => Promise<string | void>, okMsg: string) => {
     setError(null);
     setBusy(label);
     try {
-      await fn();
+      const tx = await fn();
+      if (typeof tx === 'string') setLastTx(tx);
+      toast.success(okMsg);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const m = err instanceof Error ? err.message : String(err);
+      setError(m);
+      toast.error(m);
     } finally {
       setBusy(null);
     }
   };
 
-  const fund = () =>
+  const doAccept = () => run('accept', async () => signAndWait(await buildAcceptTradeUnsigned(id)), 'Offer accepted');
+  const doCounter = () =>
+    run('counter', async () => {
+      if (!counterAmount || Number(counterAmount) <= 0) throw new Error('Enter a counter amount.');
+      return signAndWait(await buildCounterTradeUnsigned(id, counterAmount));
+    }, 'Counter-offer sent');
+  const doCancel = () => run('cancel', async () => signAndWait(await buildCancelTradeUnsigned(id)), 'Trade cancelled');
+  const doFund = () =>
     run('fund', async () => {
       if (!trade) return;
-      await signAndWait(await buildApproveTradeUnsigned(trade.depositUsdc));
-      await signAndWait(await buildFundTradeUnsigned(id));
-      toast.success(`Funded ${trade.depositUsdc} USDC`);
-    });
-
-  const submitDelivery = () =>
+      await signAndWait(await buildApproveTradeUnsigned(trade.estimatedDepositUsdc));
+      return signAndWait(await buildFundTradeUnsigned(id));
+    }, 'Funded');
+  const doFinance = () => run('finance', async () => signAndWait(await buildRequestFinancingUnsigned(id)), 'Financing advanced');
+  const doSubmitDelivery = () =>
     run('attest', async () => {
-      if (doc.trim().length < 8) throw new Error('Paste your delivery document (bill of lading / tracking / customs).');
+      if (doc.trim().length < 8) throw new Error('Paste your delivery document (with a reference number).');
       const r = await officerAttest(id, { kind: 'bill_of_lading', content: doc });
-      if (r.attested) toast.success('Trade Officer reviewed the document and attested delivery');
-      else toast.error(`Officer escalated to a human verifier: ${r.reasons.join('; ')}`);
-    });
-
-  const release = () =>
-    run('release', async () => {
-      await signAndWait(await buildReleaseTradeUnsigned(id));
-      toast.success('Released to seller');
-    });
-
-  const finance = () =>
-    run('finance', async () => {
-      await signAndWait(await buildRequestFinancingUnsigned(id));
-      toast.success('Financing advanced to seller');
-    });
+      if (!r.attested) throw new Error(`Officer escalated to a human verifier: ${r.reasons.join('; ')}`);
+      return r.txHash;
+    }, 'Trade Officer attested — trade settled');
 
   const me = signer.isConnected ? signer.address.toLowerCase() : null;
   const isBuyer = !!trade && me === trade.buyer.toLowerCase();
   const isSeller = !!trade && me === trade.seller.toLowerCase();
   const myRole = isBuyer ? 'buyer' : isSeller ? 'seller' : me ? 'observer' : null;
+  const myOffer = !!trade && me === trade.lastProposer.toLowerCase();
+  const myTurn = !!trade && trade.status === 'Proposing' && (isBuyer || isSeller) && !myOffer;
+  const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <Link href="/trade/create" className="text-xs text-neutral-500 hover:text-neutral-100">
-        ← new trade
+      <Link href="/trade" className="text-xs text-neutral-500 hover:text-neutral-100">
+        ← my trades
       </Link>
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">Trade #{id}</h1>
         {myRole && (
           <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[11px] uppercase tracking-wide text-neutral-400">
             you: {myRole}
           </span>
+        )}
+        {trade && trade.status !== 'Released' && trade.status !== 'Cancelled' && trade.status !== 'Refunded' && (
+          <CountdownChip unix={trade.deadline} label="Deadline" />
         )}
       </div>
 
@@ -129,20 +160,68 @@ export default function TradeDetailPage() {
               <span className={STATUS_COLOR[trade.status] ?? 'text-neutral-200'}>{trade.status}</span>
             </Field>
             <Field label="Amount">{trade.amountUsdc} USDC</Field>
-            <Field label="Deposit (passport-priced)">{trade.depositUsdc} USDC</Field>
+            <Field label={trade.status === 'Funded' || trade.status === 'Released' ? 'Deposit (locked)' : 'Deposit if funded now'}>
+              {(trade.status === 'Funded' || trade.status === 'Released' ? trade.depositUsdc : trade.estimatedDepositUsdc)} USDC
+            </Field>
             <Field label="Financing">{trade.financingAdvanced ? `advanced (${trade.financedRepayUsdc} USDC)` : '—'}</Field>
-            <Field label="Buyer">{short(trade.buyer)}</Field>
-            <Field label="Seller">{short(trade.seller)}</Field>
-            <Field label="Attester (Trade Officer)">{short(trade.attester)}</Field>
+            <Field label="Buyer"><Addr a={trade.buyer} /></Field>
+            <Field label="Seller"><Addr a={trade.seller} /></Field>
+            <Field label="Attester (Trade Officer)"><Addr a={trade.attester} /></Field>
             <Field label="Deadline">{new Date(trade.deadline * 1000).toLocaleString()}</Field>
           </div>
 
+          {lastTx && (
+            <p className="mt-4 text-sm text-neutral-400">
+              Last tx:{' '}
+              <a href={arcExplorerTxUrl(lastTx)} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
+                {lastTx.slice(0, 10)}… ↗
+              </a>
+            </p>
+          )}
+
           <div className="mt-8 space-y-4">
-            {/* CREATED — buyer funds; everyone else waits */}
-            {trade.status === 'Created' && isBuyer && (
+            {/* PROPOSING — negotiation */}
+            {trade.status === 'Proposing' && (
               <div className="space-y-3">
-                <Action onClick={fund} busy={busy === 'fund'} disabled={!signer.isConnected}>
-                  Fund {trade.depositUsdc} USDC (approve + lock)
+                <p className="text-sm text-neutral-300">
+                  Standing offer: <strong>{trade.amountUsdc} USDC</strong>, proposed by the <strong>{offerBy}</strong>.
+                </p>
+                {myTurn && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-3">
+                      <Action onClick={doAccept} busy={busy === 'accept'}>Accept {trade.amountUsdc} USDC</Action>
+                      <Action onClick={doCancel} busy={busy === 'cancel'} variant="ghost">Cancel</Action>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <label className="block">
+                        <span className="text-xs text-neutral-400">Counter amount (USDC)</span>
+                        <input
+                          value={counterAmount}
+                          onChange={(e) => setCounterAmount(e.target.value)}
+                          inputMode="decimal"
+                          placeholder="e.g. 9"
+                          className="mt-1 w-40 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                        />
+                      </label>
+                      <Action onClick={doCounter} busy={busy === 'counter'} variant="ghost">Counter</Action>
+                    </div>
+                  </div>
+                )}
+                {myOffer && (
+                  <div className="space-y-2">
+                    <Waiting>Your offer is on the table. Waiting for the {offerBy === 'buyer' ? 'seller' : 'buyer'} to accept or counter.</Waiting>
+                    <Action onClick={doCancel} busy={busy === 'cancel'} variant="ghost">Cancel</Action>
+                  </div>
+                )}
+                {!isBuyer && !isSeller && <Waiting>Negotiation in progress.</Waiting>}
+              </div>
+            )}
+
+            {/* AGREED — buyer funds */}
+            {trade.status === 'Agreed' && isBuyer && (
+              <div className="space-y-3">
+                <Action onClick={doFund} busy={busy === 'fund'} disabled={!signer.isConnected}>
+                  Fund {trade.estimatedDepositUsdc} USDC (approve + lock)
                 </Action>
                 <div>
                   <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-sky-300 hover:underline">
@@ -159,52 +238,36 @@ export default function TradeDetailPage() {
                 </div>
               </div>
             )}
-            {trade.status === 'Created' && !isBuyer && (
-              <Waiting>Waiting for the buyer to fund the escrow ({trade.depositUsdc} USDC deposit).</Waiting>
+            {trade.status === 'Agreed' && !isBuyer && (
+              <Waiting>Agreed at {trade.amountUsdc} USDC. Waiting for the buyer to fund.</Waiting>
             )}
 
-            {/* FUNDED — seller submits the delivery document; the agent reviews it */}
+            {/* FUNDED — seller delivers (officer attests, auto-settles) */}
             {trade.status === 'Funded' && isSeller && (
-              <div className="space-y-2">
-                <p className="text-sm text-neutral-300">
-                  Submit your delivery document. The Trade Officer reviews it and attests delivery (or escalates to a human verifier).
-                </p>
-                <textarea
-                  value={doc}
-                  onChange={(e) => setDoc(e.target.value)}
-                  rows={3}
-                  placeholder="Paste your bill of lading / tracking / customs document (must include a reference number)…"
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
-                />
-                <Action onClick={submitDelivery} busy={busy === 'attest'}>
-                  Submit to Trade Officer
-                </Action>
-              </div>
-            )}
-            {trade.status === 'Funded' && !isSeller && (
-              <Waiting>Funded. Awaiting delivery documents from the seller.</Waiting>
-            )}
-
-            {/* ATTESTED — buyer releases; seller may pull financing */}
-            {trade.status === 'Attested' && isBuyer && (
-              <Action onClick={release} busy={busy === 'release'} disabled={!signer.isConnected}>
-                Confirm &amp; release to seller
-              </Action>
-            )}
-            {trade.status === 'Attested' && isSeller && (
-              <div className="flex flex-wrap gap-3">
-                <Action onClick={release} busy={busy === 'release'} disabled={!signer.isConnected}>
-                  Release my payment
-                </Action>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm text-neutral-300">
+                    Submit your delivery document — the Trade Officer reviews it and, on a pass, the trade settles to you automatically.
+                  </p>
+                  <textarea
+                    value={doc}
+                    onChange={(e) => setDoc(e.target.value)}
+                    rows={3}
+                    placeholder="Paste your bill of lading / tracking / customs document (must include a reference number)…"
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  />
+                  <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
+                </div>
                 {!trade.financingAdvanced && (
-                  <Action onClick={finance} busy={busy === 'finance'} disabled={!signer.isConnected} variant="ghost">
-                    Request financing instead (advance now)
-                  </Action>
+                  <div className="border-t border-neutral-900 pt-3">
+                    <p className="mb-2 text-xs text-neutral-500">Need cash before delivery is verified? Draw an advance now (repaid at settlement).</p>
+                    <Action onClick={doFinance} busy={busy === 'finance'} variant="ghost">Request financing</Action>
+                  </div>
                 )}
               </div>
             )}
-            {trade.status === 'Attested' && !isBuyer && !isSeller && (
-              <Waiting>Delivery attested. Awaiting release.</Waiting>
+            {trade.status === 'Funded' && !isSeller && (
+              <Waiting>Funded. Awaiting delivery documents from the seller; settlement is automatic once the officer attests.</Waiting>
             )}
 
             {trade.status === 'Released' && (
@@ -212,11 +275,33 @@ export default function TradeDetailPage() {
                 Settled — funds released to the seller and the buyer&apos;s credit passport updated.
               </p>
             )}
+            {trade.status === 'Cancelled' && <Waiting>This trade was cancelled before funding.</Waiting>}
+            {trade.status === 'Refunded' && <Waiting>Refunded to the buyer (no attestation by the deadline).</Waiting>}
+            {trade.status === 'Disputed' && <Waiting>Under dispute — awaiting resolution.</Waiting>}
 
-            {!signer.isConnected && (
-              <p className="text-sm text-amber-300">Connect a wallet to act on this trade.</p>
-            )}
+            {!signer.isConnected && <p className="text-sm text-amber-300">Connect a wallet to act on this trade.</p>}
           </div>
+
+          {/* Event timeline */}
+          {events.length > 0 && (
+            <div className="mt-10">
+              <h2 className="text-xs uppercase tracking-wide text-neutral-500">Activity</h2>
+              <ol className="mt-3 space-y-2">
+                {events.map((e) => (
+                  <li key={e.txHash} className="flex items-center justify-between rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-sm">
+                    <div>
+                      <span className="text-neutral-200">{EVENT_LABEL[e.kind] ?? e.kind}</span>
+                      {e.amountUsdc && <span className="text-neutral-500"> · {e.amountUsdc} USDC</span>}
+                      {e.actor && <span className="text-neutral-600"> · {short(e.actor)}</span>}
+                    </div>
+                    <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="text-xs text-sky-300 hover:underline">
+                      tx ↗
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </>
       )}
     </main>
@@ -255,8 +340,14 @@ function Action({
 }
 
 function Waiting({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">{children}</p>;
+}
+
+function Addr({ a }: { a: string }) {
   return (
-    <p className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">{children}</p>
+    <a href={arcExplorerAddressUrl(a)} target="_blank" rel="noreferrer" className="hover:underline">
+      {short(a)}
+    </a>
   );
 }
 

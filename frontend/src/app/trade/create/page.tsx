@@ -11,17 +11,16 @@ import { arcTestnet } from '@/lib/chains';
 import { useToast } from '@/components/toast';
 import { PassportPanel } from '@/components/passport-panel';
 
-// Mirrors TradeEscrow's TradeCreated event — used to pull the tradeId from the receipt.
-const tradeCreatedEventAbi = [
+// Mirrors TradeEscrow's TradeProposed event — used to pull the tradeId from the receipt.
+const tradeProposedEventAbi = [
   {
     type: 'event',
-    name: 'TradeCreated',
+    name: 'TradeProposed',
     inputs: [
       { name: 'id', type: 'uint256', indexed: true },
       { name: 'buyer', type: 'address', indexed: true },
       { name: 'seller', type: 'address', indexed: true },
       { name: 'amount', type: 'uint256' },
-      { name: 'deposit', type: 'uint256' },
       { name: 'attester', type: 'address' },
     ],
   },
@@ -75,8 +74,8 @@ export default function CreateTradePage() {
 
       if (!publicClient) throw new Error('No public client available');
       const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
-      const [created] = parseEventLogs({ abi: tradeCreatedEventAbi, eventName: 'TradeCreated', logs: receipt.logs });
-      if (!created) throw new Error('TradeCreated event missing from receipt');
+      const [created] = parseEventLogs({ abi: tradeProposedEventAbi, eventName: 'TradeProposed', logs: receipt.logs });
+      if (!created) throw new Error('TradeProposed event missing from receipt');
 
       const tradeId = created.args.id.toString();
       toast.success(`Trade #${tradeId} created`);

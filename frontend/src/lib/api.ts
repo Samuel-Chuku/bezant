@@ -820,17 +820,29 @@ export async function registerAutoReveal(
 // backend dev-controlled call.
 // ──────────────────────────────────────────────────────────────────────────
 
+export type TradeStatus =
+  | 'None'
+  | 'Proposing'
+  | 'Agreed'
+  | 'Funded'
+  | 'Released'
+  | 'Disputed'
+  | 'Refunded'
+  | 'Cancelled';
+
 export type TradeState = {
   buyer: `0x${string}`;
   seller: `0x${string}`;
   attester: `0x${string}`;
+  lastProposer: `0x${string}`;
   amountUsdc: string;
   depositUsdc: string;
+  estimatedDepositUsdc: string;
   financedRepayUsdc: string;
   milestoneHash: string;
   deadline: number;
   financingAdvanced: boolean;
-  status: 'None' | 'Created' | 'Funded' | 'Attested' | 'Released' | 'Disputed' | 'Refunded';
+  status: TradeStatus;
 };
 
 export type DeliveryDoc = {
@@ -863,12 +875,34 @@ export async function buildFundTradeUnsigned(tradeId: string): Promise<UnsignedT
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/fund/unsigned`);
 }
 
-export async function buildReleaseTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
-  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/release/unsigned`);
+export async function buildAcceptTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/accept/unsigned`);
+}
+
+export async function buildCounterTradeUnsigned(tradeId: string, amountUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/counter/unsigned`, { amountUsdc });
+}
+
+export async function buildCancelTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/cancel/unsigned`);
 }
 
 export async function buildRequestFinancingUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/finance/unsigned`);
+}
+
+export type TradeEvent = {
+  kind: string;
+  actor: string | null;
+  amountUsdc: string | null;
+  blockNumber: number;
+  txHash: string;
+  at: string;
+};
+
+export async function getTradeEvents(tradeId: string): Promise<TradeEvent[]> {
+  const r = await jsonFetch<{ events: TradeEvent[] }>('GET', `/arc/trades/${encodeURIComponent(tradeId)}/events`);
+  return r.events;
 }
 
 // The Trade Officer agent ingests a delivery doc and either auto-attests

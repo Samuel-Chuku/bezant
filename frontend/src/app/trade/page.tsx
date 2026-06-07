@@ -7,12 +7,13 @@ import { getTradesByAddress, type TradeListItem } from '@/lib/api';
 import { PassportPanel } from '@/components/passport-panel';
 
 const STATUS_COLOR: Record<string, string> = {
-  Created: 'text-sky-300',
-  Funded: 'text-amber-300',
-  Attested: 'text-violet-300',
+  Proposing: 'text-sky-300',
+  Agreed: 'text-amber-300',
+  Funded: 'text-violet-300',
   Released: 'text-emerald-300',
   Disputed: 'text-red-300',
   Refunded: 'text-neutral-300',
+  Cancelled: 'text-neutral-400',
 };
 
 export default function TradesPage() {
