@@ -12,16 +12,64 @@ import { MobileDrawer, type NavItem } from './mobile-drawer';
 import { NotificationsBell } from './notifications-bell';
 import { WalletPill } from './wallet-pill';
 
+// Mobile drawer (flat list). Desktop renders a Trades hover menu + My trades.
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
-  { href: '/trade', label: 'Trade' },
-  { href: '/create', label: 'Create' },
-  // Pacts hub: 'Mine' + 'Browse' tabs. 'Browse' absorbed the old /market page.
-  { href: '/pacts', label: 'Pacts' },
-  { href: '/evaluators', label: 'Evaluate' },
+  { href: '/trade/create', label: 'New trade' },
+  { href: '/trade', label: 'My trades' },
   { href: '/bridge', label: 'Bridge' },
-  { href: '/reputation', label: 'Reputation' },
+  // Parked (pact/wrapper era) — pages still live in the repo, just unlinked from
+  // nav while the standalone trade flow is the active product. Restore as needed.
+  // { href: '/create', label: 'Create' },
+  // { href: '/pacts', label: 'Pacts' },
+  // { href: '/evaluators', label: 'Evaluate' },
+  // { href: '/reputation', label: 'Reputation' },
 ];
+
+function NavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={[
+        'rounded-md px-3 py-1.5 text-sm transition',
+        active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
+      ].join(' ')}
+    >
+      {label}
+    </Link>
+  );
+}
+
+// Trades button with a hover menu → create a new trade / perform an action.
+function TradesMenu({ active }: { active: boolean }) {
+  return (
+    <div className="group relative">
+      <Link
+        href="/trade"
+        className={[
+          'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
+          active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
+        ].join(' ')}
+      >
+        Trades
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </Link>
+      {/* pt-2 keeps a hover bridge so the menu doesn't close in the gap */}
+      <div className="invisible absolute left-0 top-full z-50 w-60 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100">
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-1 shadow-xl">
+          <Link href="/trade/create" className="block rounded-md px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100">
+            + Create a new trade
+          </Link>
+          <Link href="/trade" className="block rounded-md px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100">
+            Perform an action in a trade
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function TopNav() {
   const signer = useSigner();
@@ -60,23 +108,10 @@ export function TopNav() {
           </div>
 
           <nav className="hidden flex-1 items-center gap-1 md:flex">
-            {NAV_ITEMS.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={[
-                    'rounded-md px-3 py-1.5 text-sm transition',
-                    active
-                      ? 'bg-neutral-900 text-neutral-100'
-                      : 'text-neutral-400 hover:text-neutral-100',
-                  ].join(' ')}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+            <NavLink href="/" label="Home" active={pathname === '/'} />
+            <TradesMenu active={pathname === '/trade' || pathname.startsWith('/trade/')} />
+            <NavLink href="/trade" label="My trades" active={pathname === '/trade'} />
+            <NavLink href="/bridge" label="Bridge" active={pathname === '/bridge'} />
           </nav>
 
           <div className="ml-auto flex items-center gap-2">

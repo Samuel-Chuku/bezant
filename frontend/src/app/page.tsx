@@ -136,16 +136,16 @@ export default function Home() {
 
           <div className="mt-6 flex flex-wrap gap-2 border-t border-emerald-900/30 pt-4">
             <Link
-              href="/create"
+              href="/trade/create"
               className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
             >
-              Create a pact
+              Create a trade
             </Link>
             <Link
-              href="/pacts"
+              href="/trade"
               className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 transition hover:text-neutral-100"
             >
-              My pacts
+              My trades
             </Link>
           </div>
         </section>
