@@ -40,15 +40,31 @@ function short(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-// Renders @handle when known, else the short address. Links to the explorer
-// unless link={false}. The full address is always in the title for hover.
-export function HandleAddr({ address, link = true }: { address: string; link?: boolean }) {
+// Renders @handle when known, else the short address. With withAddress, shows
+// "@handle (0x12…789)" when a handle is known (just the short address otherwise).
+// Links to the explorer unless link={false}; full address in the title on hover.
+export function HandleAddr({
+  address,
+  link = true,
+  withAddress = false,
+}: {
+  address: string;
+  link?: boolean;
+  withAddress?: boolean;
+}) {
   const handle = useHandle(address);
-  const label = handle ? `@${handle}` : short(address);
-  if (!link) return <span title={address}>{label}</span>;
+  const inner = handle ? (
+    <>
+      @{handle}
+      {withAddress && <span className="text-neutral-500"> ({short(address)})</span>}
+    </>
+  ) : (
+    short(address)
+  );
+  if (!link) return <span title={address}>{inner}</span>;
   return (
     <a href={arcExplorerAddressUrl(address)} target="_blank" rel="noreferrer" className="hover:underline" title={address}>
-      {label}
+      {inner}
     </a>
   );
 }

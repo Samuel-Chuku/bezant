@@ -36,8 +36,16 @@ export type OfficerDecision = {
 // regardless of how clean the documents look.
 const HIGH_VALUE_USDC = Number(process.env.OFFICER_HIGH_VALUE_USDC ?? '5000');
 
-// A plausible shipping/customs reference token (BoL, container, tracking, entry).
-const REF_RE = /[A-Z]{2,}[A-Z0-9]{4,}|\b[0-9]{8,}\b/i;
+// A real shipping/customs reference always carries DIGITS: a carrier/booking
+// number (MAEU123456789), a container number (MSKU1234567), or a standalone
+// long tracking/entry number. A plain word is not a reference — case-sensitive
+// uppercase for the alpha-prefixed forms, since real refs are uppercased.
+const REF_RE = /\b([A-Z]{2,4}\d{6,}|[A-Z]{4}\d{7}|\d{8,})\b/;
+
+// The body must read like a shipping/customs document, not free text — at least
+// one domain keyword. Stops a stray code in otherwise-gibberish text passing.
+const DOC_KEYWORD_RE =
+  /\b(bill of lading|b\/l|bol|air ?waybill|awb|waybill|consignment|tracking|container|customs|shipment|shipped|carrier|freight|vessel|port of (loading|discharge))\b/i;
 
 export function evaluateDelivery(
   trade: { amountUsdc: number; seller: string },
@@ -47,10 +55,12 @@ export function evaluateDelivery(
   const reasons: string[] = [];
 
   const content = (doc.content ?? '').trim();
-  const hasContent = content.length >= 8;
+  const hasContent = content.length >= 20;
   const hasRef = (!!doc.reference && REF_RE.test(doc.reference)) || REF_RE.test(content);
-  if (!hasContent) reasons.push('document content too short or empty');
-  if (!hasRef) reasons.push('no shipping/customs reference detected');
+  const hasKeyword = DOC_KEYWORD_RE.test(content);
+  if (!hasContent) reasons.push('document too short — paste the full delivery document');
+  if (!hasRef) reasons.push('no valid reference number (e.g. a BoL/container/tracking number with digits)');
+  if (!hasKeyword) reasons.push('does not read like a shipping/customs document (no recognizable terms)');
 
   // Escalate high-value trades to a staked human verifier — the agent only
   // owns the documentary happy-path.
@@ -63,7 +73,7 @@ export function evaluateDelivery(
     };
   }
 
-  if (hasContent && hasRef) {
+  if (hasContent && hasRef && hasKeyword) {
     return { decision: 'pass', proofHash, confidence: 0.9, reasons: ['documentary check passed'] };
   }
 

@@ -7,6 +7,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { CountdownChip, CountdownBanner } from '@/components/countdown';
 import { HandleAddr } from '@/components/handle-addr';
+import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { BridgeWidget } from '@/components/bridge-widget';
@@ -147,6 +148,10 @@ export default function TradeDetailPage() {
   const isArbitrator = !!trade && me === trade.arbitrator.toLowerCase();
   const deadlinePassed = !!trade && Date.now() / 1000 > trade.deadline;
   const isTerminal = !!trade && ['Released', 'Cancelled', 'Refunded'].includes(trade.status);
+  // Only the trade's parties (+ the arbitrator, who may need to resolve a
+  // dispute) see the details; everyone else sees just the deadline. NOTE: this
+  // is a UI courtesy — the data is public on-chain and via the API.
+  const isParticipant = isBuyer || isSeller || isArbitrator;
   const step = trade ? describeTradeStep(trade, me) : null;
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
@@ -177,11 +182,18 @@ export default function TradeDetailPage() {
               <CountdownBanner unix={trade.deadline} label="Time remaining" />
             </div>
           )}
-          {step && (
-            <p className={`mt-4 animate-pulse text-sm ${step.forMe ? 'text-amber-200' : 'text-neutral-400'}`}>
-              {step.forMe ? '→ ' : ''}
-              {step.line}
+
+          {!isParticipant ? (
+            <p className="mt-8 rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">
+              Only the buyer and seller can view this trade&apos;s details.
+              {!signer.isConnected && ' Connect the buyer or seller wallet to see it.'}
             </p>
+          ) : (
+          <>
+          {step && (
+            <div className="mt-4">
+              <StepCue step={step} />
+            </div>
           )}
 
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
@@ -193,9 +205,9 @@ export default function TradeDetailPage() {
               {(trade.status === 'Funded' || trade.status === 'Released' ? trade.depositUsdc : trade.estimatedDepositUsdc)} USDC
             </Field>
             <Field label="Financing">{trade.financingAdvanced ? `advanced (${trade.financedRepayUsdc} USDC)` : '—'}</Field>
-            <Field label="Buyer"><HandleAddr address={trade.buyer} /></Field>
-            <Field label="Seller"><HandleAddr address={trade.seller} /></Field>
-            <Field label="Attester (Trade Officer)"><HandleAddr address={trade.attester} /></Field>
+            <Field label="Buyer"><HandleAddr address={trade.buyer} withAddress /></Field>
+            <Field label="Seller"><HandleAddr address={trade.seller} withAddress /></Field>
+            <Field label="Attester (Trade Officer)"><HandleAddr address={trade.attester} withAddress /></Field>
             <Field label="Deadline">{new Date(trade.deadline * 1000).toLocaleString()}</Field>
           </div>
 
@@ -282,7 +294,7 @@ export default function TradeDetailPage() {
                     value={doc}
                     onChange={(e) => setDoc(e.target.value)}
                     rows={3}
-                    placeholder="Paste your bill of lading / tracking / customs document (must include a reference number)…"
+                    placeholder="Paste your bill of lading / tracking / customs document — must name the document type and include a real reference number, e.g. 'Bill of Lading MAEU123456789 — 2000kg textiles, Jebel Ali → Lagos, carrier Maersk'."
                     className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
                   />
                   <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
@@ -345,8 +357,10 @@ export default function TradeDetailPage() {
             <div className="mt-10">
               <h2 className="text-xs uppercase tracking-wide text-neutral-500">Activity</h2>
               <ol className="mt-3 space-y-2">
-                {events.map((e) => (
-                  <li key={e.txHash} className="flex items-center justify-between rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-sm">
+                {events.map((e, i) => (
+                  // One tx can emit several events (e.g. attest auto-settle →
+                  // Attested + Released share a txHash), so the key includes kind + index.
+                  <li key={`${e.txHash}-${e.kind}-${i}`} className="flex items-center justify-between rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-sm">
                     <div>
                       <span className="text-neutral-200">{EVENT_LABEL[e.kind] ?? e.kind}</span>
                       {e.amountUsdc && <span className="text-neutral-500"> · {e.amountUsdc} USDC</span>}
@@ -359,6 +373,8 @@ export default function TradeDetailPage() {
                 ))}
               </ol>
             </div>
+          )}
+          </>
           )}
         </>
       )}

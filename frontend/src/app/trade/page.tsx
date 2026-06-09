@@ -7,6 +7,7 @@ import { getTradesByAddress, type TradeListItem } from '@/lib/api';
 import { PassportPanel } from '@/components/passport-panel';
 import { HandleAddr } from '@/components/handle-addr';
 import { CountdownChip } from '@/components/countdown';
+import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -87,10 +88,9 @@ export default function TradesPage() {
                     </div>
                   </div>
                   {step && (
-                    <p className={`mt-2 animate-pulse text-xs ${step.forMe ? 'text-amber-200' : 'text-neutral-500'}`}>
-                      {step.forMe ? '→ ' : ''}
-                      {step.line}
-                    </p>
+                    <div className="mt-2">
+                      <StepCue step={step} compact />
+                    </div>
                   )}
                 </Link>
               );
