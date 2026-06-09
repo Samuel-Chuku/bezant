@@ -28,9 +28,15 @@ import type { BridgeRun, StepState } from '@/lib/bridge-run';
 export function BridgeWidget({
   run,
   onRunChange,
+  lockedAmount,
+  lockToArc = false,
 }: {
   run: BridgeRun;
   onRunChange: (updater: (prev: BridgeRun) => BridgeRun) => void;
+  // "Fund this trade" mode: prefill the exact amount to bridge and fix the
+  // destination to Arc, so the buyer only picks a source chain and clicks once.
+  lockedAmount?: string;
+  lockToArc?: boolean;
 }) {
   const signer = useSigner();
   const wagmiChainId = useChainId();
@@ -40,7 +46,13 @@ export function BridgeWidget({
 
   const [sourceKey, setSourceKey] = useState<BridgeChain['key']>('sepolia');
   const [destKey, setDestKey] = useState<BridgeChain['key']>(DEFAULT_DESTINATION_KEY);
-  const [amount, setAmount] = useState('1.00');
+  const [amount, setAmount] = useState(lockedAmount ?? '1.00');
+
+  // Keep the prefilled amount in sync if it loads/changes (e.g. the deposit
+  // estimate resolving on the trade page).
+  useEffect(() => {
+    if (lockedAmount && lockedAmount !== '0') setAmount(lockedAmount);
+  }, [lockedAmount]);
 
   // Track the wallet's current chain only on first render so we don't reset
   // the user's manual source selection every time wagmi reports a switch.
@@ -244,41 +256,58 @@ export function BridgeWidget({
 
   return (
     <Shell>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
-        <ChainPicker
-          label="From"
-          value={source}
-          options={BRIDGE_CHAINS}
-          excludeKey={destKey}
-          balance={sourceBalance?.formatted}
-          onSelect={handleSelectSource}
-          disabled={run.status === 'running'}
-        />
-        <button
-          type="button"
-          onClick={handleSwap}
-          disabled={run.status === 'running'}
-          aria-label="Swap source and destination"
-          title="Swap source and destination"
-          className="mt-6 flex h-11 w-11 items-center justify-center self-center rounded-full border border-neutral-800 bg-neutral-950/60 text-neutral-400 transition hover:border-neutral-700 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 3 4 7l4 4" />
-            <path d="M4 7h16" />
-            <path d="m16 21 4-4-4-4" />
-            <path d="M20 17H4" />
-          </svg>
-        </button>
-        <ChainPicker
-          label="To"
-          value={destination}
-          options={BRIDGE_CHAINS}
-          excludeKey={sourceKey}
-          highlight={destination.key === DEFAULT_DESTINATION_KEY}
-          onSelect={handleSelectDestination}
-          disabled={run.status === 'running'}
-        />
-      </div>
+      {lockToArc ? (
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <ChainPicker
+              label="Bridge from"
+              value={source}
+              options={BRIDGE_CHAINS}
+              excludeKey={destKey}
+              balance={sourceBalance?.formatted}
+              onSelect={handleSelectSource}
+              disabled={run.status === 'running'}
+            />
+          </div>
+          <div className="mb-3 text-sm text-neutral-400">→ {destination.shortName}</div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
+          <ChainPicker
+            label="From"
+            value={source}
+            options={BRIDGE_CHAINS}
+            excludeKey={destKey}
+            balance={sourceBalance?.formatted}
+            onSelect={handleSelectSource}
+            disabled={run.status === 'running'}
+          />
+          <button
+            type="button"
+            onClick={handleSwap}
+            disabled={run.status === 'running'}
+            aria-label="Swap source and destination"
+            title="Swap source and destination"
+            className="mt-6 flex h-11 w-11 items-center justify-center self-center rounded-full border border-neutral-800 bg-neutral-950/60 text-neutral-400 transition hover:border-neutral-700 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3 4 7l4 4" />
+              <path d="M4 7h16" />
+              <path d="m16 21 4-4-4-4" />
+              <path d="M20 17H4" />
+            </svg>
+          </button>
+          <ChainPicker
+            label="To"
+            value={destination}
+            options={BRIDGE_CHAINS}
+            excludeKey={sourceKey}
+            highlight={destination.key === DEFAULT_DESTINATION_KEY}
+            onSelect={handleSelectDestination}
+            disabled={run.status === 'running'}
+          />
+        </div>
+      )}
 
       {sameChain && (
         <p className="mt-3 text-sm text-amber-400">
@@ -335,8 +364,8 @@ export function BridgeWidget({
 
       <div className="mt-6">
         <div className="flex items-center justify-between text-[13px] uppercase tracking-wide text-neutral-500">
-          <span>Amount</span>
-          {sourceBalance && Number(sourceBalance.formatted) > 0 && (
+          <span>{lockedAmount ? 'Amount needed' : 'Amount'}</span>
+          {!lockedAmount && sourceBalance && Number(sourceBalance.formatted) > 0 && (
             <button
               type="button"
               onClick={handleMax}
@@ -353,9 +382,9 @@ export function BridgeWidget({
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            disabled={run.status === 'running'}
+            disabled={run.status === 'running' || !!lockedAmount}
             placeholder="0.00"
-            className="flex-1 bg-transparent px-3.5 py-3 text-lg text-neutral-100 placeholder:text-neutral-700 focus:outline-none disabled:opacity-50"
+            className="flex-1 bg-transparent px-3.5 py-3 text-lg text-neutral-100 placeholder:text-neutral-700 focus:outline-none disabled:opacity-70"
           />
           <span className="pr-3.5 text-sm text-neutral-500">USDC</span>
         </div>

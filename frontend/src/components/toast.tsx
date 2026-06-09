@@ -11,12 +11,13 @@ import {
 } from 'react';
 
 type ToastType = 'success' | 'error' | 'info';
-type Toast = { id: number; type: ToastType; message: string };
+type ToastOpts = { href?: string; hrefLabel?: string };
+type Toast = { id: number; type: ToastType; message: string } & ToastOpts;
 
 type ToastApi = {
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
+  success: (message: string, opts?: ToastOpts) => void;
+  error: (message: string, opts?: ToastOpts) => void;
+  info: (message: string, opts?: ToastOpts) => void;
 };
 
 const ToastCtx = createContext<ToastApi | null>(null);
@@ -38,9 +39,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const push = useCallback(
-    (type: ToastType, message: string) => {
+    (type: ToastType, message: string, opts?: ToastOpts) => {
       const id = nextId++;
-      setToasts((list) => [...list, { id, type, message }]);
+      setToasts((list) => [...list, { id, type, message, ...opts }]);
       setTimeout(() => remove(id), DURATION_MS);
     },
     [remove],
@@ -48,9 +49,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ToastApi>(
     () => ({
-      success: (m) => push('success', m),
-      error: (m) => push('error', m),
-      info: (m) => push('info', m),
+      success: (m, o) => push('success', m, o),
+      error: (m, o) => push('error', m, o),
+      info: (m, o) => push('info', m, o),
     }),
     [push],
   );
@@ -98,7 +99,22 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       }`}
     >
       <span className="mt-0.5 shrink-0">{icon}</span>
-      <span className="min-w-0 flex-1 break-words">{toast.message}</span>
+      <span className="min-w-0 flex-1 break-words">
+        {toast.message}
+        {toast.href && (
+          <>
+            {' '}
+            <a
+              href={toast.href}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sky-300 underline underline-offset-2 hover:text-sky-200"
+            >
+              {toast.hrefLabel ?? 'view tx ↗'}
+            </a>
+          </>
+        )}
+      </span>
       <button
         type="button"
         onClick={onDismiss}

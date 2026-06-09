@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
-import { CountdownChip } from '@/components/countdown';
-import { arcExplorerTxUrl, arcExplorerAddressUrl } from '@/lib/explorers';
+import { CountdownChip, CountdownBanner } from '@/components/countdown';
+import { HandleAddr } from '@/components/handle-addr';
+import { describeTradeStep } from '@/lib/trade-status';
+import { arcExplorerTxUrl } from '@/lib/explorers';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
@@ -144,6 +146,8 @@ export default function TradeDetailPage() {
   const myTurn = !!trade && trade.status === 'Proposing' && (isBuyer || isSeller) && !myOffer;
   const isArbitrator = !!trade && me === trade.arbitrator.toLowerCase();
   const deadlinePassed = !!trade && Date.now() / 1000 > trade.deadline;
+  const isTerminal = !!trade && ['Released', 'Cancelled', 'Refunded'].includes(trade.status);
+  const step = trade ? describeTradeStep(trade, me) : null;
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
@@ -168,6 +172,18 @@ export default function TradeDetailPage() {
 
       {trade && (
         <>
+          {!isTerminal && (
+            <div className="mt-6">
+              <CountdownBanner unix={trade.deadline} label="Time remaining" />
+            </div>
+          )}
+          {step && (
+            <p className={`mt-4 animate-pulse text-sm ${step.forMe ? 'text-amber-200' : 'text-neutral-400'}`}>
+              {step.forMe ? '→ ' : ''}
+              {step.line}
+            </p>
+          )}
+
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
             <Field label="Status">
               <span className={STATUS_COLOR[trade.status] ?? 'text-neutral-200'}>{trade.status}</span>
@@ -177,9 +193,9 @@ export default function TradeDetailPage() {
               {(trade.status === 'Funded' || trade.status === 'Released' ? trade.depositUsdc : trade.estimatedDepositUsdc)} USDC
             </Field>
             <Field label="Financing">{trade.financingAdvanced ? `advanced (${trade.financedRepayUsdc} USDC)` : '—'}</Field>
-            <Field label="Buyer"><Addr a={trade.buyer} /></Field>
-            <Field label="Seller"><Addr a={trade.seller} /></Field>
-            <Field label="Attester (Trade Officer)"><Addr a={trade.attester} /></Field>
+            <Field label="Buyer"><HandleAddr address={trade.buyer} /></Field>
+            <Field label="Seller"><HandleAddr address={trade.seller} /></Field>
+            <Field label="Attester (Trade Officer)"><HandleAddr address={trade.attester} /></Field>
             <Field label="Deadline">{new Date(trade.deadline * 1000).toLocaleString()}</Field>
           </div>
 
@@ -238,14 +254,14 @@ export default function TradeDetailPage() {
                 </Action>
                 <div>
                   <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-sky-300 hover:underline">
-                    {showBridge ? 'Hide bridge' : 'Need USDC? Fund from another chain →'}
+                    {showBridge ? 'Hide bridge' : 'Fund this trade from another chain?'}
                   </button>
                   {showBridge && (
                     <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
                       <p className="mb-2 text-xs text-neutral-500">
-                        Bridge USDC from Ethereum / Base / Arbitrum / Optimism / Solana to your Arc wallet via CCTP, then fund.
+                        Bridge the {trade.estimatedDepositUsdc} USDC you need straight to your Arc wallet via CCTP, then fund — pick a source chain and go.
                       </p>
-                      <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} />
+                      <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} lockedAmount={trade.estimatedDepositUsdc} lockToArc />
                     </div>
                   )}
                 </div>
@@ -383,14 +399,6 @@ function Action({
 
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">{children}</p>;
-}
-
-function Addr({ a }: { a: string }) {
-  return (
-    <a href={arcExplorerAddressUrl(a)} target="_blank" rel="noreferrer" className="hover:underline">
-      {short(a)}
-    </a>
-  );
 }
 
 function short(addr: string): string {

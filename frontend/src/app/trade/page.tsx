@@ -5,6 +5,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSigner } from '@/hooks/use-signer';
 import { getTradesByAddress, type TradeListItem } from '@/lib/api';
 import { PassportPanel } from '@/components/passport-panel';
+import { HandleAddr } from '@/components/handle-addr';
+import { CountdownChip } from '@/components/countdown';
+import { describeTradeStep } from '@/lib/trade-status';
 
 const STATUS_COLOR: Record<string, string> = {
   Proposing: 'text-sky-300',
@@ -15,6 +18,8 @@ const STATUS_COLOR: Record<string, string> = {
   Refunded: 'text-neutral-300',
   Cancelled: 'text-neutral-400',
 };
+
+const TERMINAL = new Set(['Released', 'Cancelled', 'Refunded']);
 
 export default function TradesPage() {
   const signer = useSigner();
@@ -60,21 +65,36 @@ export default function TradesPage() {
           {trades && trades.length === 0 && <p className="text-sm text-neutral-400">No trades yet — create one.</p>}
 
           <div className="space-y-2">
-            {trades?.map((t) => (
-              <Link
-                key={t.tradeId}
-                href={`/trade/${t.tradeId}`}
-                className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950/50 px-4 py-3 text-sm hover:border-neutral-600"
-              >
-                <div>
-                  <div className="font-medium">Trade #{t.tradeId}</div>
-                  <div className="text-xs text-neutral-500">
-                    {t.role} · {t.amountUsdc} USDC · deposit {t.depositUsdc}
+            {trades?.map((t) => {
+              const step = describeTradeStep(t, signer.isConnected ? signer.address : null);
+              const live = !TERMINAL.has(t.status);
+              return (
+                <Link
+                  key={t.tradeId}
+                  href={`/trade/${t.tradeId}`}
+                  className="block rounded-xl border border-neutral-800 bg-neutral-950/50 px-4 py-3 text-sm hover:border-neutral-600"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">Trade #{t.tradeId}</div>
+                      <div className="text-xs text-neutral-500">
+                        {t.role} · {t.amountUsdc} USDC · with <HandleAddr address={t.counterparty} link={false} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {live && <CountdownChip unix={t.deadline} />}
+                      <span className={STATUS_COLOR[t.status] ?? 'text-neutral-200'}>{t.status}</span>
+                    </div>
                   </div>
-                </div>
-                <span className={STATUS_COLOR[t.status] ?? 'text-neutral-200'}>{t.status}</span>
-              </Link>
-            ))}
+                  {step && (
+                    <p className={`mt-2 animate-pulse text-xs ${step.forMe ? 'text-amber-200' : 'text-neutral-500'}`}>
+                      {step.forMe ? '→ ' : ''}
+                      {step.line}
+                    </p>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

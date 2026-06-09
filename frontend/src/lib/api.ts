@@ -937,6 +937,10 @@ export type TradeListItem = {
   depositUsdc: string;
   role: 'buyer' | 'seller';
   counterparty: `0x${string}`;
+  buyer: `0x${string}`;
+  seller: `0x${string}`;
+  lastProposer: `0x${string}`;
+  deadline: number;
 };
 
 export async function getTradesByAddress(address: string): Promise<TradeListItem[]> {

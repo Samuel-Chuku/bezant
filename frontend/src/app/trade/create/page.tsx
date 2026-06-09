@@ -9,6 +9,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { buildCreateTradeUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { useToast } from '@/components/toast';
+import { arcExplorerTxUrl } from '@/lib/explorers';
 import { PassportPanel } from '@/components/passport-panel';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
@@ -86,7 +87,7 @@ export default function CreateTradePage() {
       if (!created) throw new Error('TradeProposed event missing from receipt');
 
       const tradeId = created.args.id.toString();
-      toast.success(`Trade #${tradeId} created`);
+      toast.success(`Trade #${tradeId} created`, { href: arcExplorerTxUrl(txHash), hrefLabel: 'view tx ↗' });
       router.push(`/trade/${tradeId}`);
     } catch (err) {
       setSubmission({ status: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -179,16 +180,22 @@ export default function CreateTradePage() {
         {signer.isConnected && (
           <div>
             <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-sky-300 hover:underline">
-              {showBridge ? 'Hide bridge' : 'Need USDC on Arc? Bridge from another chain →'}
+              {showBridge ? 'Hide bridge' : 'Fund this trade from another chain?'}
             </button>
             {showBridge && (
               <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
                 <p className="mb-2 text-xs text-neutral-500">
-                  Creating a trade locks nothing — your deposit is only taken when you fund, after the seller agrees.
-                  Bridge USDC from Ethereum / Base / Arbitrum / Optimism / Solana to your Arc wallet via CCTP now,
-                  so it&apos;s ready to fund the moment the trade is agreed.
+                  Creating a trade locks nothing — your deposit is taken when you fund, after the seller agrees.
+                  {amountUsdc && Number(amountUsdc) > 0
+                    ? ` Bridge the ${amountUsdc} USDC to your Arc wallet now so it's ready the moment the trade is agreed.`
+                    : ` Bridge USDC to your Arc wallet now so it's ready the moment the trade is agreed.`}
                 </p>
-                <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} />
+                <BridgeWidget
+                  run={bridgeRun}
+                  onRunChange={setBridgeRun}
+                  lockedAmount={amountUsdc && Number(amountUsdc) > 0 ? amountUsdc : undefined}
+                  lockToArc
+                />
               </div>
             )}
           </div>

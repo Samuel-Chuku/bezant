@@ -2885,6 +2885,11 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, re
         depositUsdc: formatUnits(t.deposit, 6),
         role: t.buyer.toLowerCase() === address ? 'buyer' : 'seller',
         counterparty: t.buyer.toLowerCase() === address ? t.seller : t.buyer,
+        // Raw lifecycle fields so the client can narrate the next step + count down.
+        buyer: t.buyer,
+        seller: t.seller,
+        lastProposer: t.lastProposer,
+        deadline: t.deadline,
       };
     }),
   );
