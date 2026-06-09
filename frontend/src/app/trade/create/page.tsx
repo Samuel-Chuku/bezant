@@ -28,6 +28,9 @@ const tradeProposedEventAbi = [
   },
 ] as const;
 
+type DeadlineUnit = 'minutes' | 'hours' | 'days';
+const UNIT_SECONDS: Record<DeadlineUnit, number> = { minutes: 60, hours: 3600, days: 24 * 3600 };
+
 type Submission =
   | { status: 'idle' }
   | { status: 'resolving' }
@@ -44,7 +47,8 @@ export default function CreateTradePage() {
   const [sellerInput, setSellerInput] = useState('');
   const [amountUsdc, setAmountUsdc] = useState('');
   const [milestone, setMilestone] = useState('Delivery confirmed at destination port');
-  const [deadlineDays, setDeadlineDays] = useState(7);
+  const [deadlineValue, setDeadlineValue] = useState(7);
+  const [deadlineUnit, setDeadlineUnit] = useState<DeadlineUnit>('days');
   const [submission, setSubmission] = useState<Submission>({ status: 'idle' });
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
@@ -66,7 +70,7 @@ export default function CreateTradePage() {
         seller,
         amountUsdc,
         milestone: milestone.trim() || 'delivery',
-        deadlineSeconds: deadlineDays * 24 * 3600,
+        deadlineSeconds: Math.max(60, Math.round(deadlineValue * UNIT_SECONDS[deadlineUnit])),
       });
 
       setSubmission({ status: 'signing' });
@@ -151,14 +155,25 @@ export default function CreateTradePage() {
         </label>
 
         <label className="block">
-          <span className="text-sm text-neutral-300">Deadline (days)</span>
-          <input
-            type="number"
-            min={1}
-            value={deadlineDays}
-            onChange={(e) => setDeadlineDays(Number(e.target.value))}
-            className="mt-1 w-32 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
-          />
+          <span className="text-sm text-neutral-300">Deadline</span>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="number"
+              min={1}
+              value={deadlineValue}
+              onChange={(e) => setDeadlineValue(Number(e.target.value))}
+              className="w-24 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+            />
+            <select
+              value={deadlineUnit}
+              onChange={(e) => setDeadlineUnit(e.target.value as DeadlineUnit)}
+              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+            >
+              <option value="minutes">minutes</option>
+              <option value="hours">hours</option>
+              <option value="days">days</option>
+            </select>
+          </div>
         </label>
 
         {signer.isConnected && (
