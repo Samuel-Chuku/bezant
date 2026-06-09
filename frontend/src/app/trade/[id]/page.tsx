@@ -22,6 +22,8 @@ import {
   buildCounterTradeUnsigned,
   buildCancelTradeUnsigned,
   buildRequestFinancingUnsigned,
+  getFinancingQuote,
+  type FinancingQuote,
   buildRaiseDisputeUnsigned,
   buildRefundTradeUnsigned,
   buildResolveDisputeUnsigned,
@@ -67,6 +69,7 @@ export default function TradeDetailPage() {
   const [lastTx, setLastTx] = useState<string | null>(null);
   const [doc, setDoc] = useState('');
   const [officerNote, setOfficerNote] = useState<{ reasons: string[]; highValue: boolean } | null>(null);
+  const [financingQuote, setFinancingQuote] = useState<FinancingQuote | null>(null);
   const [counterAmount, setCounterAmount] = useState('');
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
@@ -92,6 +95,17 @@ export default function TradeDetailPage() {
     const t = setInterval(() => void refresh(), 5000);
     return () => clearInterval(t);
   }, [trade?.status, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trade Officer skill 2: pull the seller's financing quote (priced off the
+  // buyer's passport tier) while the trade is Funded and undrawn.
+  useEffect(() => {
+    const sellerNow = !!trade && signer.isConnected && signer.address.toLowerCase() === trade.seller.toLowerCase();
+    if (trade && trade.status === 'Funded' && sellerNow && !trade.financingAdvanced) {
+      getFinancingQuote(id).then(setFinancingQuote).catch(() => setFinancingQuote(null));
+    } else {
+      setFinancingQuote(null);
+    }
+  }, [trade?.status, trade?.financingAdvanced, trade?.seller, signer.isConnected, signer.address, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signAndWait = async (unsigned: UnsignedTx): Promise<string> => {
     if (!signer.isConnected) throw new Error('Connect a wallet first.');
@@ -370,8 +384,27 @@ export default function TradeDetailPage() {
                 </div>
                 {!trade.financingAdvanced && (
                   <div className="border-t border-neutral-900 pt-3">
-                    <p className="mb-2 text-xs text-neutral-500">Need cash before delivery is verified? Draw an advance now (repaid at settlement).</p>
-                    <Action onClick={doFinance} busy={busy === 'finance'} variant="ghost">Request financing</Action>
+                    {financingQuote ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-neutral-400">
+                          Trade Officer underwriting — buyer is{' '}
+                          <strong className="text-neutral-200">tier {financingQuote.buyerTier}</strong>, so you qualify for an advance now (repaid at settlement):
+                        </p>
+                        <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-sm">
+                          <Row label="Advance now"><span className="text-emerald-300">{financingQuote.advanceUsdc} USDC</span></Row>
+                          <Row label={`Fee (${(financingQuote.feeBps / 100).toFixed(financingQuote.feeBps % 100 ? 2 : 0)}%)`}>{financingQuote.feeUsdc} USDC</Row>
+                          <Row label="Repaid at settlement">{financingQuote.repayUsdc} USDC</Row>
+                        </div>
+                        <Action onClick={doFinance} busy={busy === 'finance'} variant="ghost">
+                          Draw {financingQuote.advanceUsdc} USDC advance
+                        </Action>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="mb-2 text-xs text-neutral-500">Need cash before delivery is verified? Draw an advance now (repaid at settlement).</p>
+                        <Action onClick={doFinance} busy={busy === 'finance'} variant="ghost">Request financing</Action>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -448,6 +481,15 @@ export default function TradeDetailPage() {
         </>
       )}
     </main>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between py-0.5">
+      <span className="text-neutral-500">{label}</span>
+      <span className="text-neutral-200">{children}</span>
+    </div>
   );
 }
 

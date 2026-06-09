@@ -111,6 +111,31 @@ export async function passportDepositBps(buyer: `0x${string}`): Promise<number> 
   })) as number;
 }
 
+/// Advance size as bps of the trade amount (e.g. 8000 = 80%).
+export async function financeBps(): Promise<number> {
+  return Number(
+    (await arcClient.readContract({
+      address: TRADE_ESCROW_ADDRESS,
+      abi: tradeEscrowAbi,
+      functionName: 'financeBps',
+    })) as number,
+  );
+}
+
+/// Pool fee in bps for a buyer tier. The pool clamps to its last tier entry;
+/// the deployed pool has 3 (idx 0/1/2 = 3%/2%/1%), so min(tier,2) is always a
+/// valid index and matches the pool's internal _feeBps.
+export async function poolFeeBps(tier: number): Promise<number> {
+  return Number(
+    (await arcClient.readContract({
+      address: FINANCING_POOL_ADDRESS,
+      abi: financingPoolAbi,
+      functionName: 'feeBpsByTier',
+      args: [BigInt(Math.max(0, Math.min(tier, 2)))],
+    })) as number,
+  );
+}
+
 export async function passportTier(account: `0x${string}`): Promise<number> {
   return (await arcClient.readContract({
     address: TRADE_PASSPORT_ADDRESS,

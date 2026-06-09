@@ -895,6 +895,24 @@ export async function buildRequestFinancingUnsigned(tradeId: string): Promise<Un
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/finance/unsigned`);
 }
 
+// Trade Officer skill 2 — financing underwriting quote (priced off the buyer's
+// passport tier). Read-only; the seller still signs requestFinancing to draw.
+export type FinancingQuote = {
+  buyerTier: number;
+  financeBps: number;
+  feeBps: number;
+  advanceUsdc: string; // received now
+  grossUsdc: string;
+  feeUsdc: string;
+  repayUsdc: string; // repaid at settlement
+  eligible: boolean;
+  alreadyAdvanced: boolean;
+};
+
+export async function getFinancingQuote(tradeId: string): Promise<FinancingQuote> {
+  return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/financing-quote`);
+}
+
 // Either party flags a problem on a Funded trade → parks it in Disputed.
 export async function buildRaiseDisputeUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/dispute/unsigned`);

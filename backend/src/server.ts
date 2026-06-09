@@ -58,6 +58,9 @@ import {
   counterSpec,
   cancelSpec,
   requestFinancingSpec,
+  financeBps,
+  poolFeeBps,
+  passportTier,
   raiseDisputeSpec,
   refundSpec,
   resolveDisputeSpec,
@@ -2727,6 +2730,33 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rel
     return { tradeId: request.params.id, releaseToSeller: Boolean(request.body.releaseToSeller), txId: tx.id, txHash: tx.txHash, state: tx.state };
   },
 );
+
+// Trade Officer — skill 2: financing underwriting. Reads the buyer's passport
+// tier and the on-chain advance + fee schedule, and quotes the seller's advance
+// terms BEFORE they draw — surfacing the passport→terms link. Reads only; the
+// seller still signs requestFinancing (via /finance) to actually draw.
+app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const id = BigInt(request.params.id);
+  const t = await getTrade(id);
+  const [tier, fBps] = await Promise.all([passportTier(t.buyer), financeBps()]);
+  const feeBps = await poolFeeBps(tier);
+  const gross = (t.amount * BigInt(fBps)) / 10000n; // drawn against the receivable
+  const fee = (gross * BigInt(feeBps)) / 10000n;
+  const net = gross - fee; // what the seller receives now
+  return {
+    tradeId: request.params.id,
+    buyerTier: tier,
+    financeBps: fBps,
+    feeBps,
+    advanceUsdc: formatUnits(net, 6),
+    grossUsdc: formatUnits(gross, 6),
+    feeUsdc: formatUnits(fee, 6),
+    repayUsdc: formatUnits(gross, 6), // repaid out of the settlement
+    eligible: t.status === 'Funded' && !t.financingAdvanced,
+    alreadyAdvanced: t.financingAdvanced,
+  };
+});
 
 // Seed the financing pool's USDC reserve from the operator (treasury) wallet.
 app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {
