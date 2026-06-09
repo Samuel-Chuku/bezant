@@ -10,6 +10,8 @@ import { buildCreateTradeUnsigned, resolveAddress } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { useToast } from '@/components/toast';
 import { PassportPanel } from '@/components/passport-panel';
+import { BridgeWidget } from '@/components/bridge-widget';
+import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 
 // Mirrors TradeEscrow's TradeProposed event — used to pull the tradeId from the receipt.
 const tradeProposedEventAbi = [
@@ -44,6 +46,8 @@ export default function CreateTradePage() {
   const [milestone, setMilestone] = useState('Delivery confirmed at destination port');
   const [deadlineDays, setDeadlineDays] = useState(7);
   const [submission, setSubmission] = useState<Submission>({ status: 'idle' });
+  const [showBridge, setShowBridge] = useState(false);
+  const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
 
   const submit = async () => {
     if (!signer.isConnected) {
@@ -156,6 +160,24 @@ export default function CreateTradePage() {
             className="mt-1 w-32 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
           />
         </label>
+
+        {signer.isConnected && (
+          <div>
+            <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-sky-300 hover:underline">
+              {showBridge ? 'Hide bridge' : 'Need USDC on Arc? Bridge from another chain →'}
+            </button>
+            {showBridge && (
+              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+                <p className="mb-2 text-xs text-neutral-500">
+                  Creating a trade locks nothing — your deposit is only taken when you fund, after the seller agrees.
+                  Bridge USDC from Ethereum / Base / Arbitrum / Optimism / Solana to your Arc wallet via CCTP now,
+                  so it&apos;s ready to fund the moment the trade is agreed.
+                </p>
+                <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} />
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={submit}
