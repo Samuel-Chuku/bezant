@@ -66,6 +66,7 @@ export default function TradeDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<string | null>(null);
   const [doc, setDoc] = useState('');
+  const [officerNote, setOfficerNote] = useState<{ reasons: string[]; highValue: boolean } | null>(null);
   const [counterAmount, setCounterAmount] = useState('');
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
@@ -83,6 +84,14 @@ export default function TradeDetailPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Poll while the trade is live so the status flips on its own (e.g. the
+  // challenge window elapsing → settled) and countdowns stay fresh.
+  useEffect(() => {
+    if (!trade || ['Released', 'Cancelled', 'Refunded'].includes(trade.status)) return;
+    const t = setInterval(() => void refresh(), 5000);
+    return () => clearInterval(t);
+  }, [trade?.status, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signAndWait = async (unsigned: UnsignedTx): Promise<string> => {
     if (!signer.isConnected) throw new Error('Connect a wallet first.');
@@ -131,13 +140,38 @@ export default function TradeDetailPage() {
       async () => signAndWait(await buildResolveDisputeUnsigned(id, releaseToSeller)),
       releaseToSeller ? 'Released to seller' : 'Refunded to buyer',
     );
-  const doSubmitDelivery = () =>
-    run('attest', async () => {
-      if (doc.trim().length < 8) throw new Error('Paste your delivery document (with a reference number).');
+  const doSubmitDelivery = async () => {
+    setError(null);
+    if (doc.trim().length < 20) {
+      setError('Paste the full delivery document — name the document type and include a real reference number.');
+      return;
+    }
+    setBusy('attest');
+    try {
       const r = await officerAttest(id, { kind: 'bill_of_lading', content: doc });
-      if (!r.attested) throw new Error(`Officer escalated to a human verifier: ${r.reasons.join('; ')}`);
-      return r.txHash;
-    }, 'Trade Officer attested — trade settled');
+      if (r.decision === 'pass') {
+        // Officer approved → buyer challenge window opens; the finalizer settles after it elapses.
+        setOfficerNote(null);
+        toast.success('Delivery accepted — the buyer has a short window to dispute, then it settles automatically');
+        await refresh();
+      } else {
+        // Not verified. The seller can correct the document and resubmit — an
+        // honest typo never goes straight to a human/refund (only high-value does).
+        setOfficerNote({ reasons: r.reasons, highValue: r.category === 'high_value' });
+        toast.info(
+          r.category === 'high_value'
+            ? 'High-value trade — routed to a human reviewer'
+            : 'Document not verified — please correct it and resubmit',
+        );
+      }
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      setError(m);
+      toast.error(m);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const me = signer.isConnected ? signer.address.toLowerCase() : null;
   const isBuyer = !!trade && me === trade.buyer.toLowerCase();
@@ -153,6 +187,8 @@ export default function TradeDetailPage() {
   // is a UI courtesy — the data is public on-chain and via the API.
   const isParticipant = isBuyer || isSeller || isArbitrator;
   const step = trade ? describeTradeStep(trade, me) : null;
+  const windowActive =
+    !!trade && trade.status === 'Funded' && trade.challengeWindowUntil != null && trade.challengeWindowUntil > Date.now() / 1000;
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
@@ -283,8 +319,22 @@ export default function TradeDetailPage() {
               <Waiting>Agreed at {trade.amountUsdc} USDC. Waiting for the buyer to fund.</Waiting>
             )}
 
+            {/* FUNDED — buyer challenge window open (officer approved, not yet settled) */}
+            {trade.status === 'Funded' && windowActive && trade.challengeWindowUntil != null && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/40 bg-amber-950/20 p-4">
+                <p className="text-sm text-amber-100">
+                  {isBuyer
+                    ? 'Delivery submitted. Review it now — it settles to the seller automatically unless you dispute.'
+                    : isSeller
+                      ? 'Delivery submitted. It settles to you automatically unless the buyer disputes in time.'
+                      : 'Delivery submitted — in the buyer review window.'}
+                </p>
+                <CountdownChip unix={trade.challengeWindowUntil} label="Settles in" />
+              </div>
+            )}
+
             {/* FUNDED — seller delivers (officer attests, auto-settles) */}
-            {trade.status === 'Funded' && isSeller && (
+            {trade.status === 'Funded' && isSeller && !windowActive && (
               <div className="space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm text-neutral-300">
@@ -298,6 +348,25 @@ export default function TradeDetailPage() {
                     className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
                   />
                   <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
+                  {officerNote && (
+                    <div className={`rounded-lg border p-3 text-sm ${officerNote.highValue ? 'border-sky-900/50 bg-sky-950/20 text-sky-200' : 'border-amber-900/50 bg-amber-950/20 text-amber-100'}`}>
+                      <p className="font-medium">
+                        {officerNote.highValue
+                          ? 'High-value trade — routed to a human reviewer.'
+                          : 'Couldn’t verify this document — please correct it and resubmit.'}
+                      </p>
+                      {officerNote.reasons.length > 0 && (
+                        <ul className="mt-1 list-disc pl-5 text-xs opacity-90">
+                          {officerNote.reasons.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {!officerNote.highValue && (
+                        <p className="mt-1 text-xs opacity-80">Your funds aren’t at risk — nothing is refunded; just fix the document above and submit again.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {!trade.financingAdvanced && (
                   <div className="border-t border-neutral-900 pt-3">
@@ -307,7 +376,7 @@ export default function TradeDetailPage() {
                 )}
               </div>
             )}
-            {trade.status === 'Funded' && !isSeller && (
+            {trade.status === 'Funded' && !isSeller && !windowActive && (
               <Waiting>Funded. Awaiting delivery documents from the seller; settlement is automatic once the officer attests.</Waiting>
             )}
 

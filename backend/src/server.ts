@@ -69,7 +69,7 @@ import {
   TRADE_PASSPORT_ADDRESS,
   type ExecSpec,
 } from './lib/tradepass.js';
-import { evaluateDelivery, type DeliveryDoc } from './lib/trade-officer.js';
+import { decideDelivery, type DeliveryDoc } from './lib/trade-officer.js';
 import { startTradeIndexer } from './lib/trade-indexer.js';
 import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
@@ -86,6 +86,11 @@ const CIRCLE_ENTITY_SECRET = requireEnv('CIRCLE_ENTITY_SECRET');
 const CIRCLE_OPERATOR_WALLET_ID = requireEnv('CIRCLE_OPERATOR_WALLET_ID');
 const CIRCLE_OPERATOR_ADDRESS = requireEnv('CIRCLE_OPERATOR_ADDRESS') as `0x${string}`;
 const CIRCLE_WALLET_SET_ID = requireEnv('CIRCLE_WALLET_SET_ID');
+
+// Buyer challenge window: seconds the officer waits after approving a delivery
+// doc before it auto-settles, during which the buyer can dispute. Short for the
+// demo; bump OFFICER_CHALLENGE_WINDOW_SECONDS for production-realistic windows.
+const CHALLENGE_WINDOW_SECONDS = Number(process.env.OFFICER_CHALLENGE_WINDOW_SECONDS ?? '30');
 
 const circle = initiateDeveloperControlledWalletsClient({
   apiKey: CIRCLE_API_KEY,
@@ -2527,6 +2532,10 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => 
   if (!escrowReady(reply)) return;
   const id = BigInt(request.params.id);
   const [t, arbitrator] = await Promise.all([getTrade(id), getArbitrator()]);
+  // Open buyer challenge window (officer approved, not yet settled), if any.
+  const pending = db.prepare('SELECT finalize_at FROM pending_attestations WHERE trade_id = ?').get(Number(id)) as
+    | { finalize_at: number }
+    | undefined;
   // What the buyer would lock if they funded now (passport-priced), shown pre-fund.
   let estDeposit = t.deposit;
   if (t.status === 'Proposing' || t.status === 'Agreed') {
@@ -2548,6 +2557,7 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => 
     deadline: t.deadline,
     financingAdvanced: t.financingAdvanced,
     status: t.status,
+    challengeWindowUntil: pending?.finalize_at ?? null,
   };
 });
 
@@ -2750,7 +2760,7 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc } }>(
       return reply.code(409).send({ error: `trade is '${trade.status}', expected 'Funded' to attest` });
     }
 
-    const decision = evaluateDelivery(
+    const decision = await decideDelivery(
       { amountUsdc: Number(formatUnits(trade.amount, 6)), seller: trade.seller },
       document,
     );
@@ -2760,24 +2770,32 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc } }>(
         tradeId: request.params.id,
         decision: 'escalate',
         attested: false,
+        category: decision.category,
+        resubmittable: decision.resubmittable ?? false,
         confidence: decision.confidence,
         reasons: decision.reasons,
-        note: 'withheld — routed to a staked human verifier (Arm 2)',
+        note:
+          decision.category === 'high_value'
+            ? 'withheld — high-value trade routed to a human reviewer'
+            : 'not verified — the seller can correct the document and resubmit',
       };
     }
 
-    // PASS — the agent signs the attestation from its own (operator) wallet.
-    const tx = await runExec(CIRCLE_OPERATOR_WALLET_ID, attestSpec(id, decision.proofHash, true));
+    // PASS — don't settle yet. Open a buyer challenge window: park the approved
+    // attestation; the trade stays Funded so the buyer can raiseDispute() until
+    // it elapses, then the finalizer attests & settles (see startAttestationFinalizer).
+    const finalizeAt = Math.floor(Date.now() / 1000) + CHALLENGE_WINDOW_SECONDS;
+    db.prepare('INSERT OR REPLACE INTO pending_attestations (trade_id, proof_hash, finalize_at) VALUES (?, ?, ?)')
+      .run(Number(id), decision.proofHash, finalizeAt);
     return {
       tradeId: request.params.id,
       decision: 'pass',
-      attested: true,
+      attested: false,
+      challengeWindowSeconds: CHALLENGE_WINDOW_SECONDS,
+      finalizeAt,
       confidence: decision.confidence,
       reasons: decision.reasons,
       proofHash: decision.proofHash,
-      txId: tx.id,
-      txHash: tx.txHash,
-      state: tx.state,
     };
   },
 );
@@ -2985,6 +3003,41 @@ app.get<{ Params: { address: string } }>('/arc/passport/:address', async (reques
 });
 
 
+// Challenge-window finalizer: every 5s, settle approved deliveries whose buyer
+// window has elapsed (officer attests via the operator wallet) — but only if the
+// trade is still Funded. If the buyer disputed (status → Disputed) or it moved on
+// for any reason, the pending row is dropped without settling.
+type MiniLog = { info: (obj: unknown, msg?: string) => void; error: (obj: unknown, msg?: string) => void };
+function startAttestationFinalizer(log: MiniLog): void {
+  const tick = async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const due = db
+      .prepare('SELECT trade_id, proof_hash FROM pending_attestations WHERE finalize_at <= ?')
+      .all(now) as { trade_id: number; proof_hash: string }[];
+    for (const row of due) {
+      try {
+        const t = await getTrade(BigInt(row.trade_id));
+        if (t.status !== 'Funded') {
+          db.prepare('DELETE FROM pending_attestations WHERE trade_id = ?').run(row.trade_id);
+          log.info({ tradeId: row.trade_id, status: t.status }, 'challenge window mooted — not settling');
+          continue;
+        }
+        await runExec(CIRCLE_OPERATOR_WALLET_ID, attestSpec(BigInt(row.trade_id), row.proof_hash as `0x${string}`, true));
+        db.prepare('DELETE FROM pending_attestations WHERE trade_id = ?').run(row.trade_id);
+        log.info({ tradeId: row.trade_id }, 'challenge window elapsed — officer attested & settled');
+      } catch (err) {
+        // Leave the row for a retry next tick.
+        log.error(err, `finalize attest failed for trade ${row.trade_id}`);
+      }
+    }
+  };
+  const loop = () =>
+    tick()
+      .catch((err) => log.error(err, 'attestation finalizer tick failed'))
+      .finally(() => setTimeout(loop, 5000));
+  loop();
+}
+
 const port = Number(process.env.PORT ?? 3001);
 
 app
@@ -2993,6 +3046,7 @@ app
     startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
     startTradeIndexer(app.log);
+    startAttestationFinalizer(app.log);
     // Auto-reveal agent: reveals opted-in evaluators' votes via the operator
     // wallet once the reveal window opens. revealVote is permissionless, so the
     // operator can reveal on anyone's behalf given (vote, secret).

@@ -15,6 +15,7 @@
 // `evaluateDelivery` seam is where an LLM/OCR doc parser plugs in later.
 
 import { keccak256, stringToBytes } from 'viem';
+import { llmVerifyDelivery } from './officer-llm.js';
 
 export type DeliveryDoc = {
   kind: 'bill_of_lading' | 'tracking' | 'customs' | 'other';
@@ -27,10 +28,21 @@ export type DeliveryDoc = {
 
 export type OfficerDecision = {
   decision: 'pass' | 'escalate';
+  // Why it escalated, so the UI can route the seller correctly:
+  //   documentary/mismatch → the seller can FIX & RESUBMIT (an honest typo or
+  //   wrong doc never goes straight to a refund); high_value → needs a human.
+  category?: 'documentary' | 'mismatch' | 'high_value';
+  resubmittable?: boolean;
   proofHash: `0x${string}`;
   confidence: number; // 0..1
   reasons: string[];
 };
+
+// The on-chain proof committed by attest(). Same doc → same hash on every path
+// (LLM or deterministic), so the parked attestation finalizes against the right proof.
+export function proofHashOf(doc: DeliveryDoc): `0x${string}` {
+  return keccak256(stringToBytes(JSON.stringify(doc)));
+}
 
 // Trades at or above this USDC value always go to a human verifier (Arm 2),
 // regardless of how clean the documents look.
@@ -47,11 +59,33 @@ const REF_RE = /\b([A-Z]{2,4}\d{6,}|[A-Z]{4}\d{7}|\d{8,})\b/;
 const DOC_KEYWORD_RE =
   /\b(bill of lading|b\/l|bol|air ?waybill|awb|waybill|consignment|tracking|container|customs|shipment|shipped|carrier|freight|vessel|port of (loading|discharge))\b/i;
 
+// The Trade Officer's verdict for a submitted document. Prefers the LLM examiner
+// when OPENROUTER_API_KEY is set; otherwise uses the deterministic check. High-
+// value trades always go to a human, regardless of how clean the docs look.
+export async function decideDelivery(
+  trade: { amountUsdc: number; seller: string },
+  doc: DeliveryDoc,
+): Promise<OfficerDecision> {
+  if (trade.amountUsdc >= HIGH_VALUE_USDC) {
+    return {
+      decision: 'escalate',
+      category: 'high_value',
+      resubmittable: false,
+      proofHash: proofHashOf(doc),
+      confidence: 0,
+      reasons: [`high-value trade (${trade.amountUsdc} USDC ≥ ${HIGH_VALUE_USDC}) — routed to a human reviewer`],
+    };
+  }
+  const llm = await llmVerifyDelivery(trade, doc);
+  return llm ?? evaluateDelivery(trade, doc);
+}
+
+// Deterministic documentary check — the fallback when no LLM is configured.
 export function evaluateDelivery(
   trade: { amountUsdc: number; seller: string },
   doc: DeliveryDoc,
 ): OfficerDecision {
-  const proofHash = keccak256(stringToBytes(JSON.stringify(doc)));
+  const proofHash = proofHashOf(doc);
   const reasons: string[] = [];
 
   const content = (doc.content ?? '').trim();
@@ -62,14 +96,14 @@ export function evaluateDelivery(
   if (!hasRef) reasons.push('no valid reference number (e.g. a BoL/container/tracking number with digits)');
   if (!hasKeyword) reasons.push('does not read like a shipping/customs document (no recognizable terms)');
 
-  // Escalate high-value trades to a staked human verifier — the agent only
-  // owns the documentary happy-path.
   if (trade.amountUsdc >= HIGH_VALUE_USDC) {
     return {
       decision: 'escalate',
+      category: 'high_value',
+      resubmittable: false,
       proofHash,
       confidence: 0,
-      reasons: [`trade value ${trade.amountUsdc} USDC >= high-value threshold ${HIGH_VALUE_USDC} — route to staked verifier`],
+      reasons: [`high-value trade (${trade.amountUsdc} USDC ≥ ${HIGH_VALUE_USDC}) — routed to a human reviewer`],
     };
   }
 
@@ -77,7 +111,6 @@ export function evaluateDelivery(
     return { decision: 'pass', proofHash, confidence: 0.9, reasons: ['documentary check passed'] };
   }
 
-  // Ambiguous docs: escalate rather than auto-fail — a parse miss must not
-  // slash the seller; let a human verifier decide.
-  return { decision: 'escalate', proofHash, confidence: 0.3, reasons };
+  // Documentary issue → the seller can correct it and resubmit; never an auto-fail.
+  return { decision: 'escalate', category: 'documentary', resubmittable: true, proofHash, confidence: 0.3, reasons };
 }

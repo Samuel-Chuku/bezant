@@ -844,6 +844,9 @@ export type TradeState = {
   deadline: number;
   financingAdvanced: boolean;
   status: TradeStatus;
+  // Set while a buyer challenge window is open (officer approved, not yet
+  // settled) — unix seconds when it auto-settles. null otherwise.
+  challengeWindowUntil: number | null;
 };
 
 export type DeliveryDoc = {
@@ -926,7 +929,18 @@ export async function getTradeEvents(tradeId: string): Promise<TradeEvent[]> {
 export async function officerAttest(
   tradeId: string,
   document: DeliveryDoc,
-): Promise<{ decision: 'pass' | 'escalate'; attested: boolean; confidence: number; reasons: string[]; txHash?: string }> {
+): Promise<{
+  decision: 'pass' | 'escalate';
+  attested: boolean;
+  category?: 'documentary' | 'mismatch' | 'high_value';
+  resubmittable?: boolean;
+  confidence: number;
+  reasons: string[];
+  note?: string;
+  challengeWindowSeconds?: number;
+  finalizeAt?: number;
+  txHash?: string;
+}> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/officer-attest`, { document });
 }
 
