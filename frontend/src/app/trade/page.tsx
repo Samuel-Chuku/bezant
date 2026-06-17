@@ -4,8 +4,6 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useSigner } from '@/hooks/use-signer';
 import { getTradesByAddress, type TradeListItem } from '@/lib/api';
-import { PassportPanel } from '@/components/passport-panel';
-import { PoolPanel } from '@/components/pool-panel';
 import { HandleAddr } from '@/components/handle-addr';
 import { CountdownChip } from '@/components/countdown';
 import { StepCue } from '@/components/step-cue';
@@ -61,9 +59,6 @@ export default function TradesPage() {
 
       {signer.isConnected && (
         <div className="mt-6 space-y-6">
-          <PassportPanel address={signer.address} />
-          <PoolPanel />
-
           {err && <p className="text-sm text-red-400">{err}</p>}
           {trades && trades.length === 0 && <p className="text-sm text-neutral-400">No trades yet — create one.</p>}
 

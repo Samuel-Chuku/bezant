@@ -17,7 +17,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/trade/create', label: 'New trade' },
   { href: '/trade', label: 'My trades' },
+  { href: '/pool', label: 'Pool' },
   { href: '/bridge', label: 'Bridge' },
+  { href: '/profile', label: 'Profile' },
   // Parked (pact/wrapper era) — pages still live in the repo, just unlinked from
   // nav while the standalone trade flow is the active product. Restore as needed.
   // { href: '/create', label: 'Create' },
@@ -111,7 +113,9 @@ export function TopNav() {
             <NavLink href="/" label="Home" active={pathname === '/'} />
             <TradesMenu active={pathname === '/trade' || pathname.startsWith('/trade/')} />
             <NavLink href="/trade" label="My trades" active={pathname === '/trade'} />
+            <NavLink href="/pool" label="Pool" active={pathname === '/pool'} />
             <NavLink href="/bridge" label="Bridge" active={pathname === '/bridge'} />
+            <NavLink href="/profile" label="Profile" active={pathname === '/profile'} />
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
