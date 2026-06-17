@@ -45,6 +45,7 @@ import {
   type DeliverableContentType,
 } from './lib/db.js';
 import { tradeEscrowAbi } from './lib/abis/trade-escrow.js';
+import { financingPoolAbi } from './lib/abis/financing-pool.js';
 import {
   TRADE_ESCROW_ADDRESS,
   getTrade,
@@ -66,7 +67,13 @@ import {
   resolveDisputeSpec,
   approveEscrowSpec,
   approveSpec,
-  poolFundSpec,
+  approvePoolSpec,
+  poolDepositSpec,
+  poolRedeemSpec,
+  getPoolStats,
+  poolSharesOf,
+  poolConvertToShares,
+  poolConvertToAssets,
   getPassport,
   FINANCING_POOL_ADDRESS,
   TRADE_PASSPORT_ADDRESS,
@@ -2741,7 +2748,8 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (req
   const t = await getTrade(id);
   const [tier, fBps] = await Promise.all([passportTier(t.buyer), financeBps()]);
   const feeBps = await poolFeeBps(tier);
-  const gross = (t.amount * BigInt(fBps)) / 10000n; // drawn against the receivable
+  // Financed against the escrowed deposit (so the pool is always repayable on settle).
+  const gross = (t.deposit * BigInt(fBps)) / 10000n;
   const fee = (gross * BigInt(feeBps)) / 10000n;
   const net = gross - fee; // what the seller receives now
   return {
@@ -2758,7 +2766,7 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (req
   };
 });
 
-// Seed the financing pool's USDC reserve from the operator (treasury) wallet.
+// Seed the pool from the operator (treasury) wallet — operator becomes an LP.
 app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {
   if (!escrowReady(reply)) return;
   const { amountUsdc } = request.body;
@@ -2766,9 +2774,84 @@ app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (reques
     return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
   }
   const amount = parseUnits(amountUsdc, 6);
-  const approveTx = await runExec(CIRCLE_OPERATOR_WALLET_ID, approveSpec(FINANCING_POOL_ADDRESS, amount));
-  const fundTx = await runExec(CIRCLE_OPERATOR_WALLET_ID, poolFundSpec(amount));
-  return { amountUsdc, approveTxHash: approveTx.txHash, fundTxHash: fundTx.txHash, state: fundTx.state };
+  const approveTx = await runExec(CIRCLE_OPERATOR_WALLET_ID, approvePoolSpec(amount));
+  const depTx = await runExec(CIRCLE_OPERATOR_WALLET_ID, poolDepositSpec(amount));
+  return { amountUsdc, approveTxHash: approveTx.txHash, depositTxHash: depTx.txHash, state: depTx.state };
+});
+
+// LP pool snapshot (+ caller's position when ?address= is given).
+app.get<{ Querystring: { address?: string } }>('/arc/trade/pool', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const s = await getPoolStats();
+  const sharePrice = s.totalShares > 0n ? Number(s.totalAssets) / Number(s.totalShares) : 1;
+  const out: Record<string, unknown> = {
+    totalAssetsUsdc: formatUnits(s.totalAssets, 6),
+    idleUsdc: formatUnits(s.idle, 6),
+    outstandingUsdc: formatUnits(s.outstanding, 6),
+    totalShares: s.totalShares.toString(),
+    sharePrice,
+  };
+  const address = (request.query.address ?? '').toLowerCase();
+  if (/^0x[0-9a-f]{40}$/.test(address)) {
+    const sh = await poolSharesOf(address as `0x${string}`);
+    const val = await poolConvertToAssets(sh);
+    out.myShares = sh.toString();
+    out.myValueUsdc = formatUnits(val, 6);
+  }
+  return out;
+});
+
+// ---- LP deposit / withdraw — signed (Circle wallet) + unsigned (own wallet) ----
+
+app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/arc/trade/pool/deposit', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const signer = requireSigner(reply, request.body);
+  if (!signer) return;
+  if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  const amount = parseUnits(request.body.amountUsdc, 6);
+  const approveTx = await runExec(signer.circle_wallet_id, approvePoolSpec(amount));
+  const depTx = await runExec(signer.circle_wallet_id, poolDepositSpec(amount));
+  return { amountUsdc: request.body.amountUsdc, approveTxHash: approveTx.txHash, depositTxHash: depTx.txHash, state: depTx.state };
+});
+
+// Withdraw by USDC amount (converted to shares) or by explicit shares.
+app.post<{ Body: { userId?: string; handle?: string; amountUsdc?: string; shares?: string } }>('/arc/trade/pool/withdraw', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const signer = requireSigner(reply, request.body);
+  if (!signer) return;
+  let shares: bigint;
+  if (request.body.shares) shares = BigInt(request.body.shares);
+  else if (request.body.amountUsdc && Number(request.body.amountUsdc) > 0) shares = await poolConvertToShares(parseUnits(request.body.amountUsdc, 6));
+  else return reply.code(400).send({ error: 'amountUsdc or shares required' });
+  const tx = await runExec(signer.circle_wallet_id, poolRedeemSpec(shares));
+  return { shares: shares.toString(), txId: tx.id, txHash: tx.txHash, state: tx.state };
+});
+
+app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/deposit/approve/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [FINANCING_POOL_ADDRESS, parseUnits(request.body.amountUsdc, 6)]);
+});
+
+app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/deposit/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
+    return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
+  }
+  return buildUnsignedTx(FINANCING_POOL_ADDRESS, financingPoolAbi as Abi, 'deposit', [parseUnits(request.body.amountUsdc, 6)]);
+});
+
+app.post<{ Body: { amountUsdc?: string; shares?: string } }>('/arc/trade/pool/withdraw/unsigned', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  let shares: bigint;
+  if (request.body.shares) shares = BigInt(request.body.shares);
+  else if (request.body.amountUsdc && Number(request.body.amountUsdc) > 0) shares = await poolConvertToShares(parseUnits(request.body.amountUsdc, 6));
+  else return reply.code(400).send({ error: 'amountUsdc or shares required' });
+  return buildUnsignedTx(FINANCING_POOL_ADDRESS, financingPoolAbi as Abi, 'redeem', [shares]);
 });
 
 // Trade Officer agent — skill 1: ingest a delivery document, run the documentary

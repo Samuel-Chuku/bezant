@@ -35,7 +35,7 @@ contract TradeEscrowTest is Test {
         usdc.mint(buyer, 1_000_000 * USD);
         usdc.mint(address(this), 1_000_000 * USD);
         usdc.approve(address(pool), type(uint256).max);
-        pool.fund(100_000 * USD);
+        pool.deposit(100_000 * USD); // this contract is the seed LP
 
         vm.prank(buyer);
         usdc.approve(address(escrow), type(uint256).max);
@@ -182,6 +182,72 @@ contract TradeEscrowTest is Test {
         assertEq(usdc.balanceOf(buyer) - buyerBefore, buyerCut, "buyer yield slice");
         assertEq(usdc.balanceOf(address(pool)) - poolBefore, poolCut, "pool yield slice");
         assertEq(usdc.balanceOf(seller), AMT + sellerCut, "seller principal + yield slice");
+    }
+
+    // ── LP vault: shares, yield, loss, liquidity ─────────────────────────────
+
+    uint256 constant SEED = 100_000 * USD;
+    uint256 constant GROSS = 8_000 * USD; // tier0 deposit=AMT, financeBps 80%
+    uint256 constant FEE = (GROSS * 300) / 10000; // tier0 3%
+    uint256 constant NET = GROSS - FEE;
+
+    function test_Vault_DepositMintsSharesOneToOne() public {
+        // setUp seeded 100k from this contract.
+        assertEq(pool.shares(address(this)), SEED, "first deposit mints 1:1");
+        assertEq(pool.totalAssets(), SEED, "assets = seed");
+        assertEq(pool.convertToAssets(pool.shares(address(this))), SEED, "value = seed");
+    }
+
+    function test_Vault_FeeAccruesAsYield() public {
+        uint256 id = _agreeAndFund(AMT);
+        vm.prank(seller);
+        escrow.requestFinancing(id);
+        vm.prank(agent);
+        escrow.attest(id, keccak256("BoL"), true); // repays pool gross, keeps fee
+
+        assertEq(pool.outstanding(), 0, "advance cleared");
+        assertEq(pool.totalAssets(), SEED + FEE, "NAV grew by the fee");
+        assertEq(pool.convertToAssets(pool.shares(address(this))), SEED + FEE, "LP share value up by fee");
+    }
+
+    function test_Vault_DisputeToBuyer_SocializesLoss() public {
+        uint256 id = _agreeAndFund(AMT);
+        vm.prank(seller);
+        escrow.requestFinancing(id);
+        uint256 buyerBefore = usdc.balanceOf(buyer);
+
+        vm.prank(buyer);
+        escrow.raiseDispute(id);
+        escrow.resolveDispute(id, false); // arbitrator (owner) refunds buyer
+
+        assertEq(usdc.balanceOf(buyer) - buyerBefore, AMT, "buyer made whole");
+        assertEq(pool.outstanding(), 0, "written off");
+        assertEq(pool.totalAssets(), SEED - NET, "LPs ate the net advance");
+    }
+
+    function test_Vault_DisputeToSeller_RepaysPoolNoDoublePay() public {
+        uint256 id = _agreeAndFund(AMT);
+        vm.prank(seller);
+        escrow.requestFinancing(id);
+
+        vm.prank(seller);
+        escrow.raiseDispute(id);
+        escrow.resolveDispute(id, true); // release to seller
+
+        assertEq(usdc.balanceOf(seller), AMT - FEE, "seller total = invoice - fee (not double)");
+        assertEq(pool.totalAssets(), SEED + FEE, "pool repaid + fee");
+    }
+
+    function test_Vault_WithdrawCappedAtIdle() public {
+        uint256 id = _agreeAndFund(AMT);
+        vm.prank(seller);
+        escrow.requestFinancing(id); // deploys NET, idle = SEED - NET
+
+        vm.expectRevert(FinancingPool.InsufficientLiquidity.selector);
+        pool.redeem(SEED); // would need full NAV in cash; capital is deployed
+
+        uint256 assets = pool.redeem(SEED - NET); // up to idle is fine
+        assertEq(assets, SEED - NET, "redeemed up to idle at 1:1 (no yield yet)");
     }
 
     // ── passport curve (unchanged) ───────────────────────────────────────────

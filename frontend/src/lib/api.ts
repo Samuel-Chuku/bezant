@@ -913,6 +913,34 @@ export async function getFinancingQuote(tradeId: string): Promise<FinancingQuote
   return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/financing-quote`);
 }
 
+// ── Financing pool (LP vault) ───────────────────────────────────────────────
+export type PoolStats = {
+  totalAssetsUsdc: string;
+  idleUsdc: string;
+  outstandingUsdc: string;
+  totalShares: string;
+  sharePrice: number;
+  myShares?: string;
+  myValueUsdc?: string;
+};
+
+export async function getPoolStats(address?: string): Promise<PoolStats> {
+  const q = address ? `?address=${encodeURIComponent(address)}` : '';
+  return jsonFetch('GET', `/arc/trade/pool${q}`);
+}
+
+export async function buildPoolApproveUnsigned(amountUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/trade/pool/deposit/approve/unsigned', { amountUsdc });
+}
+
+export async function buildPoolDepositUnsigned(amountUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/trade/pool/deposit/unsigned', { amountUsdc });
+}
+
+export async function buildPoolWithdrawUnsigned(input: { amountUsdc?: string; shares?: string }): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/trade/pool/withdraw/unsigned', input);
+}
+
 // Either party flags a problem on a Funded trade → parks it in Disputed.
 export async function buildRaiseDisputeUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/dispute/unsigned`);

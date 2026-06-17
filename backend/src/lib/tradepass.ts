@@ -272,11 +272,54 @@ export function approveEscrowSpec(amount: bigint): ExecSpec {
   return approveSpec(TRADE_ESCROW_ADDRESS, amount);
 }
 
-/// Top up the financing pool's USDC reserve (LP / treasury).
-export function poolFundSpec(amount: bigint): ExecSpec {
+/// LP deposits USDC into the pool for shares (also used to seed it).
+export function poolDepositSpec(amount: bigint): ExecSpec {
   return {
     contractAddress: FINANCING_POOL_ADDRESS,
-    abiFunctionSignature: 'fund(uint256)',
+    abiFunctionSignature: 'deposit(uint256)',
     abiParameters: [amount.toString()],
   };
+}
+
+/// LP burns shares for USDC (capped at idle liquidity).
+export function poolRedeemSpec(shareAmount: bigint): ExecSpec {
+  return {
+    contractAddress: FINANCING_POOL_ADDRESS,
+    abiFunctionSignature: 'redeem(uint256)',
+    abiParameters: [shareAmount.toString()],
+  };
+}
+
+/// USDC approval an LP must grant the pool before deposit.
+export function approvePoolSpec(amount: bigint): ExecSpec {
+  return approveSpec(FINANCING_POOL_ADDRESS, amount);
+}
+
+/// Pool snapshot for the LP panel.
+export async function getPoolStats() {
+  const [totalAssets, idle, outstanding, totalShares] = (await Promise.all([
+    arcClient.readContract({ address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'totalAssets' }),
+    arcClient.readContract({ address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'idle' }),
+    arcClient.readContract({ address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'outstanding' }),
+    arcClient.readContract({ address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'totalShares' }),
+  ])) as [bigint, bigint, bigint, bigint];
+  return { totalAssets, idle, outstanding, totalShares };
+}
+
+export async function poolSharesOf(addr: `0x${string}`): Promise<bigint> {
+  return (await arcClient.readContract({
+    address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'shares', args: [addr],
+  })) as bigint;
+}
+
+export async function poolConvertToShares(assets: bigint): Promise<bigint> {
+  return (await arcClient.readContract({
+    address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'convertToShares', args: [assets],
+  })) as bigint;
+}
+
+export async function poolConvertToAssets(shareAmount: bigint): Promise<bigint> {
+  return (await arcClient.readContract({
+    address: FINANCING_POOL_ADDRESS, abi: financingPoolAbi, functionName: 'convertToAssets', args: [shareAmount],
+  })) as bigint;
 }

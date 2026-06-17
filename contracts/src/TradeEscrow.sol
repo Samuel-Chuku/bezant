@@ -218,8 +218,10 @@ contract TradeEscrow {
         require(address(financingPool) != address(0), "no pool");
         require(!t.financingAdvanced, "financed");
 
-        uint256 gross = (t.amount * financeBps) / 10000;
-        uint256 fee = financingPool.advance(t.seller, gross, passport.tier(t.buyer));
+        // Finance against the escrowed deposit (not the trade amount) so the
+        // escrow always holds enough to repay the pool on a clean settle.
+        uint256 gross = (t.deposit * financeBps) / 10000;
+        uint256 fee = financingPool.advance(id, t.seller, gross, passport.tier(t.buyer));
         t.financingAdvanced = true;
         t.financedRepay = gross;
         emit FinancingAdvanced(id, t.seller, gross, fee);
@@ -259,8 +261,10 @@ contract TradeEscrow {
         uint256 sellerOwed = t.deposit + sellerYield;
         uint256 repaidPool;
         if (t.financingAdvanced) {
-            repaidPool = t.financedRepay <= sellerOwed ? t.financedRepay : sellerOwed;
+            // gross ≤ deposit ≤ sellerOwed, so the pool is always made whole here.
+            repaidPool = t.financedRepay;
             usdc.transfer(address(financingPool), repaidPool);
+            financingPool.repay(id);
             sellerOwed -= repaidPool;
         }
         if (sellerOwed > 0) usdc.transfer(t.seller, sellerOwed);
@@ -286,10 +290,20 @@ contract TradeEscrow {
         uint256 got = _redeem(t);
         if (releaseToSeller) {
             t.status = Status.Released;
-            usdc.transfer(t.seller, got);
+            if (t.financingAdvanced) {
+                // Repay the pool first (gross ≤ deposit ≤ got), then the remainder to the seller.
+                usdc.transfer(address(financingPool), t.financedRepay);
+                financingPool.repay(id);
+                uint256 rem = got - t.financedRepay;
+                if (rem > 0) usdc.transfer(t.seller, rem);
+            } else {
+                usdc.transfer(t.seller, got);
+            }
             passport.recordTrade(t.buyer, t.seller, true);
         } else {
             t.status = Status.Refunded;
+            // Buyer made whole; the pool eats the advance (seller kept it).
+            if (t.financingAdvanced) financingPool.writeOff(id);
             usdc.transfer(t.buyer, got);
             passport.recordTrade(t.buyer, t.seller, false);
         }
@@ -302,6 +316,8 @@ contract TradeEscrow {
         if (block.timestamp <= t.deadline) revert DeadlineNotPassed();
         t.status = Status.Refunded;
         uint256 got = _redeem(t);
+        // Buyer made whole; the pool eats any advance (seller kept it).
+        if (t.financingAdvanced) financingPool.writeOff(id);
         usdc.transfer(t.buyer, got);
         emit Refunded(id, got);
     }

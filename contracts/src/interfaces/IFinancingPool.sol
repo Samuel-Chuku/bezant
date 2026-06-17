@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-/// @notice USDC reserve that advances a seller their receivable at attestation,
-/// priced off the buyer's passport tier. In production the payout is a Circle
-/// Gateway settlement to the seller's Circle Wallet; on-chain it is a USDC
-/// transfer. Only the escrow may draw advances.
+/// @notice LP-funded USDC vault that advances a seller their receivable, priced
+/// off the buyer's passport tier. Only the escrow may draw/settle advances.
+/// In production the seller payout is a Circle Gateway settlement.
 interface IFinancingPool {
-    /// @return fee charged on the advance (deducted from the seller payout).
-    function advance(address seller, uint256 amount, uint8 buyerTier) external returns (uint256 fee);
+    /// @notice Advance `amount` (gross) against trade `tradeId`; pays the seller
+    /// the net (amount − fee), records the principal as outstanding.
+    /// @return fee charged on the advance (kept by the pool as yield on repay).
+    function advance(uint256 tradeId, address seller, uint256 amount, uint8 buyerTier) external returns (uint256 fee);
+
+    /// @notice Mark a trade's advance repaid (the escrow transfers the gross here
+    /// first). Clears its outstanding principal.
+    function repay(uint256 tradeId) external;
+
+    /// @notice Write off a trade's advance as a loss (buyer-win dispute / refund):
+    /// the principal leaves the pool's assets, lowering NAV for all LPs.
+    function writeOff(uint256 tradeId) external;
 }

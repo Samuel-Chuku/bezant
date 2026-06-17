@@ -17,6 +17,11 @@ export const financingPoolAbi = [
     "name": "advance",
     "inputs": [
       {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "seller",
         "type": "address",
         "internalType": "address"
@@ -35,6 +40,82 @@ export const financingPoolAbi = [
     "outputs": [
       {
         "name": "fee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "advanceNet",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "convertToAssets",
+    "inputs": [
+      {
+        "name": "shareAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "convertToShares",
+    "inputs": [
+      {
+        "name": "assets",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deposit",
+    "inputs": [
+      {
+        "name": "assets",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "minted",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -75,16 +156,29 @@ export const financingPoolAbi = [
   },
   {
     "type": "function",
-    "name": "fund",
-    "inputs": [
+    "name": "idle",
+    "inputs": [],
+    "outputs": [
       {
-        "name": "amount",
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "outstanding",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -101,10 +195,29 @@ export const financingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "redeem",
+    "inputs": [
+      {
+        "name": "shareAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "assets",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "repay",
     "inputs": [
       {
-        "name": "amount",
+        "name": "tradeId",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -140,6 +253,51 @@ export const financingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "shares",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalAssets",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalShares",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "usdc",
     "inputs": [],
     "outputs": [
@@ -152,9 +310,28 @@ export const financingPoolAbi = [
     "stateMutability": "view"
   },
   {
+    "type": "function",
+    "name": "writeOff",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
     "type": "event",
     "name": "Advanced",
     "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
       {
         "name": "seller",
         "type": "address",
@@ -184,6 +361,31 @@ export const financingPoolAbi = [
   },
   {
     "type": "event",
+    "name": "Deposit",
+    "inputs": [
+      {
+        "name": "lp",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "assets",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "EscrowSet",
     "inputs": [
       {
@@ -197,16 +399,16 @@ export const financingPoolAbi = [
   },
   {
     "type": "event",
-    "name": "Funded",
+    "name": "Repaid",
     "inputs": [
       {
-        "name": "from",
-        "type": "address",
+        "name": "tradeId",
+        "type": "uint256",
         "indexed": true,
-        "internalType": "address"
+        "internalType": "uint256"
       },
       {
-        "name": "amount",
+        "name": "net",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -216,16 +418,41 @@ export const financingPoolAbi = [
   },
   {
     "type": "event",
-    "name": "Repaid",
+    "name": "Withdraw",
     "inputs": [
       {
-        "name": "from",
+        "name": "lp",
         "type": "address",
         "indexed": true,
         "internalType": "address"
       },
       {
-        "name": "amount",
+        "name": "assets",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "WrittenOff",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "net",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -235,12 +462,22 @@ export const financingPoolAbi = [
   },
   {
     "type": "error",
+    "name": "InsufficientLiquidity",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotEscrow",
     "inputs": []
   },
   {
     "type": "error",
     "name": "NotOwner",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroAmount",
     "inputs": []
   }
 ] as const;
