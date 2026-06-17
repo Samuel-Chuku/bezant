@@ -2854,6 +2854,71 @@ app.post<{ Body: { amountUsdc?: string; shares?: string } }>('/arc/trade/pool/wi
   return buildUnsignedTx(FINANCING_POOL_ADDRESS, financingPoolAbi as Abi, 'redeem', [shares]);
 });
 
+// LP activity feed — this address's pool deposits/withdrawals, read straight
+// from the chain (Deposit/Withdraw both index `lp`). No DB table; an LP has
+// few of these, so an on-the-fly getLogs + block-timestamp lookup is cheap.
+const POOL_DEPLOY_BLOCK = BigInt(process.env.TRADE_ESCROW_DEPLOY_BLOCK ?? '0');
+const POOL_LOG_CHUNK = 5_000n; // RPC caps getLogs range; mirror the indexers.
+app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) {
+    return reply.code(400).send({ error: 'address query param (0x…) required' });
+  }
+
+  // Chunk from the deploy block to head — a single getLogs over the full range
+  // would exceed the RPC's block-range cap and throw.
+  const head = await arcClient.getBlockNumber();
+  type Raw = { kind: 'pool-deposit' | 'pool-withdraw'; assets: bigint; shares: bigint; txHash: string; logIndex: number; blockNumber: bigint };
+  const raw: Raw[] = [];
+  for (let from = POOL_DEPLOY_BLOCK; from <= head; from += POOL_LOG_CHUNK) {
+    const to = from + POOL_LOG_CHUNK - 1n > head ? head : from + POOL_LOG_CHUNK - 1n;
+    const logs = await arcClient.getLogs({ address: FINANCING_POOL_ADDRESS, fromBlock: from, toBlock: to });
+    for (const ev of parseEventLogs({ abi: financingPoolAbi as Abi, logs })) {
+      if (ev.eventName !== 'Deposit' && ev.eventName !== 'Withdraw') continue;
+      const a = ev.args as { lp: string; assets: bigint; shares: bigint };
+      if (a.lp.toLowerCase() !== address) continue;
+      raw.push({
+        kind: ev.eventName === 'Deposit' ? 'pool-deposit' : 'pool-withdraw',
+        assets: a.assets,
+        shares: a.shares,
+        txHash: ev.transactionHash,
+        logIndex: ev.logIndex,
+        blockNumber: ev.blockNumber,
+      });
+    }
+  }
+
+  // Resolve block timestamps once per unique block.
+  const blocks = [...new Set(raw.map((r) => r.blockNumber))];
+  const tsByBlock = new Map<bigint, number>();
+  await Promise.all(
+    blocks.map(async (b) => {
+      const blk = await arcClient.getBlock({ blockNumber: b });
+      tsByBlock.set(b, Number(blk.timestamp) * 1000);
+    }),
+  );
+
+  const items = raw.map((r) => {
+    const assetsUsdc = formatUnits(r.assets, 6);
+    return {
+      key: `pool:${r.txHash}:${r.logIndex}`,
+      kind: r.kind,
+      amountUsdc: assetsUsdc,
+      sharesRaw: r.shares.toString(),
+      txHash: r.txHash,
+      whenMs: tsByBlock.get(r.blockNumber) ?? Date.now(),
+      summary:
+        r.kind === 'pool-deposit'
+          ? `Deposited ${assetsUsdc} USDC to the financing pool`
+          : `Withdrew ${assetsUsdc} USDC from the financing pool`,
+    };
+  });
+
+  items.sort((x, y) => y.whenMs - x.whenMs);
+  return { items };
+});
+
 // Trade Officer agent — skill 1: ingest a delivery document, run the documentary
 // check, and either auto-attest from the operator (agent) wallet or escalate to a
 // staked human verifier. No signer in the body: the agent acts autonomously as

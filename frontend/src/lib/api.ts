@@ -941,6 +941,21 @@ export async function buildPoolWithdrawUnsigned(input: { amountUsdc?: string; sh
   return jsonFetch('POST', '/arc/trade/pool/withdraw/unsigned', input);
 }
 
+export type PoolActivity = {
+  key: string;
+  kind: 'pool-deposit' | 'pool-withdraw';
+  amountUsdc: string;
+  sharesRaw: string;
+  txHash: string;
+  whenMs: number;
+  summary: string;
+};
+
+export async function getPoolActivity(address: string): Promise<PoolActivity[]> {
+  const r = await jsonFetch<{ items: PoolActivity[] }>('GET', `/arc/trade/pool/activity?address=${encodeURIComponent(address)}`);
+  return r.items;
+}
+
 // Either party flags a problem on a Funded trade → parks it in Disputed.
 export async function buildRaiseDisputeUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/dispute/unsigned`);

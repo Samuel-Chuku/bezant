@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
+import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
 import { PassportPanel } from '@/components/passport-panel';
 import { HandlePrompt } from '@/components/handle-prompt';
 import { AgentLinkCard } from '@/components/agent-link-card';
@@ -92,6 +94,9 @@ export default function ProfilePage() {
         {/* LP position */}
         <LpPositionCard address={signer.address} />
 
+        {/* Recent activity */}
+        <RecentActivity />
+
         {/* Claim a handle if none yet */}
         {showHandlePrompt && (
           <HandlePrompt onClaim={(handle) => claimHandle(handle)} onSkip={() => {}} />
@@ -163,6 +168,75 @@ function LpPositionCard({ address }: { address: string }) {
         </p>
       )}
     </div>
+  );
+}
+
+// Five most-recent items from the unified feed, with anything needing the
+// user's action pulled to the top and flagged. Full history lives on /activity.
+function RecentActivity() {
+  const { items, isLoading } = useNotifications();
+  const router = useRouter();
+
+  const recent = [...items]
+    .sort((a, b) => {
+      const aAct = a.kind === 'action' || a.kind === 'deadline' ? 1 : 0;
+      const bAct = b.kind === 'action' || b.kind === 'deadline' ? 1 : 0;
+      if (aAct !== bAct) return bAct - aAct;
+      return b.whenMs - a.whenMs;
+    })
+    .slice(0, 5);
+
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-wide text-neutral-500">Recent activity</div>
+        <Link href="/activity" className="text-xs text-neutral-400 hover:text-neutral-100">
+          See all Activities ›
+        </Link>
+      </div>
+
+      {isLoading && recent.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-500">Loading…</p>
+      ) : recent.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-400">No activity yet.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-neutral-800/70">
+          {recent.map((it) => (
+            <ActivityRow key={it.key} item={it} onClick={() => router.push(it.href ?? '/activity')} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ActivityRow({ item, onClick }: { item: NotificationItem; onClick: () => void }) {
+  const needsAction = item.kind === 'action' || item.kind === 'deadline';
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex w-full items-start gap-2.5 py-2.5 text-left transition hover:opacity-80 ${
+          item.read && !needsAction ? 'opacity-60' : ''
+        }`}
+      >
+        <span
+          className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
+            needsAction ? 'bg-emerald-400' : 'bg-neutral-600'
+          }`}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 text-sm text-neutral-200">
+          {item.summary}
+          {needsAction && (
+            <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+              action
+            </span>
+          )}
+        </span>
+      </button>
+    </li>
   );
 }
 

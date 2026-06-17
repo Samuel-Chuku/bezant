@@ -5,23 +5,29 @@ import type { Address } from 'viem';
 import {
   getNotificationFeed,
   getTradeNotifications,
+  getPoolActivity,
   type FeedRow,
   type PactEvent,
   type PactLiveState,
   type PactRole,
   type TradeNotification,
+  type PoolActivity,
 } from '@/lib/api';
 import { describeCurrentStep, isActionRequiredByMe } from '@/lib/pact-status';
 import { loadReadKeys, markReadKeys } from '@/lib/notifications-read';
 import { useSigner } from './use-signer';
 import { CHAIN_REFRESH_EVENT } from './use-refresh-chain-data';
 
-export type NotificationKind = 'action' | 'status' | 'event' | 'deadline';
+export type NotificationKind = 'action' | 'status' | 'event' | 'deadline' | 'pool';
+
+// Broad source bucket, used by the Activities page filter.
+export type NotificationCategory = 'pact' | 'trade' | 'pool';
 
 export type NotificationItem = {
   key: string;
   pactId: string;
   kind: NotificationKind;
+  category: NotificationCategory;
   summary: string;
   // Sort key — milliseconds. Newer = bigger.
   whenMs: number;
@@ -101,6 +107,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
         key: `pact:${row.pactId}:event:${ev.txHash}:${ev.logIndex}`,
         pactId: row.pactId,
         kind: 'event',
+        category: 'pact',
         summary,
         whenMs: new Date(ev.indexedAt).getTime(),
         whenIso: ev.indexedAt,
@@ -146,6 +153,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
         key: `pact:${row.pactId}:status:${status}:${roles.sort().join('+')}`,
         pactId: row.pactId,
         kind: isMine ? 'action' : 'status',
+        category: 'pact',
         summary: `Pact #${row.pactId}: ${sentence}`,
         whenMs: row.live.expiredAt.unix * 1000,
         whenIso: row.live.expiredAt.iso,
@@ -162,6 +170,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
           key: `pact:${row.pactId}:deadline:${bucket.key}`,
           pactId: row.pactId,
           kind: 'deadline',
+          category: 'pact',
           summary: `Pact #${row.pactId}: ${bucket.label}.`,
           whenMs: row.live.expiredAt.unix * 1000,
           whenIso: row.live.expiredAt.iso,
@@ -241,6 +250,7 @@ export function useNotifications() {
   const signer = useSigner();
   const [state, setState] = useState<LoadState>({ status: 'idle' });
   const [tradeRaw, setTradeRaw] = useState<TradeNotification[]>([]);
+  const [poolRaw, setPoolRaw] = useState<PoolActivity[]>([]);
   const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
   const addressRef = useRef<Address | null>(null);
 
@@ -273,6 +283,12 @@ export function useNotifications() {
       setTradeRaw(await getTradeNotifications(address));
     } catch {
       setTradeRaw([]);
+    }
+    // Pool LP activity is a third independent source — same isolation.
+    try {
+      setPoolRaw(await getPoolActivity(address));
+    } catch {
+      setPoolRaw([]);
     }
   }, [address]);
 
@@ -315,14 +331,26 @@ export function useNotifications() {
       key: t.key,
       pactId: t.tradeId,
       kind: t.kind,
+      category: 'trade',
       summary: t.summary,
       whenMs: t.whenMs,
       whenIso: null,
       read: readKeys.has(t.key),
       href: `/trade/${t.tradeId}`,
     }));
-    return [...pactItems, ...tradeItems].sort((a, b) => b.whenMs - a.whenMs);
-  }, [state, tradeRaw, address, readKeys]);
+    const poolItems: NotificationItem[] = poolRaw.map((p) => ({
+      key: p.key,
+      pactId: '',
+      kind: 'pool',
+      category: 'pool',
+      summary: p.summary,
+      whenMs: p.whenMs,
+      whenIso: new Date(p.whenMs).toISOString(),
+      read: readKeys.has(p.key),
+      href: '/pool',
+    }));
+    return [...pactItems, ...tradeItems, ...poolItems].sort((a, b) => b.whenMs - a.whenMs);
+  }, [state, tradeRaw, poolRaw, address, readKeys]);
 
   const unreadCount = useMemo(() => items.filter((it) => !it.read).length, [items]);
 

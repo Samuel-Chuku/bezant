@@ -112,11 +112,11 @@ export function NotificationsBell() {
 
           <footer className="border-t border-neutral-800 px-4 py-2.5">
             <Link
-              href="/alerts"
+              href="/activity"
               className="block text-center text-[11px] text-neutral-400 hover:text-neutral-100"
               onClick={() => setOpen(false)}
             >
-              See all →
+              See all Activities →
             </Link>
           </footer>
         </div>
@@ -137,12 +137,14 @@ function NotificationRow({
     deadline: 'bg-amber-400',
     event: 'bg-neutral-500',
     status: 'bg-sky-500/70',
+    pool: 'bg-violet-400',
   };
   const kindLabels: Record<NotificationItem['kind'], string> = {
     action: 'Action',
     deadline: 'Deadline',
     event: 'Event',
     status: 'Status',
+    pool: 'Pool',
   };
 
   return (
