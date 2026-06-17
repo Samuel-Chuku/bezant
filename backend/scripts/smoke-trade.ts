@@ -147,10 +147,20 @@ async function main() {
     await req('POST', `/arc/trade/${tradeId}/finance`, { handle: SELLER_HANDLE });
   }
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const waitForReleased = async (maxSeconds: number) => {
+    const until = Date.now() + maxSeconds * 1000;
+    while (Date.now() < until) {
+      const t = await req<{ status: string }>('GET', `/arc/trade/${tradeId}`);
+      if (t.status === 'Released') return;
+      await sleep(3000);
+    }
+  };
+
   const attest = async () => {
     if (USE_OFFICER) {
-      step('Attest via Trade Officer agent (doc-ingest → auto-attest or escalate)');
-      const r = await req<{ decision: string; attested: boolean }>('POST', `/arc/trade/${tradeId}/officer-attest`, {
+      step('Attest via Trade Officer agent (doc-ingest → approve+window or escalate)');
+      const r = await req<{ decision: string; attested: boolean; challengeWindowSeconds?: number }>('POST', `/arc/trade/${tradeId}/officer-attest`, {
         document: {
           kind: 'bill_of_lading',
           reference: 'MAEU123456789',
@@ -160,20 +170,25 @@ async function main() {
           destination: 'Lagos',
         },
       });
-      if (!r.attested) {
-        console.error(`${RED}✗ officer escalated instead of attesting (decision=${r.decision}); lower SMOKE_TRADE_AMOUNT below OFFICER_HIGH_VALUE_USDC${RESET}`);
+      if (r.decision !== 'pass') {
+        console.error(`${RED}✗ officer escalated instead of approving (decision=${r.decision}); lower SMOKE_TRADE_AMOUNT below OFFICER_HIGH_VALUE_USDC${RESET}`);
         process.exit(1);
       }
+      // Officer approved → opened the buyer challenge window; the finalizer
+      // settles once it elapses. Wait it out (no dispute raised here).
+      const windowS = r.challengeWindowSeconds ?? 30;
+      step(`Waiting out the ${windowS}s buyer challenge window for auto-settle`);
+      await waitForReleased(windowS + 30);
     } else {
-      step('Attest delivery (operator, direct)');
+      step('Attest delivery (operator, direct — settles immediately)');
       await req('POST', `/arc/trade/${tradeId}/attest`, { handle: OPERATOR_HANDLE, proof: 'BoL#smoke', passed: true });
     }
   };
 
-  // Officer attestation AUTO-SETTLES the trade (no separate release step).
+  // Officer approval opens a buyer challenge window; settlement follows once it elapses.
   await attest();
 
-  step('6. Verify final state (attest auto-settled)');
+  step('6. Verify final state (settled after the challenge window)');
   const trade = await req<{ status: string }>('GET', `/arc/trade/${tradeId}`);
   const sellerBalAfter = await usdcRaw(seller.walletAddress);
   const gained = sellerBalAfter - sellerBalBefore;

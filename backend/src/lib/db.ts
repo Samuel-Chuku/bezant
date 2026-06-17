@@ -274,6 +274,17 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_auto_reveals_status ON auto_reveals(status);
 
+  -- Buyer challenge window. When the Trade Officer approves a delivery doc it
+  -- does NOT settle immediately — it parks here until finalize_at. The trade
+  -- stays Funded, so the buyer can raiseDispute() during the window. A finalizer
+  -- poller calls attest() (settles) once finalize_at passes if still Funded.
+  CREATE TABLE IF NOT EXISTS pending_attestations (
+    trade_id    INTEGER PRIMARY KEY,
+    proof_hash  TEXT NOT NULL,
+    finalize_at INTEGER NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);

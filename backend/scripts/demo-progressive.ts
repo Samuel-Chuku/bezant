@@ -88,6 +88,17 @@ async function main() {
 
   const rows: { n: number; completedBefore: number; deposit: string; pct: string }[] = [];
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const waitForReleased = async (tradeId: string, maxSeconds: number) => {
+    const until = Date.now() + maxSeconds * 1000;
+    while (Date.now() < until) {
+      const t = await req<{ status: string }>('GET', `/arc/trade/${tradeId}`);
+      if (t.status === 'Released') return;
+      await sleep(3000);
+    }
+    throw new Error(`trade ${tradeId}: not Released within ${maxSeconds}s (challenge window stuck?)`);
+  };
+
   for (let n = 1; n <= N; n++) {
     const created = await req<{ tradeId: string }>('POST', '/arc/trade/create', {
       handle: BUYER_HANDLE,
@@ -103,11 +114,14 @@ async function main() {
     rows.push({ n, completedBefore: n - 1, deposit: funded.depositUsdc, pct: `${pct}%` });
     console.log(`${GREEN}trade ${n}: ${n - 1} prior completions → deposit ${funded.depositUsdc} USDC (${pct}%)${RESET}`);
 
-    const att = await req<{ attested: boolean }>('POST', `/arc/trade/${tradeId}/officer-attest`, {
-      document: { kind: 'bill_of_lading', reference: `MAEU${1000000 + n}`, content: `BoL MAEU${1000000 + n} cleared, demo trade ${n}.` },
+    const att = await req<{ decision: string; attested: boolean; challengeWindowSeconds?: number }>('POST', `/arc/trade/${tradeId}/officer-attest`, {
+      document: { kind: 'bill_of_lading', reference: `MAEU${1000000 + n}`, content: `Bill of Lading MAEU${1000000 + n} — cleared at Jebel Ali, carrier Maersk, demo trade ${n}.` },
     });
-    if (!att.attested) throw new Error(`trade ${n}: officer escalated unexpectedly`);
-    // officer attestation auto-settles — no release step
+    if (att.decision !== 'pass') throw new Error(`trade ${n}: officer escalated unexpectedly`);
+    // Officer approved → buyer challenge window; wait for the finalizer to settle
+    // so the passport records this completion before the next trade is priced.
+    // Tip: run with OFFICER_CHALLENGE_WINDOW_SECONDS=0 to make this near-instant.
+    await waitForReleased(tradeId, (att.challengeWindowSeconds ?? 30) + 30);
   }
 
   console.log(`\n${BOLD}Progressive-trust schedule (this run):${RESET}`);
