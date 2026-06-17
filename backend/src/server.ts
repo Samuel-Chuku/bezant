@@ -2857,8 +2857,8 @@ app.post<{ Body: { amountUsdc?: string; shares?: string } }>('/arc/trade/pool/wi
 // LP activity feed — this address's pool deposits/withdrawals, read straight
 // from the chain (Deposit/Withdraw both index `lp`). No DB table; an LP has
 // few of these, so an on-the-fly getLogs + block-timestamp lookup is cheap.
-const POOL_DEPLOY_BLOCK = BigInt(process.env.TRADE_ESCROW_DEPLOY_BLOCK ?? '0');
-const POOL_LOG_CHUNK = 5_000n; // RPC caps getLogs range; mirror the indexers.
+// Served from the pool_events table (indexed incrementally) — no per-request
+// chain scan, so the feed stays fresh without timing out under polling.
 app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async (request, reply) => {
   if (!escrowReady(reply)) return;
   const address = (request.query.address ?? '').toLowerCase();
@@ -2866,48 +2866,30 @@ app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async
     return reply.code(400).send({ error: 'address query param (0x…) required' });
   }
 
-  // Chunk from the deploy block to head — a single getLogs over the full range
-  // would exceed the RPC's block-range cap and throw.
-  const head = await arcClient.getBlockNumber();
-  type Raw = { kind: 'pool-deposit' | 'pool-withdraw'; assets: bigint; shares: bigint; txHash: string; logIndex: number; blockNumber: bigint };
-  const raw: Raw[] = [];
-  for (let from = POOL_DEPLOY_BLOCK; from <= head; from += POOL_LOG_CHUNK) {
-    const to = from + POOL_LOG_CHUNK - 1n > head ? head : from + POOL_LOG_CHUNK - 1n;
-    const logs = await arcClient.getLogs({ address: FINANCING_POOL_ADDRESS, fromBlock: from, toBlock: to });
-    for (const ev of parseEventLogs({ abi: financingPoolAbi as Abi, logs })) {
-      if (ev.eventName !== 'Deposit' && ev.eventName !== 'Withdraw') continue;
-      const a = ev.args as { lp: string; assets: bigint; shares: bigint };
-      if (a.lp.toLowerCase() !== address) continue;
-      raw.push({
-        kind: ev.eventName === 'Deposit' ? 'pool-deposit' : 'pool-withdraw',
-        assets: a.assets,
-        shares: a.shares,
-        txHash: ev.transactionHash,
-        logIndex: ev.logIndex,
-        blockNumber: ev.blockNumber,
-      });
-    }
-  }
+  const rows = db
+    .prepare(
+      `SELECT kind, assets_raw, shares_raw, block_time, block_number, tx_hash, log_index
+       FROM pool_events WHERE lp = ? ORDER BY block_number DESC, log_index DESC LIMIT 100`,
+    )
+    .all(address) as {
+    kind: string;
+    assets_raw: string;
+    shares_raw: string;
+    block_time: number | null;
+    block_number: number;
+    tx_hash: string;
+    log_index: number;
+  }[];
 
-  // Resolve block timestamps once per unique block.
-  const blocks = [...new Set(raw.map((r) => r.blockNumber))];
-  const tsByBlock = new Map<bigint, number>();
-  await Promise.all(
-    blocks.map(async (b) => {
-      const blk = await arcClient.getBlock({ blockNumber: b });
-      tsByBlock.set(b, Number(blk.timestamp) * 1000);
-    }),
-  );
-
-  const items = raw.map((r) => {
-    const assetsUsdc = formatUnits(r.assets, 6);
+  const items = rows.map((r) => {
+    const assetsUsdc = formatUnits(BigInt(r.assets_raw), 6);
     return {
-      key: `pool:${r.txHash}:${r.logIndex}`,
+      key: `pool:${r.tx_hash}:${r.log_index}`,
       kind: r.kind,
       amountUsdc: assetsUsdc,
-      sharesRaw: r.shares.toString(),
-      txHash: r.txHash,
-      whenMs: tsByBlock.get(r.blockNumber) ?? Date.now(),
+      sharesRaw: r.shares_raw,
+      txHash: r.tx_hash,
+      whenMs: r.block_time ?? Date.now(),
       summary:
         r.kind === 'pool-deposit'
           ? `Deposited ${assetsUsdc} USDC to the financing pool`
@@ -2915,8 +2897,36 @@ app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async
     };
   });
 
-  items.sort((x, y) => y.whenMs - x.whenMs);
   return { items };
+});
+
+// Yield tracking — cumulative (since inception, = sharePrice − 1) plus 24h / 7d
+// windows from the NAV snapshots. Windows are null until enough history exists.
+app.get('/arc/trade/pool/yield', async (_request, reply) => {
+  if (!escrowReady(reply)) return;
+  const s = await getPoolStats();
+  const sharePrice = s.totalShares > 0n ? Number(s.totalAssets) / Number(s.totalShares) : 1;
+
+  const priceAt = (cutoffMs: number): number | null => {
+    const row = db
+      .prepare('SELECT share_price FROM pool_nav_snapshots WHERE ts <= ? ORDER BY ts DESC LIMIT 1')
+      .get(cutoffMs) as { share_price: number } | undefined;
+    return row ? row.share_price : null;
+  };
+
+  const windowPct = (cutoffMs: number): number | null => {
+    const past = priceAt(cutoffMs);
+    if (past == null || past === 0) return null;
+    return (sharePrice / past - 1) * 100;
+  };
+
+  const now = Date.now();
+  return {
+    sharePrice,
+    cumulativePct: (sharePrice - 1) * 100,
+    dayPct: windowPct(now - 86_400_000),
+    weekPct: windowPct(now - 7 * 86_400_000),
+  };
 });
 
 // Trade Officer agent — skill 1: ingest a delivery document, run the documentary
@@ -3094,6 +3104,24 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, re
 
 // Notification feed across a user's trades: recent activity + pending actions
 // (what they need to do next). Feeds the global bell.
+// Notification read-state, keyed by address — shared across the user's devices.
+app.get<{ Querystring: { address?: string } }>('/arc/notifications/read', async (request, reply) => {
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const rows = db.prepare('SELECT key FROM notif_reads WHERE address = ?').all(address) as { key: string }[];
+  return { keys: rows.map((r) => r.key) };
+});
+
+app.post<{ Body: { address?: string; keys?: string[] } }>('/arc/notifications/read', async (request, reply) => {
+  const address = (request.body.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
+  const keys = Array.isArray(request.body.keys) ? request.body.keys.filter((k) => typeof k === 'string') : [];
+  const stmt = db.prepare('INSERT OR IGNORE INTO notif_reads (address, key) VALUES (?, ?)');
+  const insertMany = db.transaction((ks: string[]) => ks.forEach((k) => stmt.run(address, k)));
+  insertMany(keys);
+  return { ok: true, count: keys.length };
+});
+
 app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', async (request, reply) => {
   if (!escrowReady(reply)) return;
   const address = (request.query.address ?? '').toLowerCase();

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {TradeEscrow} from "../src/TradeEscrow.sol";
 import {TradePassport} from "../src/TradePassport.sol";
 import {FinancingPool} from "../src/FinancingPool.sol";
+import {AccruingYieldVault} from "../src/AccruingYieldVault.sol";
 import {MockUSDC} from "./helpers/MockUSDC.sol";
 import {MockYieldVault} from "./helpers/MockYieldVault.sol";
 
@@ -248,6 +249,85 @@ contract TradeEscrowTest is Test {
 
         uint256 assets = pool.redeem(SEED - NET); // up to idle is fine
         assertEq(assets, SEED - NET, "redeemed up to idle at 1:1 (no yield yet)");
+    }
+
+    // ── LP vault: idle parked in a yield vault (USYC-on-idle) ────────────────
+
+    // Parking idle in the vault doesn't change NAV; subsequent vault accrual
+    // (simulated by minting USDC into the vault) lifts NAV for LPs, and
+    // withdrawals divest from the vault to pay out.
+    function test_Vault_IdleEarnsYieldAndWithdrawDivests() public {
+        MockYieldVault pv = new MockYieldVault(address(usdc));
+        pool.setYieldVault(address(pv)); // sweeps SEED into the vault
+
+        assertEq(pool.totalAssets(), SEED, "parking idle doesn't move NAV");
+        assertEq(usdc.balanceOf(address(pool)), 0, "buffer swept into vault");
+        assertEq(pool.vaultShares(), SEED, "pool holds vault shares 1:1");
+
+        uint256 yield_ = 1_000 * USD;
+        usdc.mint(address(pv), yield_); // simulate USYC accrual on idle
+
+        assertEq(pool.totalAssets(), SEED + yield_, "vault yield lifts NAV");
+        assertEq(pool.convertToAssets(pool.shares(address(this))), SEED + yield_, "LP value up by yield");
+
+        uint256 half = SEED / 2;
+        uint256 got = pool.redeem(half); // divests from the vault
+        assertEq(got, (SEED + yield_) / 2, "redeem pays NAV out of the vault");
+    }
+
+    // An advance frees USDC from the vault to pay the seller (NAV flat), and a
+    // clean settle repays the gross back into the vault (NAV up by the fee) —
+    // all on top of the idle being vault-backed.
+    function test_Vault_AdvanceDivestsThenRepayReinvests() public {
+        MockYieldVault pv = new MockYieldVault(address(usdc));
+        pool.setYieldVault(address(pv));
+
+        uint256 id = _agreeAndFund(AMT);
+        vm.prank(seller);
+        escrow.requestFinancing(id); // advance NET — divests from the vault
+        assertEq(pool.outstanding(), NET, "principal deployed");
+        assertEq(pool.totalAssets(), SEED, "NAV flat across the advance");
+
+        vm.prank(agent);
+        escrow.attest(id, keccak256("BoL"), true); // repays gross into the vault
+        assertEq(pool.outstanding(), 0, "advance cleared");
+        assertEq(pool.totalAssets(), SEED + FEE, "fee accrued, gross re-parked");
+    }
+
+    // ── accruing (USYC-faithful) vault: NAV grows by time, hands-off ─────────
+
+    // Standalone: NAV appreciates at the set APY with no manual top-ups; the
+    // accrued portion is paid out of the vault's reserve on redemption.
+    function test_AccruingVault_NavGrowsAtApy() public {
+        AccruingYieldVault v = new AccruingYieldVault(address(usdc), 400); // 4%
+        uint256 amt = 1_000 * USD;
+        usdc.mint(address(this), amt);
+        usdc.approve(address(v), amt);
+        uint256 sh = v.deposit(amt);
+
+        assertEq(v.previewRedeem(sh), amt, "no time => principal only");
+        vm.warp(block.timestamp + 365 days);
+        assertEq(v.previewRedeem(sh), amt + 40 * USD, "1y @ 4% => +40, no top-up");
+
+        usdc.mint(address(v), 40 * USD); // reserve covers the accrued yield
+        assertEq(v.redeem(sh), amt + 40 * USD, "redeem pays principal + yield");
+    }
+
+    // Pool integration: point the pool at an accruing vault and its NAV climbs
+    // on its own — no per-LP action, future deposits earn the same rate.
+    function test_AccruingVault_PoolEarnsHandsOff() public {
+        AccruingYieldVault v = new AccruingYieldVault(address(usdc), 400);
+        pool.setYieldVault(address(v)); // parks SEED into the accruing vault
+        assertEq(pool.totalAssets(), SEED, "no time => NAV flat");
+
+        usdc.mint(address(v), 4_000 * USD); // reserve for a year of 4% on 100k
+        vm.warp(block.timestamp + 365 days);
+
+        assertEq(pool.totalAssets(), SEED + 4_000 * USD, "pool NAV grew 4% hands-off");
+        assertEq(pool.convertToAssets(pool.shares(address(this))), SEED + 4_000 * USD, "LP value up 4%");
+
+        uint256 got = pool.redeem(SEED / 2); // divest pulls principal+yield from vault
+        assertEq(got, (SEED + 4_000 * USD) / 2, "redeem at the grown NAV");
     }
 
     // ── passport curve (unchanged) ───────────────────────────────────────────

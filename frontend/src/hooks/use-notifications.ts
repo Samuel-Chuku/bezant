@@ -14,7 +14,7 @@ import {
   type PoolActivity,
 } from '@/lib/api';
 import { describeCurrentStep, isActionRequiredByMe } from '@/lib/pact-status';
-import { loadReadKeys, markReadKeys } from '@/lib/notifications-read';
+import { getReadKeys, markReadKeysRemote } from '@/lib/api';
 import { useSigner } from './use-signer';
 import { CHAIN_REFRESH_EVENT } from './use-refresh-chain-data';
 
@@ -36,6 +36,8 @@ export type NotificationItem = {
   read: boolean;
   // Where clicking the item navigates. Defaults to the pact page; trade items set /trade/:id.
   href?: string;
+  // On-chain tx hash, when the item corresponds to a single transaction (pool events).
+  txHash?: string;
 };
 
 type LoadState =
@@ -258,11 +260,17 @@ export function useNotifications() {
   const address = signer.isConnected ? signer.address : null;
   useEffect(() => {
     addressRef.current = address;
-    if (address) {
-      setReadKeys(loadReadKeys(address));
-    } else {
+    if (!address) {
       setReadKeys(new Set());
+      return;
     }
+    let cancelled = false;
+    getReadKeys(address)
+      .then((keys) => !cancelled && setReadKeys(new Set(keys)))
+      .catch(() => !cancelled && setReadKeys(new Set()));
+    return () => {
+      cancelled = true;
+    };
   }, [address]);
 
   const fetchFeed = useCallback(async () => {
@@ -278,17 +286,21 @@ export function useNotifications() {
       setState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
     }
     // Trade notifications are a separate source; failures here (e.g. escrow not
-    // deployed) must not break the pact feed.
+    // deployed) must not break the pact feed. On a transient error we KEEP the
+    // last good data rather than clearing it — otherwise a single failed poll
+    // makes already-shown items vanish until the next success (looks "stale").
     try {
       setTradeRaw(await getTradeNotifications(address));
     } catch {
-      setTradeRaw([]);
+      /* keep previous tradeRaw */
     }
-    // Pool LP activity is a third independent source — same isolation.
+    // Pool LP activity is a third independent source — same isolation, and the
+    // chunked getLogs can time out on the RPC, so preserving prior data here is
+    // what stops pool deposits/withdrawals from flickering out of the feed.
     try {
       setPoolRaw(await getPoolActivity(address));
     } catch {
-      setPoolRaw([]);
+      /* keep previous poolRaw */
     }
   }, [address]);
 
@@ -348,32 +360,36 @@ export function useNotifications() {
       whenIso: new Date(p.whenMs).toISOString(),
       read: readKeys.has(p.key),
       href: '/pool',
+      txHash: p.txHash,
     }));
     return [...pactItems, ...tradeItems, ...poolItems].sort((a, b) => b.whenMs - a.whenMs);
   }, [state, tradeRaw, poolRaw, address, readKeys]);
 
   const unreadCount = useMemo(() => items.filter((it) => !it.read).length, [items]);
 
+  // Mark optimistically (snappy UI), then persist to the backend in the
+  // background — a failed POST just means it re-shows as unread next load.
   const markAllRead = useCallback(() => {
     if (!address) return;
-    const allKeys = items.map((it) => it.key);
-    markReadKeys(address, allKeys);
+    const unreadKeys = items.filter((it) => !it.read).map((it) => it.key);
+    if (unreadKeys.length === 0) return;
     setReadKeys((prev) => {
       const next = new Set(prev);
-      for (const k of allKeys) next.add(k);
+      for (const k of unreadKeys) next.add(k);
       return next;
     });
+    void markReadKeysRemote(address, unreadKeys).catch(() => {});
   }, [address, items]);
 
   const markRead = useCallback(
     (key: string) => {
       if (!address) return;
-      markReadKeys(address, [key]);
       setReadKeys((prev) => {
         const next = new Set(prev);
         next.add(key);
         return next;
       });
+      void markReadKeysRemote(address, [key]).catch(() => {});
     },
     [address],
   );

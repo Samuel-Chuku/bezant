@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 import { ToastProvider } from '@/components/toast';
 import { TopNav } from '@/components/top-nav';
+import { ProfileSetupBanner } from '@/components/profile-setup-banner';
 import { SidebarSummary } from '@/components/sidebar-summary';
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <ToastProvider>
             <TopNav />
+            <ProfileSetupBanner />
             {children}
             {/* SidebarSummary self-positions: fixed + draggable at lg+,
                 inline panel below content under lg. */}

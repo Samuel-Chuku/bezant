@@ -42,37 +42,6 @@ function NavLink({ href, label, active }: { href: string; label: string; active:
   );
 }
 
-// Trades button with a hover menu → create a new trade / perform an action.
-function TradesMenu({ active }: { active: boolean }) {
-  return (
-    <div className="group relative">
-      <Link
-        href="/trade"
-        className={[
-          'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
-          active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
-        ].join(' ')}
-      >
-        Trades
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </Link>
-      {/* pt-2 keeps a hover bridge so the menu doesn't close in the gap */}
-      <div className="invisible absolute left-0 top-full z-50 w-60 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-1 shadow-xl">
-          <Link href="/trade/create" className="block rounded-md px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100">
-            + Create a new trade
-          </Link>
-          <Link href="/trade" className="block rounded-md px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100">
-            Perform an action in a trade
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function TopNav() {
   const signer = useSigner();
   const wagmiChainId = useChainId();
@@ -111,7 +80,7 @@ export function TopNav() {
 
           <nav className="hidden flex-1 items-center gap-1 md:flex">
             <NavLink href="/" label="Home" active={pathname === '/'} />
-            <TradesMenu active={pathname === '/trade' || pathname.startsWith('/trade/')} />
+            <NavLink href="/trade/create" label="New trade" active={pathname === '/trade/create'} />
             <NavLink href="/trade" label="My trades" active={pathname === '/trade'} />
             <NavLink href="/pool" label="Pool" active={pathname === '/pool'} />
             <NavLink href="/bridge" label="Bridge" active={pathname === '/bridge'} />

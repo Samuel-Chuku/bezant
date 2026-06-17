@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
 import { useSigner } from '@/hooks/use-signer';
+import { arcExplorerTxUrl } from '@/lib/explorers';
 
 type Filter = 'all' | 'action' | 'trade' | 'pool';
 
@@ -91,7 +92,14 @@ export default function ActivityPage() {
       )}
 
       {signer.isConnected && !isError && isLoading && items.length === 0 && (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <ul className="space-y-2">
+          {[0, 1, 2, 3].map((i) => (
+            <li key={i} className="animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+              <div className="h-3 w-20 rounded bg-neutral-800" />
+              <div className="mt-2 h-4 w-3/4 rounded bg-neutral-800" />
+            </li>
+          ))}
+        </ul>
       )}
 
       {signer.isConnected && !isError && !isLoading && items.length === 0 && (
@@ -151,10 +159,12 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
   const badge = KIND_BADGE[item.kind];
   return (
     <li>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onOpen}
-        className={`flex w-full items-start justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-left transition hover:border-neutral-700 ${
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
+        className={`flex w-full cursor-pointer items-start justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-left transition hover:border-neutral-700 ${
           item.read ? 'opacity-60' : ''
         }`}
       >
@@ -166,14 +176,23 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
             {!item.read && <span className="inline-block h-1.5 w-1.5 rounded-full bg-neutral-100" aria-label="unread" />}
           </div>
           <div className="mt-2 text-sm text-neutral-100">{item.summary}</div>
-          {item.whenIso && (
-            <div className="mt-1 text-[11px] text-neutral-500">
-              {new Date(item.whenIso).toLocaleString()}
-            </div>
-          )}
+          <div className="mt-1 flex items-center gap-3 text-[11px] text-neutral-500">
+            {item.whenIso && <span>{new Date(item.whenIso).toLocaleString()}</span>}
+            {item.txHash && (
+              <a
+                href={arcExplorerTxUrl(item.txHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-0.5 text-neutral-400 hover:text-neutral-100"
+              >
+                View tx ↗
+              </a>
+            )}
+          </div>
         </div>
         <span className="mt-0.5 text-neutral-600">›</span>
-      </button>
+      </div>
     </li>
   );
 }

@@ -1,31 +1,21 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { EmailSignIn } from '@/components/email-sign-in';
-import { HandlePrompt } from '@/components/handle-prompt';
-import { AgentLinkCard } from '@/components/agent-link-card';
 import { shortAddress } from '@/lib/format';
 
 export default function Home() {
   const signer = useSigner();
-  const { state: userState, claimHandle, linkAgentId, registerAgent } = useUserRecord();
-  const [handlePromptDismissed, setHandlePromptDismissed] = useState(false);
+  const { state: userState } = useUserRecord();
 
   const user = userState.status === 'ready' ? userState.user : null;
   const displayName = user?.handle ?? (signer.isConnected ? shortAddress(signer.address) : null);
-  // Show the "claim a handle?" prompt when the user is connected and either
-  // (a) has no backend record yet, or (b) has a record but no handle (legacy).
-  const shouldShowHandlePrompt =
-    userState.status === 'ready' &&
-    (user === null || user.handle === null) &&
-    !handlePromptDismissed;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
+    <main className="mx-auto max-w-2xl px-6 py-16">
       <header className="mb-12">
         <h1 className="text-4xl font-semibold tracking-tight">arc-trade</h1>
         <p className="mt-2 text-neutral-400">
@@ -151,30 +141,8 @@ export default function Home() {
         </section>
       )}
 
-      {shouldShowHandlePrompt && (
-        <div className="mt-6">
-          <HandlePrompt
-            onClaim={async (handle) => {
-              await claimHandle(handle);
-              setHandlePromptDismissed(true);
-            }}
-            onSkip={() => setHandlePromptDismissed(true)}
-          />
-        </div>
-      )}
-
-      {/* Show the agent-link card once the user actually has a backend
-          record (i.e. they've already claimed a handle). Linking before
-          that point would 404 — see the hook. */}
-      {signer.isConnected && userState.status === 'ready' && userState.user && (
-        <div className="mt-6">
-          <AgentLinkCard
-            currentAgentId={userState.user.agentId}
-            onLink={(agentId) => linkAgentId(agentId)}
-            onRegister={() => registerAgent()}
-          />
-        </div>
-      )}
+      {/* Agent linking (optional, advanced) lives on the profile page now,
+          not on the landing surface. */}
 
       <footer className="mt-16 text-xs text-neutral-600">
         Connected to{' '}

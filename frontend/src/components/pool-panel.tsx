@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
+import { PoolYieldStrip } from '@/components/pool-yield';
 import {
   getPoolStats,
   buildPoolApproveUnsigned,
@@ -40,16 +41,7 @@ export function PoolPanel() {
     <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xs uppercase tracking-wide text-neutral-500">Financing pool (LP)</h2>
-        {stats && (
-          <span className="text-xs text-neutral-500">
-            share price {stats.sharePrice.toFixed(4)}
-            {' · '}
-            <span className={stats.sharePrice >= 1 ? 'text-emerald-400' : 'text-red-400'}>
-              {stats.sharePrice >= 1 ? '+' : ''}
-              {((stats.sharePrice - 1) * 100).toFixed(2)}% yield
-            </span>
-          </span>
-        )}
+        {stats && <span className="text-xs text-neutral-500">share price {stats.sharePrice.toFixed(4)}</span>}
       </div>
 
       {!stats ? (
@@ -60,6 +52,11 @@ export function PoolPanel() {
             <Stat label="TVL">{stats.totalAssetsUsdc}</Stat>
             <Stat label="Idle">{stats.idleUsdc}</Stat>
             <Stat label="Deployed">{stats.outstandingUsdc}</Stat>
+          </div>
+
+          <div className="mt-3">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">Yield</div>
+            <PoolYieldStrip />
           </div>
 
           {signer.isConnected && stats.myShares && stats.myShares !== '0' && (

@@ -956,6 +956,29 @@ export async function getPoolActivity(address: string): Promise<PoolActivity[]> 
   return r.items;
 }
 
+export type PoolYield = {
+  sharePrice: number;
+  cumulativePct: number;
+  // null until enough NAV history exists for the window (24h / 7d).
+  dayPct: number | null;
+  weekPct: number | null;
+};
+
+export async function getPoolYield(): Promise<PoolYield> {
+  return jsonFetch('GET', '/arc/trade/pool/yield');
+}
+
+// Notification read-state (server-side, shared across devices).
+export async function getReadKeys(address: string): Promise<string[]> {
+  const r = await jsonFetch<{ keys: string[] }>('GET', `/arc/notifications/read?address=${encodeURIComponent(address)}`);
+  return r.keys;
+}
+
+export async function markReadKeysRemote(address: string, keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  await jsonFetch('POST', '/arc/notifications/read', { address, keys });
+}
+
 // Either party flags a problem on a Funded trade → parks it in Disputed.
 export async function buildRaiseDisputeUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/dispute/unsigned`);

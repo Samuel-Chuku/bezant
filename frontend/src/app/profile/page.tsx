@@ -7,22 +7,20 @@ import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
 import { PassportPanel } from '@/components/passport-panel';
-import { HandlePrompt } from '@/components/handle-prompt';
 import { AgentLinkCard } from '@/components/agent-link-card';
 import { Avatar } from '@/components/avatar';
+import { PoolYieldStrip } from '@/components/pool-yield';
 import { getPoolStats, type PoolStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 
 // Profile hub: identity (handle / address / signing mode / agent ID), credit
-// passport, and the user's LP position in the financing pool. Identity-
-// management actions (claim handle, link agent) live here too.
+// passport, and the user's LP position in the financing pool. Agent linking
+// lives here too; the handle claim is offered via the global setup banner.
 export default function ProfilePage() {
   const signer = useSigner();
-  const { state: userState, claimHandle, linkAgentId, registerAgent } = useUserRecord();
+  const { state: userState, linkAgentId, registerAgent } = useUserRecord();
 
   const user = userState.status === 'ready' ? userState.user : null;
-  const showHandlePrompt =
-    userState.status === 'ready' && (user === null || user.handle === null);
 
   if (!signer.isConnected) {
     return (
@@ -97,11 +95,6 @@ export default function ProfilePage() {
         {/* Recent activity */}
         <RecentActivity />
 
-        {/* Claim a handle if none yet */}
-        {showHandlePrompt && (
-          <HandlePrompt onClaim={(handle) => claimHandle(handle)} onSkip={() => {}} />
-        )}
-
         {/* Agent linking — only once a backend record exists */}
         {userState.status === 'ready' && user && (
           <AgentLinkCard
@@ -146,19 +139,16 @@ function LpPositionCard({ address }: { address: string }) {
       {!stats ? (
         <p className="mt-3 text-sm text-neutral-500">Pool unavailable.</p>
       ) : hasPosition ? (
-        <div className="mt-3 flex items-end gap-8 text-sm">
-          <div>
+        <>
+          <div className="mt-3">
             <div className="text-2xl font-semibold text-emerald-300">{stats.myValueUsdc} USDC</div>
             <div className="text-xs text-neutral-500">your position</div>
           </div>
-          <div>
-            <div className={stats.sharePrice >= 1 ? 'text-lg text-emerald-300' : 'text-lg text-red-300'}>
-              {stats.sharePrice >= 1 ? '+' : ''}
-              {((stats.sharePrice - 1) * 100).toFixed(2)}%
-            </div>
-            <div className="text-xs text-neutral-500">pool yield</div>
+          <div className="mt-3">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">Pool yield</div>
+            <PoolYieldStrip />
           </div>
-        </div>
+        </>
       ) : (
         <p className="mt-3 text-sm text-neutral-400">
           You haven&apos;t deposited yet.{' '}
@@ -177,14 +167,15 @@ function RecentActivity() {
   const { items, isLoading } = useNotifications();
   const router = useRouter();
 
-  const recent = [...items]
-    .sort((a, b) => {
-      const aAct = a.kind === 'action' || a.kind === 'deadline' ? 1 : 0;
-      const bAct = b.kind === 'action' || b.kind === 'deadline' ? 1 : 0;
-      if (aAct !== bAct) return bAct - aAct;
-      return b.whenMs - a.whenMs;
-    })
-    .slice(0, 5);
+  // Pending actions carry a deadline-based timestamp (often in the future), so
+  // a naive "5 most recent" lets them crowd out genuinely-recent pool/trade
+  // events. Reserve up to 2 slots for the most urgent pending actions, then
+  // fill the rest with the latest actual events — so a fresh deposit/withdrawal
+  // always shows here. Full history + "Needs action" filter live on /activity.
+  const needsAction = (it: NotificationItem) => it.kind === 'action' || it.kind === 'deadline';
+  const actions = items.filter(needsAction).slice(0, 2);
+  const events = items.filter((it) => !needsAction(it)).slice(0, 5 - actions.length);
+  const recent = [...actions, ...events];
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
@@ -196,7 +187,14 @@ function RecentActivity() {
       </div>
 
       {isLoading && recent.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-500">Loading…</p>
+        <div className="mt-3 space-y-2.5">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex animate-pulse items-center gap-2.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-neutral-800" />
+              <span className="h-3 flex-1 rounded bg-neutral-800" />
+            </div>
+          ))}
+        </div>
       ) : recent.length === 0 ? (
         <p className="mt-3 text-sm text-neutral-400">No activity yet.</p>
       ) : (

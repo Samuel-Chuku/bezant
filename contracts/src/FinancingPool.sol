@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {IERC20} from "./interfaces/IERC20.sol";
+import {IYieldVault} from "./interfaces/IYieldVault.sol";
 import {IFinancingPool} from "./interfaces/IFinancingPool.sol";
 
 /// @notice LP-funded USDC vault (minimal ERC-4626-style) that advances sellers
@@ -9,14 +10,28 @@ import {IFinancingPool} from "./interfaces/IFinancingPool.sol";
 /// cheaper). LPs deposit USDC for shares and earn the financing fees as yield;
 /// they bear credit risk — a written-off advance lowers NAV for all LPs.
 ///
-/// Accounting: totalAssets = idle USDC + outstanding (principal advanced, not
-/// yet repaid). An advance moves `net` from idle to outstanding (NAV flat); a
-/// repay brings the gross back in (NAV up by the fee); a write-off drops the
-/// outstanding with no cash in (NAV down by the lost principal).
+/// Idle USDC (not currently advanced) is parked in an external yield vault
+/// (USYC adapter) so it earns a baseline return on top of the financing fees.
+/// The vault is optional: with no vault set the pool behaves exactly as a plain
+/// USDC reserve. `setYieldVault` swaps the adapter (mock today, real USYC later)
+/// with no pool redeploy.
+///
+/// Accounting: totalAssets = idle + outstanding. `idle` = the pool's redeemable
+/// value in the vault (previewRedeem) plus any un-invested USDC buffer.
+///   - advance:   moves `net` from idle to outstanding (NAV flat).
+///   - repay:     escrow sends the gross back first; outstanding drops by net,
+///                idle rises by gross => NAV up by the fee.
+///   - write-off: outstanding drops with no cash in => NAV down by the loss.
+///   - vault yield: previewRedeem grows over time => idle (and NAV) rise.
 contract FinancingPool is IFinancingPool {
     address public owner;
     address public escrow;
     IERC20 public immutable usdc;
+
+    /// Yield vault for idle USDC (0 => hold USDC directly, no yield).
+    IYieldVault public yieldVault;
+    /// Our share balance in `yieldVault` (the pool's parked idle).
+    uint256 public vaultShares;
 
     /// fee in bps by tier index; index >= length uses the last entry.
     /// default: tier0 -> 3%, tier1 -> 2%, tier2+ -> 1%.
@@ -31,6 +46,7 @@ contract FinancingPool is IFinancingPool {
     mapping(uint256 => uint256) public advanceNet; // tradeId => net advanced
 
     event EscrowSet(address indexed escrow);
+    event YieldVaultSet(address indexed vault);
     event Deposit(address indexed lp, uint256 assets, uint256 shares);
     event Withdraw(address indexed lp, uint256 assets, uint256 shares);
     event Advanced(uint256 indexed tradeId, address indexed seller, uint256 net, uint256 fee, uint8 tier);
@@ -65,16 +81,40 @@ contract FinancingPool is IFinancingPool {
         emit EscrowSet(e);
     }
 
+    /// @notice Point idle USDC at a yield vault. Divests fully from any prior
+    /// vault first, then parks the current USDC buffer into the new one.
+    function setYieldVault(address v) external onlyOwner {
+        if (address(yieldVault) != address(0) && vaultShares > 0) {
+            yieldVault.redeem(vaultShares);
+            vaultShares = 0;
+        }
+        yieldVault = IYieldVault(v);
+        _invest();
+        emit YieldVaultSet(v);
+    }
+
     function setFeeTiers(uint16[] calldata f) external onlyOwner {
         delete feeBpsByTier;
         for (uint256 i; i < f.length; ++i) feeBpsByTier.push(f[i]);
     }
 
+    /// @notice Park any stray USDC buffer (e.g. the escrow's pool-yield split)
+    /// into the vault. Permissionless — it only ever moves the pool's own USDC
+    /// into the pool's own vault position.
+    function sweep() external {
+        _invest();
+    }
+
     // -------------------------------------------------------------- views -----
 
-    /// @notice Idle USDC available to advance or withdraw right now.
+    /// @notice Idle USDC available to advance or withdraw right now — the pool's
+    /// redeemable value in the vault plus any un-invested buffer.
     function idle() public view returns (uint256) {
-        return usdc.balanceOf(address(this));
+        uint256 buffer = usdc.balanceOf(address(this));
+        if (address(yieldVault) != address(0) && vaultShares > 0) {
+            return buffer + yieldVault.previewRedeem(vaultShares);
+        }
+        return buffer;
     }
 
     /// @notice Total assets backing the shares = idle + deployed principal.
@@ -102,6 +142,7 @@ contract FinancingPool is IFinancingPool {
         usdc.transferFrom(msg.sender, address(this), assets);
         shares[msg.sender] += minted;
         totalShares += minted;
+        _invest(); // park the new USDC into the yield vault
         emit Deposit(msg.sender, assets, minted);
     }
 
@@ -113,6 +154,7 @@ contract FinancingPool is IFinancingPool {
         if (assets > idle()) revert InsufficientLiquidity();
         shares[msg.sender] -= shareAmount; // reverts on overflow if too many
         totalShares -= shareAmount;
+        _divest(assets); // pull enough USDC out of the vault to pay out
         usdc.transfer(msg.sender, assets);
         emit Withdraw(msg.sender, assets, shareAmount);
     }
@@ -135,17 +177,19 @@ contract FinancingPool is IFinancingPool {
         if (net > idle()) revert InsufficientLiquidity();
         advanceNet[tradeId] = net;
         outstanding += net;
+        _divest(net); // free up USDC to pay the seller
         usdc.transfer(seller, net);
         emit Advanced(tradeId, seller, net, fee, buyerTier);
     }
 
     /// @notice Clear a trade's outstanding principal. The escrow transfers the
     /// gross (amount) here first, so idle rises by gross while outstanding falls
-    /// by net — NAV gains the fee.
+    /// by net — NAV gains the fee. The incoming gross is parked into the vault.
     function repay(uint256 tradeId) external onlyEscrow {
         uint256 net = advanceNet[tradeId];
         delete advanceNet[tradeId];
         outstanding -= net;
+        _invest(); // park the repaid gross (principal + fee) into the vault
         emit Repaid(tradeId, net);
     }
 
@@ -156,5 +200,32 @@ contract FinancingPool is IFinancingPool {
         delete advanceNet[tradeId];
         outstanding -= net;
         emit WrittenOff(tradeId, net);
+    }
+
+    // ------------------------------------------------------ vault helpers -----
+
+    /// Deposit the entire USDC buffer into the yield vault.
+    function _invest() internal {
+        if (address(yieldVault) == address(0)) return;
+        uint256 bal = usdc.balanceOf(address(this));
+        if (bal == 0) return;
+        usdc.approve(address(yieldVault), bal);
+        vaultShares += yieldVault.deposit(bal);
+    }
+
+    /// Redeem enough shares so the USDC buffer covers `need`. Rounds shares up so
+    /// we never come up short on the payout (any surplus stays as buffer and is
+    /// re-invested on the next deposit/repay/sweep).
+    function _divest(uint256 need) internal {
+        if (address(yieldVault) == address(0)) return;
+        uint256 bal = usdc.balanceOf(address(this));
+        if (bal >= need) return;
+        uint256 short = need - bal;
+        uint256 vaultAssets = yieldVault.previewRedeem(vaultShares);
+        if (vaultAssets == 0) return;
+        uint256 toRedeem = (short * vaultShares + vaultAssets - 1) / vaultAssets; // ceil
+        if (toRedeem > vaultShares) toRedeem = vaultShares;
+        vaultShares -= toRedeem;
+        yieldVault.redeem(toRedeem);
     }
 }

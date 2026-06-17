@@ -252,6 +252,36 @@ db.exec(`
     indexed_at   TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (tx_hash, log_index)
   );
+  -- LP deposit/withdraw events on the FinancingPool, for the activity feed.
+  -- Indexed alongside trades so the feed serves from the DB (no per-request
+  -- chain scan). block_time is unix ms; kind: 'pool-deposit' | 'pool-withdraw'.
+  CREATE TABLE IF NOT EXISTS pool_events (
+    lp           TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    assets_raw   TEXT NOT NULL,
+    shares_raw   TEXT NOT NULL,
+    block_number INTEGER NOT NULL,
+    block_time   INTEGER,
+    tx_hash      TEXT NOT NULL,
+    log_index    INTEGER NOT NULL,
+    indexed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tx_hash, log_index)
+  );
+  -- Read-state for notifications/activity, keyed by wallet address so unread
+  -- counts stay in sync across a user's devices (was localStorage-only).
+  CREATE TABLE IF NOT EXISTS notif_reads (
+    address    TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    read_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (address, key)
+  );
+  -- Periodic NAV snapshots (share price over time) so we can show 24h / 7d
+  -- yield. The RPC prunes historical state, so we can't read past prices on
+  -- demand — we sample forward. ts is unix ms.
+  CREATE TABLE IF NOT EXISTS pool_nav_snapshots (
+    ts           INTEGER PRIMARY KEY,
+    share_price  REAL NOT NULL
+  );
   -- Pending auto-reveals for the auto-reveal agent. An evaluator who opts in at
   -- commit time hands us (vote, secret); the agent reveals on their behalf once
   -- the reveal window opens, via the operator wallet. One row per

@@ -1,7 +1,8 @@
 import type { FastifyBaseLogger } from 'fastify';
-import { parseEventLogs } from 'viem';
+import { parseEventLogs, type Abi } from 'viem';
 import { arcClient } from './arc.js';
 import { tradeEscrowAbi } from './abis/trade-escrow.js';
+import { financingPoolAbi } from './abis/financing-pool.js';
 import { db, getIndexerState, setIndexerState } from './db.js';
 
 // Indexes every TradeEscrow event:
@@ -11,10 +12,14 @@ import { db, getIndexerState, setIndexerState } from './db.js';
 // INSERT OR IGNORE (idempotent on re-index).
 
 const ESCROW = (process.env.TRADE_ESCROW_ADDRESS ?? '') as `0x${string}`;
+const POOL = (process.env.FINANCING_POOL_ADDRESS ?? '') as `0x${string}`;
 const DEPLOY_BLOCK = BigInt(process.env.TRADE_ESCROW_DEPLOY_BLOCK ?? '45662878');
 const POLL_INTERVAL_MS = Number(process.env.TRADE_INDEXER_POLL_MS ?? 10_000);
 const MAX_BLOCKS_PER_QUERY = 5_000n;
 const LAST_BLOCK_KEY = 'trade_index:last_block';
+const POOL_LAST_BLOCK_KEY = 'pool_index:last_block';
+const NAV_SNAPSHOT_KEY = 'pool_nav:last_ts';
+const NAV_SNAPSHOT_INTERVAL_MS = 3_600_000; // hourly
 
 const insertTrade = db.prepare(
   `INSERT OR IGNORE INTO trade_index (trade_id, buyer, seller, created_block, tx_hash)
@@ -23,6 +28,13 @@ const insertTrade = db.prepare(
 const insertEvent = db.prepare(
   `INSERT OR IGNORE INTO trade_events (trade_id, kind, actor, amount_raw, block_number, tx_hash, log_index)
    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+);
+const insertPoolEvent = db.prepare(
+  `INSERT OR IGNORE INTO pool_events (lp, kind, assets_raw, shares_raw, block_number, block_time, tx_hash, log_index)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+);
+const insertNavSnapshot = db.prepare(
+  `INSERT OR REPLACE INTO pool_nav_snapshots (ts, share_price) VALUES (?, ?)`,
 );
 
 // Pull the acting address + a relevant amount out of an event's args, whatever shape it is.
@@ -41,7 +53,6 @@ async function tick(log: FastifyBaseLogger): Promise<void> {
   const head = await arcClient.getBlockNumber();
   const last = getIndexerState(LAST_BLOCK_KEY);
   let from = last ? BigInt(last) + 1n : DEPLOY_BLOCK;
-  if (from > head) return;
 
   let trades = 0;
   let events = 0;
@@ -81,7 +92,67 @@ async function tick(log: FastifyBaseLogger): Promise<void> {
     setIndexerState(LAST_BLOCK_KEY, to.toString());
     from = to + 1n;
   }
-  if (trades > 0 || events > 0) log.info({ trades, events, head: head.toString() }, 'trade indexer caught up');
+
+  // FinancingPool LP events → pool_events. Independent checkpoint so it
+  // backfills from the deploy block even though the escrow checkpoint has
+  // already advanced past the user's earlier deposits.
+  const poolEvents = POOL ? await tickPool(head) : 0;
+  if (POOL) await maybeSnapshotNav();
+
+  if (trades > 0 || events > 0 || poolEvents > 0) log.info({ trades, events, poolEvents, head: head.toString() }, 'trade indexer caught up');
+}
+
+// Sample the pool's share price at most once an hour for the 24h / 7d yield.
+async function maybeSnapshotNav(): Promise<void> {
+  const lastTs = Number(getIndexerState(NAV_SNAPSHOT_KEY) ?? '0');
+  if (Date.now() - lastTs < NAV_SNAPSHOT_INTERVAL_MS) return;
+  const [ta, ts] = (await Promise.all([
+    arcClient.readContract({ address: POOL, abi: financingPoolAbi as Abi, functionName: 'totalAssets' }),
+    arcClient.readContract({ address: POOL, abi: financingPoolAbi as Abi, functionName: 'totalShares' }),
+  ])) as [bigint, bigint];
+  const price = ts > 0n ? Number(ta) / Number(ts) : 1;
+  const now = Date.now();
+  insertNavSnapshot.run(now, price);
+  setIndexerState(NAV_SNAPSHOT_KEY, String(now));
+}
+
+// Scan FinancingPool Deposit/Withdraw from the pool's own checkpoint up to
+// `head`, writing pool_events. Returns the number of new rows.
+async function tickPool(head: bigint): Promise<number> {
+  const last = getIndexerState(POOL_LAST_BLOCK_KEY);
+  let from = last ? BigInt(last) + 1n : DEPLOY_BLOCK;
+  let inserted = 0;
+  while (from <= head) {
+    const to = from + MAX_BLOCKS_PER_QUERY - 1n > head ? head : from + MAX_BLOCKS_PER_QUERY - 1n;
+    const logs = await arcClient.getLogs({ address: POOL, fromBlock: from, toBlock: to });
+    const lpEvents = parseEventLogs({ abi: financingPoolAbi as Abi, logs }).filter(
+      (ev) => ev.eventName === 'Deposit' || ev.eventName === 'Withdraw',
+    );
+    const tsByBlock = new Map<bigint, number>();
+    await Promise.all(
+      [...new Set(lpEvents.map((ev) => ev.blockNumber))].map(async (b) => {
+        const blk = await arcClient.getBlock({ blockNumber: b });
+        tsByBlock.set(b, Number(blk.timestamp) * 1000);
+      }),
+    );
+    for (const ev of lpEvents) {
+      const a = ev.args as { lp: string; assets: bigint; shares: bigint };
+      const r = insertPoolEvent.run(
+        a.lp.toLowerCase(),
+        ev.eventName === 'Deposit' ? 'pool-deposit' : 'pool-withdraw',
+        a.assets.toString(),
+        a.shares.toString(),
+        Number(ev.blockNumber),
+        tsByBlock.get(ev.blockNumber) ?? null,
+        ev.transactionHash,
+        ev.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
+    setIndexerState(POOL_LAST_BLOCK_KEY, to.toString());
+    from = to + 1n;
+  }
+  return inserted;
 }
 
 export function startTradeIndexer(log: FastifyBaseLogger): void {
