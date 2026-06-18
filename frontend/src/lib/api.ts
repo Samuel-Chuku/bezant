@@ -53,6 +53,85 @@ export function isApiError(err: unknown): err is Error & { status: number } {
   return err instanceof Error && typeof (err as { status?: unknown }).status === 'number';
 }
 
+// ── Circle Gateway: optional cross-chain seller payout ──────────────────────
+
+export type GatewayDestination = {
+  key: string;
+  name: string;
+  domain: number;
+  chainId: number;
+  usdc: string;
+  supported: boolean;
+};
+
+// Burn-intent message — numeric fields arrive as strings over JSON. uint32
+// fields (version/domains) arrive as numbers. The wallet signs a bigint copy;
+// this exact object is submitted back unchanged.
+export type GatewayBurnMessage = {
+  maxBlockHeight: string;
+  maxFee: string;
+  spec: Record<string, string | number>;
+};
+
+export type GatewayPayoutPlan = {
+  tradeId: string;
+  seller: string;
+  destination: { key: string; name: string; domain: number; chainId: number };
+  amountUsdc: string;
+  recipient: string;
+  contracts: { gatewayWallet: `0x${string}`; arcUsdc: `0x${string}` };
+  unifiedBalanceUsdc: string;
+  needsDeposit: boolean;
+  depositUsdc: string;
+  requiredUsdc: string;
+  typedData: {
+    domain: { name: string; version: string };
+    types: Record<string, ReadonlyArray<{ name: string; type: string }>>;
+    primaryType: string;
+    message: GatewayBurnMessage;
+  };
+};
+
+export type GatewayPayoutResult = {
+  tradeId: string;
+  destination: { key: string; name: string; domain: number };
+  recipient: string;
+  attestationId?: string;
+  mintTxHash: string;
+  recipientBefore: string;
+  recipientAfter: string;
+  deliveredUsdc: string;
+};
+
+export async function getGatewayDestinations(): Promise<GatewayDestination[]> {
+  const res = await jsonFetch<{ destinations: GatewayDestination[] }>('GET', '/arc/gateway/destinations');
+  return res.destinations;
+}
+
+export async function getGatewayBalance(address: string): Promise<string> {
+  const res = await jsonFetch<{ unifiedBalanceUsdc: string }>('GET', `/arc/gateway/balance?address=${encodeURIComponent(address)}`);
+  return res.unifiedBalanceUsdc;
+}
+
+export async function getGatewayPayoutPlan(
+  tradeId: string,
+  destinationKey: string,
+  opts?: { amountUsdc?: string; recipient?: string },
+): Promise<GatewayPayoutPlan> {
+  const q = new URLSearchParams({ destinationKey });
+  if (opts?.amountUsdc) q.set('amountUsdc', opts.amountUsdc);
+  if (opts?.recipient) q.set('recipient', opts.recipient);
+  return jsonFetch<GatewayPayoutPlan>('GET', `/arc/trade/${encodeURIComponent(tradeId)}/payout/plan?${q.toString()}`);
+}
+
+export async function submitGatewayPayout(
+  tradeId: string,
+  message: GatewayBurnMessage,
+  signature: `0x${string}`,
+): Promise<GatewayPayoutResult> {
+  return jsonFetch<GatewayPayoutResult>('POST', `/arc/trade/${encodeURIComponent(tradeId)}/payout/submit`, { message, signature });
+}
+
 export async function getUserByAddress(address: string): Promise<UserRecord | null> {
   try {
     return await jsonFetch<UserRecord>('GET', `/users/by-address/${encodeURIComponent(address)}`);

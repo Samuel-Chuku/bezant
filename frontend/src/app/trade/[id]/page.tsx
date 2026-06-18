@@ -11,6 +11,7 @@ import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { BridgeWidget } from '@/components/bridge-widget';
+import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
   getTrade,
@@ -430,9 +431,12 @@ export default function TradeDetailPage() {
             )}
 
             {trade.status === 'Released' && (
-              <p className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm text-emerald-200">
-                Settled — funds released to the seller and the buyer&apos;s credit passport updated.
-              </p>
+              <div className="space-y-3">
+                <p className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm text-emerald-200">
+                  Settled — funds released to the seller and the buyer&apos;s credit passport updated.
+                </p>
+                <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} />
+              </div>
             )}
             {trade.status === 'Cancelled' && <Waiting>This trade was cancelled before funding.</Waiting>}
             {trade.status === 'Refunded' && <Waiting>Refunded to the buyer (no attestation by the deadline).</Waiting>}

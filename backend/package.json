@@ -11,7 +11,8 @@
     "smoke:dispute": "tsx scripts/smoke-dispute.ts",
     "demo:progressive": "tsx scripts/demo-progressive.ts",
     "gateway:poc": "tsx scripts/gateway-poc.ts",
-    "gateway:poc:operator": "tsx scripts/gateway-poc-operator.ts"
+    "gateway:poc:operator": "tsx scripts/gateway-poc-operator.ts",
+    "smoke:gateway-payout": "tsx scripts/smoke-gateway-payout.ts"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^7.0.0",

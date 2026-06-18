@@ -46,6 +46,7 @@ import {
 } from './lib/db.js';
 import { tradeEscrowAbi } from './lib/abis/trade-escrow.js';
 import { financingPoolAbi } from './lib/abis/financing-pool.js';
+import { listGatewayDestinations, buildPayoutPlan, submitTransferAndRelayMint, gatewayUnifiedBalance } from './lib/gateway.js';
 import {
   TRADE_ESCROW_ADDRESS,
   getTrade,
@@ -2765,6 +2766,86 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (req
     alreadyAdvanced: t.financingAdvanced,
   };
 });
+
+// Gateway destination chains the seller can route their payout to. The escrow
+// always pays on Arc; this is the OPTIONAL cross-chain leg via Circle Gateway.
+app.get('/arc/gateway/destinations', async (_request, reply) => {
+  try {
+    return { destinations: await listGatewayDestinations() };
+  } catch (err) {
+    return reply.code(502).send({ error: `Gateway /info unavailable: ${err instanceof Error ? err.message : String(err)}` });
+  }
+});
+
+// Seller's Arc Gateway unified balance — polled by the frontend after a deposit
+// to know when Gateway has credited it (before signing the burn intent).
+app.get<{ Querystring: { address?: string } }>('/arc/gateway/balance', async (request, reply) => {
+  const address = request.query.address;
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x) is required' });
+  try {
+    return { address, unifiedBalanceUsdc: (await gatewayUnifiedBalance(address as `0x${string}`)).toString() };
+  } catch (err) {
+    return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// Optional cross-chain payout — PRIMARY (external-wallet, client-signed) flow.
+// The escrow already paid the seller on Arc; this moves funds they hold. The
+// seller's own wallet does approve + deposit + the EIP-712 burn-intent signature
+// client-side; the backend only builds the plan and relays the destination mint.
+//
+// 1) GET /payout/plan → deposit sizing + the typed data to sign.
+app.get<{ Params: { id: string }; Querystring: { destinationKey?: string; amountUsdc?: string; recipient?: string } }>(
+  '/arc/trade/:id/payout/plan',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const { destinationKey, amountUsdc, recipient } = request.query;
+    if (!destinationKey) return reply.code(400).send({ error: 'destinationKey query param is required' });
+    if (recipient && !/^0x[0-9a-fA-F]{40}$/.test(recipient)) return reply.code(400).send({ error: 'recipient must be a 0x address' });
+
+    const t = await getTrade(BigInt(request.params.id));
+    if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released' — nothing settled to route yet` });
+    const amount = amountUsdc ?? formatUnits(t.amount, 6);
+
+    try {
+      const plan = await buildPayoutPlan({
+        depositorAddress: t.seller as `0x${string}`,
+        destinationKey,
+        recipient: (recipient ?? t.seller) as `0x${string}`,
+        amountUsdc: amount,
+      });
+      return { tradeId: request.params.id, seller: t.seller, ...plan };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// 2) POST /payout/submit → the seller's signed burn intent; backend gets the
+//    attestation and relays the destination mint.
+app.post<{ Params: { id: string }; Body: { message?: any; signature?: string } }>(
+  '/arc/trade/:id/payout/submit',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const { message, signature } = request.body ?? {};
+    if (!message?.spec || !signature) return reply.code(400).send({ error: 'message and signature are required' });
+
+    const t = await getTrade(BigInt(request.params.id));
+    if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released'` });
+    // Only relay the seller's own intent (sourceDepositor must be the seller).
+    const depositor = '0x' + String(message.spec.sourceDepositor).slice(-40);
+    if (depositor.toLowerCase() !== t.seller.toLowerCase()) {
+      return reply.code(403).send({ error: 'burn intent sourceDepositor is not the trade seller' });
+    }
+
+    try {
+      const result = await submitTransferAndRelayMint(message, signature as `0x${string}`);
+      return { tradeId: request.params.id, ...result };
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
 
 // Seed the pool from the operator (treasury) wallet — operator becomes an LP.
 app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {

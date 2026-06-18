@@ -7,6 +7,7 @@ import {
   usePublicClient,
   useSendTransaction,
   useSignMessage,
+  useSignTypedData,
 } from 'wagmi';
 import { arcTestnet } from '@/lib/chains';
 import { useCircleAccount } from './use-circle-account';
@@ -25,12 +26,21 @@ export type SendCallResult = {
   wait: () => Promise<{ txHash: Hex; status: 'success' | 'reverted' }>;
 };
 
+// EIP-712 payload for signTypedData (kept loose — viem validates at runtime).
+export type TypedDataParam = {
+  domain: Record<string, unknown>;
+  types: Record<string, ReadonlyArray<{ name: string; type: string }>>;
+  primaryType: string;
+  message: Record<string, unknown>;
+};
+
 type ConnectedState = {
   isConnected: true;
   mode: SignerMode;
   address: Address;
   sendCall: (params: SendCallParams) => Promise<SendCallResult>;
   signMessage: (message: string) => Promise<Hex>;
+  signTypedData: (data: TypedDataParam) => Promise<Hex>;
   disconnect: () => void;
 };
 
@@ -40,6 +50,7 @@ type DisconnectedState = {
   address: undefined;
   sendCall: undefined;
   signMessage: undefined;
+  signTypedData: undefined;
   disconnect: undefined;
 };
 
@@ -52,6 +63,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
   const wagmiPublic = usePublicClient({ chainId: arcTestnet.id });
   const { sendTransactionAsync } = useSendTransaction();
   const { signMessageAsync: wagmiSignMessageAsync } = useSignMessage();
+  const { signTypedDataAsync: wagmiSignTypedDataAsync } = useSignTypedData();
   const { disconnect: wagmiDisconnect } = useDisconnect();
 
   // Circle Modular Wallets — passkey-backed smart account.
@@ -90,6 +102,9 @@ export function useSigner(): ConnectedState | DisconnectedState {
         };
       },
       signMessage: async (message) => wagmiSignMessageAsync({ message }),
+      // EOA → plain ECDSA signature, which Circle Gateway's burn-intent
+      // verification accepts. Used for the cross-chain payout.
+      signTypedData: async (data) => wagmiSignTypedDataAsync(data as never),
       disconnect: () => wagmiDisconnect(),
     };
   }
@@ -126,6 +141,11 @@ export function useSigner(): ConnectedState | DisconnectedState {
       // isValidSignature, so the smart account must already be deployed
       // (true for any address that's already a party on a pact).
       signMessage: async (message) => smartAccount.signMessage({ message }),
+      // Smart-account EIP-712 sig is ERC-1271, which Gateway's burn-intent
+      // verification doesn't accept yet — gate the cross-chain payout to EOAs.
+      signTypedData: async () => {
+        throw new Error('Cross-chain payout from a passkey (Circle Modular) wallet isn’t supported yet — connect an external wallet to route your payout to another chain.');
+      },
       disconnect: () => circle.disconnect(),
     };
   }
@@ -136,6 +156,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
     address: undefined,
     sendCall: undefined,
     signMessage: undefined,
+    signTypedData: undefined,
     disconnect: undefined,
   };
 }
