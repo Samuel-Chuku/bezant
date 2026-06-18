@@ -285,8 +285,16 @@ async function main() {
   const before = await dstPublic.readContract({ address: DEST.usdc, abi: ERC20_ABI, functionName: 'balanceOf', args: [recipient] });
   const mintTx = await dstWallet.writeContract({ address: GATEWAY_MINTER, abi: GATEWAY_MINTER_ABI, functionName: 'gatewayMint', args: [transfer.attestation, transfer.signature] });
   const receipt = await dstPublic.waitForTransactionReceipt({ hash: mintTx });
+  if (receipt.status !== 'success') throw new Error(`gatewayMint reverted on ${DEST.name}  ${mintTx}`);
   ok(`gatewayMint mined in block ${receipt.blockNumber}  ${DIM}${mintTx}${RESET}`);
-  const after = await dstPublic.readContract({ address: DEST.usdc, abi: ERC20_ABI, functionName: 'balanceOf', args: [recipient] });
+
+  // Load-balanced RPCs can briefly serve state from a lagging node, so poll the
+  // recipient balance until it reflects the mint instead of reading once.
+  let after = before;
+  for (let i = 0; i < 10 && after <= before; i++) {
+    await sleep(2000);
+    after = await dstPublic.readContract({ address: DEST.usdc, abi: ERC20_ABI, functionName: 'balanceOf', args: [recipient] });
+  }
   const delta = after - before;
 
   if (delta <= 0n) throw new Error(`Recipient USDC did not increase on ${DEST.name} (before ${formatUnits(before, 6)}, after ${formatUnits(after, 6)}).`);
