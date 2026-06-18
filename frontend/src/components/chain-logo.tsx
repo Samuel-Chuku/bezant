@@ -72,6 +72,23 @@ export function BaseLogo({ className }: Props) {
   );
 }
 
+export function AvalancheLogo({ className }: Props) {
+  // Avalanche "A" — a large right triangle and a smaller left one, white on red.
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
+      <circle cx="16" cy="16" r="16" fill="#E84142" />
+      <path
+        fill="#fff"
+        d="M20.5 22h2.8c.6 0 .9-.6.6-1.1l-6.6-11.5a.9.9 0 0 0-1.6 0l-1.4 2.4c-.2.3-.2.7 0 1.1l4.9 8.6c.2.3.5.5.9.5h.4Z"
+      />
+      <path
+        fill="#fff"
+        d="M12.2 16.5 8.5 22c-.3.5 0 1.1.6 1.1h7.4c.6 0 .9-.6.6-1.1l-3.7-5.5a.6.6 0 0 0-1.1 0Z"
+      />
+    </svg>
+  );
+}
+
 export function SolanaLogo({ className }: Props) {
   // Three diagonal bars on Solana's purple→teal gradient. The brand mark
   // looks like three angled stripes nested inside a rounded square.
@@ -106,11 +123,15 @@ export function ArcChainBadge({ className }: Props) {
   );
 }
 
+// Bridge source keys plus Avalanche Fuji (a Gateway payout destination that
+// isn't a bridge source, so it's not in BridgeSource['key']).
+export type ChainLogoKey = BridgeSource['key'] | 'avalancheFuji';
+
 export function ChainLogo({
   sourceKey,
   className,
 }: {
-  sourceKey: BridgeSource['key'];
+  sourceKey: ChainLogoKey;
   className?: string;
 }) {
   switch (sourceKey) {
@@ -122,9 +143,13 @@ export function ChainLogo({
       return <ArbitrumLogo className={className} />;
     case 'baseSepolia':
       return <BaseLogo className={className} />;
+    case 'avalancheFuji':
+      return <AvalancheLogo className={className} />;
     case 'arcTestnet':
       return <ArcChainBadge className={className} />;
     case 'solanaDevnet':
       return <SolanaLogo className={className} />;
+    default:
+      return null;
   }
 }
