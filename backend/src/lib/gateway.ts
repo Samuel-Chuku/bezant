@@ -24,7 +24,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { randomBytes } from 'node:crypto';
-import { sepolia, optimismSepolia, arbitrumSepolia, baseSepolia } from 'viem/chains';
+import { sepolia, optimismSepolia, arbitrumSepolia, baseSepolia, avalancheFuji } from 'viem/chains';
 import { arcClient, USDC_ADDRESS as ARC_USDC } from './arc.js';
 
 export const GATEWAY_API = process.env.GATEWAY_API_BASE_URL ?? 'https://gateway-api-testnet.circle.com/v1';
@@ -44,6 +44,7 @@ const MAX_FEE = parseUnits('0.1', 6); // generous ceiling; actual fee far smalle
 export type GatewayDestination = { key: string; name: string; domain: number; chainId: number; usdc: Address; chain: Chain };
 export const GATEWAY_DESTINATIONS: GatewayDestination[] = [
   { key: 'baseSepolia', name: 'Base Sepolia', domain: 6, chainId: baseSepolia.id, usdc: getAddress('0x036CbD53842c5426634e7929541eC2318f3dCF7e'), chain: baseSepolia },
+  { key: 'avalancheFuji', name: 'Avalanche Fuji', domain: 1, chainId: avalancheFuji.id, usdc: getAddress('0x5425890298aed601595a70AB815c96711a31Bc65'), chain: avalancheFuji },
   { key: 'arbitrumSepolia', name: 'Arbitrum Sepolia', domain: 3, chainId: arbitrumSepolia.id, usdc: getAddress('0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'), chain: arbitrumSepolia },
   { key: 'optimismSepolia', name: 'OP Sepolia', domain: 2, chainId: optimismSepolia.id, usdc: getAddress('0x5fd84259d66Cd46123540766Be93DFE6D43130D7'), chain: optimismSepolia },
   { key: 'sepolia', name: 'Ethereum Sepolia', domain: 0, chainId: sepolia.id, usdc: getAddress('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'), chain: sepolia },
