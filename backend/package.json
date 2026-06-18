@@ -9,7 +9,8 @@
     "smoke:escrow": "tsx scripts/smoke-escrow.ts",
     "smoke:trade": "tsx scripts/smoke-trade.ts",
     "smoke:dispute": "tsx scripts/smoke-dispute.ts",
-    "demo:progressive": "tsx scripts/demo-progressive.ts"
+    "demo:progressive": "tsx scripts/demo-progressive.ts",
+    "gateway:poc": "tsx scripts/gateway-poc.ts"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^7.0.0",
