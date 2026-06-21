@@ -222,7 +222,7 @@ export default function TradeDetailPage() {
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-5xl px-6 py-16">
       <Link href="/trade" className="text-xs text-neutral-500 hover:text-neutral-100">
         ← my trades
       </Link>

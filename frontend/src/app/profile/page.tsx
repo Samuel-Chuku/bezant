@@ -25,7 +25,7 @@ export default function ProfilePage() {
 
   if (!signer.isConnected) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16">
+      <main className="mx-auto max-w-5xl px-6 py-16">
         <h1 className="text-3xl font-semibold tracking-tight">Profile</h1>
         <p className="mt-6 text-sm text-neutral-400">
           Connect a wallet or sign in to see your profile.{' '}
@@ -38,7 +38,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-5xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Profile</h1>
 
       <div className="mt-6 space-y-6">
@@ -203,8 +203,8 @@ function RecentActivity() {
         <p className="mt-3 text-sm text-neutral-400">No activity yet.</p>
       ) : (
         <ul className="mt-3 divide-y divide-neutral-800/70">
-          {recent.map((it) => (
-            <ActivityRow key={it.key} item={it} onClick={() => router.push(it.href ?? '/activity')} />
+          {recent.map((it, i) => (
+            <ActivityRow key={`${it.key}-${i}`} item={it} onClick={() => router.push(it.href ?? '/activity')} />
           ))}
         </ul>
       )}

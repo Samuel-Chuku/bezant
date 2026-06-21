@@ -97,7 +97,7 @@ export default function CreateTradePage() {
   const isBusy = submission.status === 'resolving' || submission.status === 'signing' || submission.status === 'waiting';
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-3xl px-6 py-16">
       <header className="mb-8">
         <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
           ← back

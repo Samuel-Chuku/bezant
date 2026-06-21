@@ -40,7 +40,7 @@ export default function TradesPage() {
   }, [load]);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-5xl px-6 py-16">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-semibold tracking-tight">Trades</h1>
         <Link href="/trade/create" className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900">

@@ -40,7 +40,7 @@ export default function ActivityPage() {
   const shown = useMemo(() => items.filter((it) => matches(it, filter)), [items, filter]);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-12">
+    <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-6 flex items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Activities</h1>
@@ -132,9 +132,9 @@ export default function ActivityPage() {
 
       {shown.length > 0 && (
         <ul className="space-y-2">
-          {shown.map((item) => (
+          {shown.map((item, i) => (
             <ActivityCard
-              key={item.key}
+              key={`${item.key}-${i}`}
               item={item}
               onOpen={() => {
                 markRead(item.key);
