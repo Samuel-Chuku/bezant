@@ -12,14 +12,25 @@ import { MobileDrawer, type NavItem } from './mobile-drawer';
 import { NotificationsBell } from './notifications-bell';
 import { WalletPill } from './wallet-pill';
 
-// Mobile drawer (flat list). Desktop renders a Trades hover menu + My trades.
-const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Home' },
+// "Trades" is a dropdown housing both sub-actions, so there's no separate
+// top-level "New trade" item.
+const TRADE_LINKS: NavItem[] = [
   { href: '/trade/create', label: 'New trade' },
   { href: '/trade', label: 'My trades' },
+];
+
+// Desktop destinations that flank the Trades dropdown.
+const PRIMARY_AFTER: NavItem[] = [
   { href: '/pool', label: 'Pool' },
   { href: '/bridge', label: 'Bridge' },
   { href: '/profile', label: 'Profile' },
+];
+
+// Mobile drawer is a flat list — expand the Trades group inline.
+const NAV_ITEMS: NavItem[] = [
+  { href: '/', label: 'Home' },
+  ...TRADE_LINKS,
+  ...PRIMARY_AFTER,
   // Parked (pact/wrapper era) — pages still live in the repo, just unlinked from
   // nav while the standalone trade flow is the active product. Restore as needed.
   // { href: '/create', label: 'Create' },
@@ -39,6 +50,47 @@ function NavLink({ href, label, active }: { href: string; label: string; active:
     >
       {label}
     </Link>
+  );
+}
+
+// Desktop-only "Trades" dropdown: opens on hover or click, houses New trade +
+// My trades. Stays highlighted on any /trade* route.
+function TradesMenu({ pathname }: { pathname: string }) {
+  const [open, setOpen] = useState(false);
+  const active = pathname.startsWith('/trade');
+  return (
+    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={[
+          'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
+          active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
+        ].join(' ')}
+      >
+        Trades
+        <svg className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div role="menu" className="absolute left-0 top-full z-30 mt-1 min-w-44 rounded-lg border border-neutral-800 bg-neutral-950 p-1 shadow-xl">
+          {TRADE_LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block rounded-md px-3 py-2 text-sm text-neutral-300 transition hover:bg-neutral-900 hover:text-neutral-100"
+            >
+              {l.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -80,11 +132,10 @@ export function TopNav() {
 
           <nav className="hidden flex-1 items-center gap-1 md:flex">
             <NavLink href="/" label="Home" active={pathname === '/'} />
-            <NavLink href="/trade/create" label="New trade" active={pathname === '/trade/create'} />
-            <NavLink href="/trade" label="My trades" active={pathname === '/trade'} />
-            <NavLink href="/pool" label="Pool" active={pathname === '/pool'} />
-            <NavLink href="/bridge" label="Bridge" active={pathname === '/bridge'} />
-            <NavLink href="/profile" label="Profile" active={pathname === '/profile'} />
+            <TradesMenu pathname={pathname} />
+            {PRIMARY_AFTER.map((item) => (
+              <NavLink key={item.href} href={item.href} label={item.label} active={pathname.startsWith(item.href)} />
+            ))}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">

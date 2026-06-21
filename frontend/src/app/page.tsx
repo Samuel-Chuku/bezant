@@ -15,7 +15,7 @@ export default function Home() {
   const displayName = user?.handle ?? (signer.isConnected ? shortAddress(signer.address) : null);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-5xl px-6 py-16">
       <header className="mb-12">
         <h1 className="text-4xl font-semibold tracking-tight">arc-trade</h1>
         <p className="mt-2 text-neutral-400">
