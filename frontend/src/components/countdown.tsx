@@ -73,10 +73,17 @@ function formatFine(secondsRemaining: number): string {
   return `${seconds}s`;
 }
 
-// Static chip — re-renders only when parent re-renders. Suitable for lists
-// where the user is scanning, not watching seconds tick.
+// Compact chip that ticks itself every second, so list countdowns stay live
+// even when the parent list doesn't re-render.
 export function CountdownChip({ unix, label }: { unix: number; label?: string }) {
-  const remaining = unix - Math.floor(Date.now() / 1000);
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const remaining = unix - now;
   const u = urgencyFor(remaining);
   return (
     <span

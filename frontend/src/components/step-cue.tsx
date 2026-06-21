@@ -13,7 +13,7 @@ export function StepCue({ step, compact = false }: { step: TradeStep; compact?: 
         <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-70 ${c.dot}`} />
         <span className={`relative inline-flex h-2 w-2 rounded-full ${c.dot}`} />
       </span>
-      <span className={`${compact ? 'text-xs' : 'text-sm'} ${c.text}`}>{step.line}</span>
+      <span className={`animate-pulse ${compact ? 'text-xs' : 'text-sm'} ${c.text}`}>{step.line}</span>
     </div>
   );
 }
