@@ -107,10 +107,19 @@ export default function TradeDetailPage() {
   }, [refresh]);
 
   // Poll while the trade is live so the status flips on its own (e.g. the
-  // challenge window elapsing → settled) and countdowns stay fresh.
+  // challenge window elapsing → settled) and countdowns stay fresh. After it
+  // goes terminal we keep polling briefly: the indexer writes the final
+  // Attested/Settled events a few seconds after the on-chain status flips, so
+  // stopping immediately would leave the activity timeline missing them.
   useEffect(() => {
-    if (!trade || ['Released', 'Cancelled', 'Refunded'].includes(trade.status)) return;
-    const t = setInterval(() => void refresh(), 5000);
+    if (!trade) return;
+    const terminal = ['Released', 'Cancelled', 'Refunded'].includes(trade.status);
+    let count = 0;
+    const t = setInterval(() => {
+      void refresh();
+      count += 1;
+      if (terminal && count >= 8) clearInterval(t); // ~24s of indexer catch-up
+    }, terminal ? 3000 : 5000);
     return () => clearInterval(t);
   }, [trade?.status, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
