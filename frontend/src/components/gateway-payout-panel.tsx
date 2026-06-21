@@ -1,11 +1,14 @@
 'use client';
 
-// Optional cross-chain seller payout via Circle Gateway. Shown on a settled
-// (Released) trade to the seller: the escrow already paid them on Arc; this
-// routes that USDC to another chain. Collapsed by default — a "different chain?"
-// prompt opens a logo menu. External (EOA) wallets only: the seller's own wallet
-// does approve + deposit (Arc) + the EIP-712 burn-intent signature; the backend
-// relays the destination mint.
+// Optional cross-chain seller payout via Circle Gateway. Two modes:
+//   • "prefer"  — shown while the trade is still active (Funded): the seller
+//     picks where they want to be paid; the choice is saved locally.
+//   • "settle"  — shown once Released: if a chain was pre-chosen it offers a
+//     one-click route there; otherwise the closed trade stays clean.
+// The actual transfer can only run after settlement (the funds sit in escrow
+// until then), so this is "choose early, route at settlement". External (EOA)
+// wallets only: the seller's wallet signs approve + deposit + the burn intent;
+// the backend relays the destination mint.
 import { useCallback, useEffect, useState } from 'react';
 import { encodeFunctionData, parseUnits, type Hex } from 'viem';
 import { useSigner } from '@/hooks/use-signer';
@@ -42,41 +45,70 @@ const PHASE_LABEL: Record<Exclude<Phase, 'idle' | 'done'>, string> = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }: { tradeId: string; sellerAddress: string; defaultAmountUsdc: string }) {
+// Payout-chain preference, saved locally from the active-trade step and read back
+// at settlement. Per trade + seller; no backend needed for a per-device choice.
+const prefKey = (tradeId: string, seller: string) => `arc-trade:payout-pref:${tradeId}:${seller.toLowerCase()}`;
+const readPref = (tradeId: string, seller: string): string | null => {
+  try { return localStorage.getItem(prefKey(tradeId, seller)); } catch { return null; }
+};
+const writePref = (tradeId: string, seller: string, key: string | null) => {
+  try {
+    if (key) localStorage.setItem(prefKey(tradeId, seller), key);
+    else localStorage.removeItem(prefKey(tradeId, seller));
+  } catch { /* ignore */ }
+};
+
+export function GatewayPayoutPanel({
+  tradeId,
+  sellerAddress,
+  defaultAmountUsdc,
+  mode,
+}: {
+  tradeId: string;
+  sellerAddress: string;
+  defaultAmountUsdc: string;
+  mode: 'prefer' | 'settle';
+}) {
   const signer = useSigner();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [destinations, setDestinations] = useState<GatewayDestination[]>([]);
   const [destKey, setDestKey] = useState('');
   const [amount, setAmount] = useState(defaultAmountUsdc);
+  const [pref, setPref] = useState<string | null>(null);
+  const [open, setOpen] = useState(false); // full chain picker (change / fallback)
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GatewayPayoutResult | null>(null);
   const [existing, setExisting] = useState<GatewayPayoutRecord | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  // Load any already-recorded payout so a refresh shows "done" instead of
-  // re-opening the flow (the payout is once-per-trade, enforced server-side too).
-  useEffect(() => {
-    getGatewayPayout(tradeId)
-      .then(setExisting)
-      .catch(() => {})
-      .finally(() => setLoaded(true));
-  }, [tradeId]);
-
-  useEffect(() => {
-    if (!open || destinations.length > 0) return;
-    getGatewayDestinations()
-      .then((list) => {
-        const ok = list.filter((d) => d.supported);
-        setDestinations(ok);
-        if (ok[0]) setDestKey((k) => k || ok[0].key);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, [open, destinations.length]);
-
   const isSeller = signer.isConnected && signer.address.toLowerCase() === sellerAddress.toLowerCase();
   const busy = phase !== 'idle' && phase !== 'done';
+
+  // Load supported chains once, the saved preference, and (settle mode) any
+  // already-recorded payout so a refresh shows "done" instead of re-routing.
+  useEffect(() => {
+    const p = readPref(tradeId, sellerAddress);
+    setPref(p);
+    if (p) setDestKey(p);
+    getGatewayDestinations().then((list) => setDestinations(list.filter((d) => d.supported))).catch(() => {});
+    if (mode === 'settle') {
+      getGatewayPayout(tradeId).then(setExisting).catch(() => {}).finally(() => setLoaded(true));
+    } else {
+      setLoaded(true);
+    }
+  }, [tradeId, sellerAddress, mode]);
+
+  const destName = (key: string) => destinations.find((d) => d.key === key)?.name ?? key;
+
+  const choosePref = (key: string | null) => {
+    writePref(tradeId, sellerAddress, key);
+    setPref(key);
+    if (key) {
+      setDestKey(key);
+      toast.success(`You'll be paid on ${destName(key)} after this settles.`);
+    }
+  };
 
   const run = useCallback(async () => {
     if (!signer.isConnected) return;
@@ -137,6 +169,7 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
       const res = await submitGatewayPayout(tradeId, plan.typedData.message, signature);
       setResult(res);
       setPhase('done');
+      writePref(tradeId, sellerAddress, null); // consume the preference
       toast.success(`Routed ${res.deliveredUsdc} USDC to ${res.destination.name}.`);
     } catch (err) {
       setPhase('idle');
@@ -148,6 +181,28 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
 
   if (!isSeller || !loaded) return null;
 
+  // ── Active trade: pick where to be paid (saved for settlement) ──
+  if (mode === 'prefer') {
+    return (
+      <div className="space-y-2.5 rounded-lg border border-sky-900/40 bg-sky-950/20 p-4">
+        <p className="text-sm text-sky-100">Get paid on another chain? <span className="text-neutral-500">(optional)</span></p>
+        <p className="text-xs text-neutral-500">
+          You&apos;re paid in USDC on Arc by default when this settles. Prefer another chain? Pick one now and we&apos;ll route it for you right after settlement.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <ChainChip label="Arc (default)" chainKey="arcTestnet" selected={!pref} onClick={() => choosePref(null)} />
+          {destinations.map((d) => (
+            <ChainChip key={d.key} label={d.name} chainKey={d.key as ChainLogoKey} selected={pref === d.key} onClick={() => choosePref(d.key)} />
+          ))}
+        </div>
+        {pref && (
+          <p className="text-xs text-emerald-300">✓ We&apos;ll route your payout to {destName(pref)} right after settlement.</p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Settled: complete / route to the pre-chosen chain / stay clean ──
   const done = result ?? existing;
   if (done) {
     return (
@@ -169,32 +224,58 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
     );
   }
 
-  // Collapsed prompt.
-  if (!open) {
+  // No chain pre-chosen and the picker isn't open → keep the closed trade clean,
+  // with just a subtle escape hatch.
+  if (!pref && !open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="group flex w-full items-center justify-between rounded-lg border border-sky-900/40 bg-sky-950/20 px-4 py-3 text-left text-sm text-sky-200 transition hover:border-sky-700/60 hover:bg-sky-950/40"
-      >
-        <span className="flex items-center gap-2">
-          <span aria-hidden className="text-sky-400">🌉</span>
-          Want to be paid on a different chain?
-        </span>
-        <svg className="h-4 w-4 text-sky-400 transition group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
-        </svg>
+      <button onClick={() => setOpen(true)} className="text-xs text-sky-400/80 hover:text-sky-300">
+        Receive your payout on another chain →
       </button>
     );
   }
 
+  // Pre-chosen chain → streamlined one-click route (unless the picker is open).
+  if (pref && !open) {
+    return (
+      <div className="space-y-3 rounded-lg border border-sky-900/40 bg-sky-950/20 p-4">
+        <div>
+          <p className="text-sm text-sky-100">Route your payout to another chain</p>
+          <p className="mt-1 text-xs text-neutral-500">You were paid on Arc. Send it to your chosen chain via Circle Gateway.</p>
+        </div>
+        <div className="flex items-center gap-2 rounded-md border border-sky-800/50 bg-sky-900/20 px-3 py-2 text-sm text-neutral-100">
+          <ChainLogo sourceKey={pref as ChainLogoKey} className="h-5 w-5" />
+          <span className="font-medium">{destName(pref)}</span>
+          {!busy && (
+            <button onClick={() => setOpen(true)} className="ml-auto text-xs text-sky-400 hover:text-sky-300">change</button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            Amount (USDC)
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              disabled={busy}
+              inputMode="decimal"
+              className="w-32 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+            />
+          </label>
+          <button onClick={run} disabled={busy} className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
+            {busy ? 'Routing…' : 'Route now'}
+          </button>
+        </div>
+        <RouteStatus phase={phase} error={error} signerMode={signer.isConnected ? signer.mode : null} />
+      </div>
+    );
+  }
+
+  // Full chain picker (change chain, or the fallback opened from the link).
   return (
     <div className="space-y-3 rounded-lg border border-sky-900/40 bg-sky-950/20 p-4">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-sky-100">Pick a chain to be paid on</p>
-          <p className="mt-1 text-xs text-neutral-500">
-            You were paid on Arc. Route some or all of it to another chain via Circle Gateway.
-          </p>
+          <p className="mt-1 text-xs text-neutral-500">You were paid on Arc. Route some or all of it to another chain via Circle Gateway.</p>
         </div>
         {!busy && (
           <button onClick={() => setOpen(false)} className="text-neutral-500 hover:text-neutral-300" aria-label="Close">
@@ -207,22 +288,9 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {destinations.length === 0 && <p className="col-span-full text-xs text-neutral-500">Loading chains…</p>}
-        {destinations.map((d) => {
-          const selected = destKey === d.key;
-          return (
-            <button
-              key={d.key}
-              onClick={() => setDestKey(d.key)}
-              disabled={busy}
-              className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition disabled:opacity-50 ${
-                selected ? 'border-sky-500 bg-sky-900/30 text-white' : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
-              }`}
-            >
-              <ChainLogo sourceKey={d.key as ChainLogoKey} className="h-5 w-5" />
-              <span className="truncate">{d.name}</span>
-            </button>
-          );
-        })}
+        {destinations.map((d) => (
+          <ChainChip key={d.key} label={d.name} chainKey={d.key as ChainLogoKey} selected={destKey === d.key} disabled={busy} onClick={() => setDestKey(d.key)} />
+        ))}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -236,35 +304,53 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
             className="w-32 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
           />
         </label>
-        <button
-          onClick={run}
-          disabled={busy || !destKey}
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-        >
+        <button onClick={run} disabled={busy || !destKey} className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
           {busy ? 'Routing…' : 'Route payout'}
         </button>
       </div>
 
-      {signer.isConnected && signer.mode !== 'external' && (
+      <RouteStatus phase={phase} error={error} signerMode={signer.isConnected ? signer.mode : null} />
+    </div>
+  );
+}
+
+function ChainChip({ label, chainKey, selected, disabled, onClick }: { label: string; chainKey: ChainLogoKey; selected: boolean; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition disabled:opacity-50 ${
+        selected ? 'border-sky-500 bg-sky-900/30 text-white' : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
+      }`}
+    >
+      <ChainLogo sourceKey={chainKey} className="h-5 w-5" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function RouteStatus({ phase, error, signerMode }: { phase: Phase; error: string | null; signerMode: 'external' | 'circle' | null }) {
+  const busy = phase !== 'idle' && phase !== 'done';
+  return (
+    <>
+      {signerMode !== null && signerMode !== 'external' && (
         <p className="text-xs text-amber-300">Passkey wallets can’t route cross-chain yet — connect an external wallet.</p>
       )}
-
       {busy && (
         <ol className="space-y-1 text-xs">
           {PHASE_ORDER.map((p) => {
             const active = phase === p;
-            const done = PHASE_ORDER.indexOf(phase) > PHASE_ORDER.indexOf(p);
+            const passed = PHASE_ORDER.indexOf(phase) > PHASE_ORDER.indexOf(p);
             return (
-              <li key={p} className={active ? 'text-sky-300' : done ? 'text-emerald-400' : 'text-neutral-600'}>
-                {done ? '✓' : active ? '•' : '○'} {PHASE_LABEL[p as Exclude<Phase, 'idle' | 'done'>]}
+              <li key={p} className={active ? 'text-sky-300' : passed ? 'text-emerald-400' : 'text-neutral-600'}>
+                {passed ? '✓' : active ? '•' : '○'} {PHASE_LABEL[p as Exclude<Phase, 'idle' | 'done'>]}
               </li>
             );
           })}
         </ol>
       )}
-
       {error && <p className="text-xs text-red-300">{error}</p>}
       <p className="text-[11px] text-neutral-600">A small Gateway fee (≈0.02 USDC) is taken on top of the amount.</p>
-    </div>
+    </>
   );
 }

@@ -451,6 +451,9 @@ export default function TradeDetailPage() {
                     )}
                   </div>
                 )}
+                <div className="border-t border-neutral-900 pt-3">
+                  <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="prefer" />
+                </div>
               </div>
             )}
             {trade.status === 'Funded' && !isSeller && !windowActive && (
@@ -478,7 +481,7 @@ export default function TradeDetailPage() {
                 <p className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm text-emerald-200">
                   Settled — funds released to the seller and the buyer&apos;s credit passport updated.
                 </p>
-                <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} />
+                <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="settle" />
               </div>
             )}
             {trade.status === 'Cancelled' && <Waiting>This trade was cancelled before funding.</Waiting>}
