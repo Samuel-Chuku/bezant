@@ -8,6 +8,7 @@ import { useUserRecord } from '@/hooks/use-user-record';
 import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
 import { PassportPanel } from '@/components/passport-panel';
 import { AgentLinkCard } from '@/components/agent-link-card';
+import { SendPanel } from '@/components/send-panel';
 import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
 import { getPoolStats, type PoolStats } from '@/lib/api';
@@ -85,6 +86,9 @@ export default function ProfilePage() {
             <p className="mt-3 text-xs text-red-400">Couldn&apos;t reach the backend: {userState.message}</p>
           )}
         </section>
+
+        {/* Send USDC — passkey (Circle Modular) wallets only; renders null otherwise */}
+        <SendPanel />
 
         {/* Credit passport */}
         <PassportPanel address={signer.address} />
