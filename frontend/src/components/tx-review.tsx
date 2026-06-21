@@ -46,17 +46,8 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
   const [txUrl, setTxUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolver = useRef<((ok: boolean) => void) | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearCloseTimer = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
 
   const close = useCallback(() => {
-    clearCloseTimer();
     setOpen(false);
     resolver.current = null;
   }, []);
@@ -65,10 +56,8 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
     () => ({
       begin: (m) =>
         new Promise<boolean>((resolve) => {
-          // A previous tx's auto-close could still be pending (multi-step flows
-          // like approve→deposit); cancel it so it can't close THIS modal, and
-          // settle any orphaned resolver.
-          clearCloseTimer();
+          // In multi-step flows (approve→deposit) the next step opens straight
+          // over the previous "confirmed" modal — settle any orphaned resolver.
           resolver.current?.(false);
           resolver.current = resolve;
           setMeta(m);
@@ -84,16 +73,10 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
         setTxUrl(url);
         setPhase('submitted');
       },
-      confirmed: () => {
-        setPhase('confirmed');
-        clearCloseTimer();
-        closeTimer.current = setTimeout(() => {
-          setOpen(false);
-          closeTimer.current = null;
-        }, 1600);
-      },
+      // No auto-close — the final modal stays until the user clicks Close. An
+      // intermediate step's "confirmed" is replaced by the next step's begin().
+      confirmed: () => setPhase('confirmed'),
       failed: (message) => {
-        clearCloseTimer();
         setError(message);
         setPhase('failed');
       },
