@@ -46,8 +46,17 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
   const [txUrl, setTxUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolver = useRef<((ok: boolean) => void) | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
 
   const close = useCallback(() => {
+    clearCloseTimer();
     setOpen(false);
     resolver.current = null;
   }, []);
@@ -56,6 +65,11 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
     () => ({
       begin: (m) =>
         new Promise<boolean>((resolve) => {
+          // A previous tx's auto-close could still be pending (multi-step flows
+          // like approve→deposit); cancel it so it can't close THIS modal, and
+          // settle any orphaned resolver.
+          clearCloseTimer();
+          resolver.current?.(false);
           resolver.current = resolve;
           setMeta(m);
           setError(null);
@@ -72,9 +86,14 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
       },
       confirmed: () => {
         setPhase('confirmed');
-        setTimeout(() => setOpen(false), 1600);
+        clearCloseTimer();
+        closeTimer.current = setTimeout(() => {
+          setOpen(false);
+          closeTimer.current = null;
+        }, 1600);
       },
       failed: (message) => {
+        clearCloseTimer();
         setError(message);
         setPhase('failed');
       },
@@ -98,7 +117,7 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={api}>
       {children}
       {open && meta && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => (inFlight ? undefined : onCancel())}
