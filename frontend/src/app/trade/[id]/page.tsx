@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
@@ -11,6 +11,7 @@ import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { BridgeWidget } from '@/components/bridge-widget';
+import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
@@ -89,6 +90,7 @@ export default function TradeDetailPage() {
   const [counterAmount, setCounterAmount] = useState('');
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
+  const autoFundedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -216,6 +218,23 @@ export default function TradeDetailPage() {
   // dispute) see the details; everyone else sees just the deadline. NOTE: this
   // is a UI courtesy — the data is public on-chain and via the API.
   const isParticipant = isBuyer || isSeller || isArbitrator;
+
+  // Bridge-into-fund: once the CCTP bridge lands the USDC on Arc, fund the trade
+  // automatically (approve + lock) so the buyer doesn't have to come back and
+  // click again. Guarded so it fires once per bridge run.
+  useEffect(() => {
+    if (bridgeRun.status === 'idle') autoFundedRef.current = false;
+    if (
+      bridgeRun.status === 'success' &&
+      !autoFundedRef.current &&
+      isBuyer &&
+      trade?.status === 'Agreed'
+    ) {
+      autoFundedRef.current = true;
+      void doFund().finally(() => setBridgeRun(INITIAL_RUN));
+    }
+  }, [bridgeRun.status, isBuyer, trade?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const step = trade ? describeTradeStep(trade, me) : null;
   const windowActive =
     !!trade && trade.status === 'Funded' && trade.challengeWindowUntil != null && trade.challengeWindowUntil > Date.now() / 1000;
@@ -517,6 +536,12 @@ export default function TradeDetailPage() {
           )}
         </>
       )}
+
+      <BridgeProgressModal
+        run={bridgeRun}
+        onClose={() => setBridgeRun(INITIAL_RUN)}
+        tail={busy === 'fund' ? <span className="text-sky-300">Bridged ✓ — funding your trade…</span> : undefined}
+      />
     </main>
   );
 }
