@@ -2767,6 +2767,22 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (req
   };
 });
 
+type GatewayPayoutRow = {
+  trade_id: number; destination_key: string; destination_name: string;
+  amount_usdc: string; recipient: string; mint_tx: string; mint_tx_url: string | null; created_at: string;
+};
+function rowToPayout(r: GatewayPayoutRow) {
+  return {
+    tradeId: String(r.trade_id),
+    destination: { key: r.destination_key, name: r.destination_name },
+    deliveredUsdc: r.amount_usdc,
+    recipient: r.recipient,
+    mintTxHash: r.mint_tx,
+    mintTxUrl: r.mint_tx_url ?? undefined,
+    createdAt: r.created_at,
+  };
+}
+
 // Gateway destination chains the seller can route their payout to. The escrow
 // always pays on Arc; this is the OPTIONAL cross-chain leg via Circle Gateway.
 app.get('/arc/gateway/destinations', async (_request, reply) => {
@@ -2830,8 +2846,12 @@ app.post<{ Params: { id: string }; Body: { message?: any; signature?: string } }
     const { message, signature } = request.body ?? {};
     if (!message?.spec || !signature) return reply.code(400).send({ error: 'message and signature are required' });
 
+    const id = Number(request.params.id);
     const t = await getTrade(BigInt(request.params.id));
     if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released'` });
+    // Once per trade — a refresh can't replay the payout.
+    const existing = db.prepare('SELECT * FROM gateway_payouts WHERE trade_id = ?').get(id) as GatewayPayoutRow | undefined;
+    if (existing) return reply.code(409).send({ error: `trade ${id} was already routed to ${existing.destination_name}`, payout: rowToPayout(existing) });
     // Only relay the seller's own intent (sourceDepositor must be the seller).
     const depositor = '0x' + String(message.spec.sourceDepositor).slice(-40);
     if (depositor.toLowerCase() !== t.seller.toLowerCase()) {
@@ -2840,12 +2860,23 @@ app.post<{ Params: { id: string }; Body: { message?: any; signature?: string } }
 
     try {
       const result = await submitTransferAndRelayMint(message, signature as `0x${string}`);
+      db.prepare(
+        `INSERT INTO gateway_payouts (trade_id, destination_key, destination_name, amount_usdc, recipient, mint_tx, mint_tx_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, result.destination.key, result.destination.name, result.deliveredUsdc, result.recipient, result.mintTxHash, result.mintTxUrl ?? null);
       return { tradeId: request.params.id, ...result };
     } catch (err) {
       return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
     }
   },
 );
+
+// The recorded cross-chain payout for a trade, if any. The frontend loads this
+// on mount so a completed payout survives refresh (and can't be re-run).
+app.get<{ Params: { id: string } }>('/arc/trade/:id/payout', async (request) => {
+  const row = db.prepare('SELECT * FROM gateway_payouts WHERE trade_id = ?').get(Number(request.params.id)) as GatewayPayoutRow | undefined;
+  return { payout: row ? rowToPayout(row) : null };
+});
 
 // Seed the pool from the operator (treasury) wallet — operator becomes an LP.
 app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {

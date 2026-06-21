@@ -315,6 +315,20 @@ db.exec(`
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Cross-chain seller payouts via Circle Gateway. One row per trade (the
+  -- PRIMARY KEY makes the payout once-per-trade — a page refresh can't replay
+  -- it). Recorded only after the destination mint confirms.
+  CREATE TABLE IF NOT EXISTS gateway_payouts (
+    trade_id         INTEGER PRIMARY KEY,
+    destination_key  TEXT NOT NULL,
+    destination_name TEXT NOT NULL,
+    amount_usdc      TEXT NOT NULL,
+    recipient        TEXT NOT NULL,
+    mint_tx          TEXT NOT NULL,
+    mint_tx_url      TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);

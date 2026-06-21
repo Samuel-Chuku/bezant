@@ -98,9 +98,21 @@ export type GatewayPayoutResult = {
   recipient: string;
   attestationId?: string;
   mintTxHash: string;
+  mintTxUrl?: string;
   recipientBefore: string;
   recipientAfter: string;
   deliveredUsdc: string;
+};
+
+// The persisted record (one per trade) returned by GET .../payout.
+export type GatewayPayoutRecord = {
+  tradeId: string;
+  destination: { key: string; name: string };
+  deliveredUsdc: string;
+  recipient: string;
+  mintTxHash: string;
+  mintTxUrl?: string;
+  createdAt: string;
 };
 
 export async function getGatewayDestinations(): Promise<GatewayDestination[]> {
@@ -130,6 +142,11 @@ export async function submitGatewayPayout(
   signature: `0x${string}`,
 ): Promise<GatewayPayoutResult> {
   return jsonFetch<GatewayPayoutResult>('POST', `/arc/trade/${encodeURIComponent(tradeId)}/payout/submit`, { message, signature });
+}
+
+export async function getGatewayPayout(tradeId: string): Promise<GatewayPayoutRecord | null> {
+  const res = await jsonFetch<{ payout: GatewayPayoutRecord | null }>('GET', `/arc/trade/${encodeURIComponent(tradeId)}/payout`);
+  return res.payout;
 }
 
 export async function getUserByAddress(address: string): Promise<UserRecord | null> {

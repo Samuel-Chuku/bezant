@@ -16,8 +16,10 @@ import {
   getGatewayPayoutPlan,
   getGatewayBalance,
   submitGatewayPayout,
+  getGatewayPayout,
   type GatewayDestination,
   type GatewayPayoutResult,
+  type GatewayPayoutRecord,
 } from '@/lib/api';
 
 const ERC20_APPROVE_ABI = [
@@ -49,6 +51,17 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GatewayPayoutResult | null>(null);
+  const [existing, setExisting] = useState<GatewayPayoutRecord | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  // Load any already-recorded payout so a refresh shows "done" instead of
+  // re-opening the flow (the payout is once-per-trade, enforced server-side too).
+  useEffect(() => {
+    getGatewayPayout(tradeId)
+      .then(setExisting)
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, [tradeId]);
 
   useEffect(() => {
     if (!open || destinations.length > 0) return;
@@ -132,16 +145,25 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
     }
   }, [signer, amount, destKey, tradeId, sellerAddress, toast]);
 
-  if (!isSeller) return null;
+  if (!isSeller || !loaded) return null;
 
-  if (result) {
+  const done = result ?? existing;
+  if (done) {
     return (
       <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm">
         <div className="flex items-center gap-2 text-emerald-200">
-          <ChainLogo sourceKey={result.destination.key as ChainLogoKey} className="h-5 w-5" />
-          <span>Routed <span className="font-medium">{result.deliveredUsdc} USDC</span> to {result.destination.name}.</span>
+          <ChainLogo sourceKey={done.destination.key as ChainLogoKey} className="h-5 w-5" />
+          <span>Routed <span className="font-medium">{done.deliveredUsdc} USDC</span> to {done.destination.name}.</span>
         </div>
-        <p className="mt-1 break-all text-xs text-neutral-500">mint tx: {result.mintTxHash}</p>
+        <p className="mt-1 text-xs text-neutral-500">
+          {done.mintTxUrl ? (
+            <a href={done.mintTxUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline">
+              View mint transaction ↗
+            </a>
+          ) : (
+            <span className="break-all">mint tx: {done.mintTxHash}</span>
+          )}
+        </p>
       </div>
     );
   }

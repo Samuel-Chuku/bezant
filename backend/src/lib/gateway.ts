@@ -176,6 +176,7 @@ export type GatewayPayoutResult = {
   recipient: Address;
   attestationId?: string;
   mintTxHash: string;
+  mintTxUrl?: string;
   recipientBefore: string;
   recipientAfter: string;
   deliveredUsdc: string;
@@ -215,11 +216,13 @@ export async function submitTransferAndRelayMint(message: BurnIntentMessage, sig
   }
   if (after <= before) throw new Error(`Recipient USDC did not increase on ${dest.name}.`);
 
+  const explorer = dest.chain.blockExplorers?.default.url?.replace(/\/$/, '');
   return {
     destination: { key: dest.key, name: dest.name, domain: dest.domain },
     recipient,
     attestationId: transfer.transferId,
     mintTxHash: mintTx,
+    mintTxUrl: explorer ? `${explorer}/tx/${mintTx}` : undefined,
     recipientBefore: formatUnits(before, 6),
     recipientAfter: formatUnits(after, 6),
     deliveredUsdc: formatUnits(after - before, 6),
