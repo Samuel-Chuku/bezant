@@ -10,6 +10,9 @@ import {
   useSignTypedData,
 } from 'wagmi';
 import { arcTestnet } from '@/lib/chains';
+import { arcExplorerTxUrl } from '@/lib/explorers';
+import { describeTx } from '@/lib/tx-decode';
+import { useTxReview } from '@/components/tx-review';
 import { useCircleAccount } from './use-circle-account';
 import { useRefreshChainData } from './use-refresh-chain-data';
 
@@ -72,6 +75,9 @@ export function useSigner(): ConnectedState | DisconnectedState {
   // Snappy balance + allowance refresh after every tx — beats the 15s poll.
   const refreshChainData = useRefreshChainData();
 
+  // Global pre-sign review modal — every sendCall flows through it.
+  const txReview = useTxReview();
+
   const wagmiActive = wagmi.isConnected && wagmi.address;
   const circleActive = circle.state.status === 'connected';
 
@@ -82,21 +88,31 @@ export function useSigner(): ConnectedState | DisconnectedState {
       mode: 'external',
       address: wagmi.address!,
       sendCall: async ({ to, data, value }) => {
-        // Force Arc — wagmi will prompt a switch if the wallet is elsewhere
-        // (e.g. user just bridged and is still on Base). Page-level guards
-        // try to prevent the click, but this is belt-and-suspenders.
-        const hash = await sendTransactionAsync({
-          to,
-          data,
-          value: value ?? 0n,
-          chainId: arcTestnet.id,
-        });
+        // Pre-sign review — user confirms what they're signing first.
+        if (!(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
+        let hash: Hex;
+        try {
+          // Force Arc — wagmi will prompt a switch if the wallet is elsewhere
+          // (e.g. user just bridged and is still on Base). Page-level guards
+          // try to prevent the click, but this is belt-and-suspenders.
+          hash = await sendTransactionAsync({ to, data, value: value ?? 0n, chainId: arcTestnet.id });
+        } catch (err) {
+          txReview.failed(err instanceof Error ? err.message : String(err));
+          throw err;
+        }
+        txReview.submitted(hash, arcExplorerTxUrl(hash));
+        const receiptPromise = (async () => {
+          if (!wagmiPublic) throw new Error('No wagmi public client available');
+          const receipt = await wagmiPublic.waitForTransactionReceipt({ hash });
+          refreshChainData();
+          if (receipt.status === 'success') txReview.confirmed();
+          else txReview.failed('Transaction reverted on-chain.');
+          return receipt;
+        })();
         return {
           hash,
           wait: async () => {
-            if (!wagmiPublic) throw new Error('No wagmi public client available');
-            const receipt = await wagmiPublic.waitForTransactionReceipt({ hash });
-            refreshChainData();
+            const receipt = await receiptPromise;
             return { txHash: hash, status: receipt.status };
           },
         };
@@ -116,24 +132,41 @@ export function useSigner(): ConnectedState | DisconnectedState {
       mode: 'circle',
       address: smartAccount.address,
       sendCall: async ({ to, data, value }) => {
-        // Circle's bundler enforces a 1 gwei minimum priority fee on UserOps;
-        // viem's default uses Arc's chain-reported priority (~0.002 gwei) which
-        // fails precheck. Set explicit fees safely above the floor.
-        const userOpHash = await bundlerClient.sendUserOperation({
-          calls: [{ to, data, value: value ?? 0n }],
-          paymaster: true,
-          maxPriorityFeePerGas: 1_000_000_000n, // 1 gwei
-          maxFeePerGas: 50_000_000_000n,        // 50 gwei ceiling
-        });
+        if (!(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
+        let userOpHash: Hex;
+        try {
+          // Circle's bundler enforces a 1 gwei minimum priority fee on UserOps;
+          // viem's default uses Arc's chain-reported priority (~0.002 gwei) which
+          // fails precheck. Set explicit fees safely above the floor.
+          userOpHash = await bundlerClient.sendUserOperation({
+            calls: [{ to, data, value: value ?? 0n }],
+            paymaster: true,
+            maxPriorityFeePerGas: 1_000_000_000n, // 1 gwei
+            maxFeePerGas: 50_000_000_000n,        // 50 gwei ceiling
+          });
+        } catch (err) {
+          txReview.failed(err instanceof Error ? err.message : String(err));
+          throw err;
+        }
+        // No tx hash until the userOp is bundled — keep the modal in-flight.
+        txReview.signing();
+        const receiptPromise = (async () => {
+          const receipt = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
+          refreshChainData();
+          const txHash = receipt.receipt.transactionHash;
+          if (receipt.success) {
+            txReview.submitted(txHash, arcExplorerTxUrl(txHash));
+            txReview.confirmed();
+          } else {
+            txReview.failed('Transaction reverted on-chain.');
+          }
+          return receipt;
+        })();
         return {
           hash: userOpHash,
           wait: async () => {
-            const receipt = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
-            refreshChainData();
-            return {
-              txHash: receipt.receipt.transactionHash,
-              status: receipt.success ? 'success' : 'reverted',
-            };
+            const receipt = await receiptPromise;
+            return { txHash: receipt.receipt.transactionHash, status: receipt.success ? 'success' : 'reverted' };
           },
         };
       },
