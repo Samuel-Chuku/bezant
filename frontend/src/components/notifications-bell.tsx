@@ -95,9 +95,9 @@ export function NotificationsBell() {
             )}
             {visible.length > 0 && (
               <ul className="divide-y divide-neutral-800/80">
-                {visible.map((item) => (
+                {visible.map((item, i) => (
                   <NotificationRow
-                    key={item.key}
+                    key={`${item.key}-${i}`}
                     item={item}
                     onClick={() => {
                       markRead(item.key);

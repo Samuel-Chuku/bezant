@@ -3271,12 +3271,14 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
 
     // Recent activity (last 3 events on this trade).
     const evs = db
-      .prepare('SELECT kind, tx_hash, indexed_at FROM trade_events WHERE trade_id = ? ORDER BY block_number DESC, log_index DESC LIMIT 3')
-      .all(id) as { kind: string; tx_hash: string; indexed_at: string }[];
+      .prepare('SELECT kind, tx_hash, log_index, indexed_at FROM trade_events WHERE trade_id = ? ORDER BY block_number DESC, log_index DESC LIMIT 3')
+      .all(id) as { kind: string; tx_hash: string; log_index: number; indexed_at: string }[];
     for (const e of evs) {
       items.push({
         tradeId: String(id),
-        key: `trade:${id}:event:${e.tx_hash}`,
+        // One tx can emit several events (e.g. Attested + Released share a
+        // txHash) — include kind + log_index so the key stays unique.
+        key: `trade:${id}:event:${e.tx_hash}:${e.kind}:${e.log_index}`,
         kind: 'event',
         summary: `Trade #${id} ${EVENT_LABEL[e.kind] ?? e.kind}`,
         whenMs: new Date(e.indexed_at + 'Z').getTime() || Date.now(),
