@@ -7,6 +7,7 @@ import { createAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { useSigner } from '@/hooks/use-signer';
 import { useRefreshChainData } from '@/hooks/use-refresh-chain-data';
 import { ChainLogo } from '@/components/chain-logo';
+import { ExternalLinkIcon } from '@/components/external-link-icon';
 import {
   BRIDGE_CHAINS,
   DEFAULT_DESTINATION_KEY,
@@ -346,18 +347,18 @@ export function BridgeWidget({
             href={source.gasFaucetUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-neutral-300"
+            className="inline-flex items-center gap-1 hover:text-neutral-300"
           >
-            Get {source.gasSymbol} for gas ↗
+            Get {source.gasSymbol} for gas <ExternalLinkIcon />
           </a>
           <span aria-hidden>·</span>
           <a
             href={USDC_FAUCET_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-neutral-300"
+            className="inline-flex items-center gap-1 hover:text-neutral-300"
           >
-            Get test USDC ↗
+            Get test USDC <ExternalLinkIcon />
           </a>
         </div>
       )}

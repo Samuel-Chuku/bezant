@@ -11,6 +11,7 @@ import { encodeFunctionData, parseUnits, type Hex } from 'viem';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
+import { ExternalLinkIcon } from '@/components/external-link-icon';
 import {
   getGatewayDestinations,
   getGatewayPayoutPlan,
@@ -157,8 +158,8 @@ export function GatewayPayoutPanel({ tradeId, sellerAddress, defaultAmountUsdc }
         </div>
         <p className="mt-1 text-xs text-neutral-500">
           {done.mintTxUrl ? (
-            <a href={done.mintTxUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline">
-              View mint transaction ↗
+            <a href={done.mintTxUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 underline">
+              View mint transaction <ExternalLinkIcon />
             </a>
           ) : (
             <span className="break-all">mint tx: {done.mintTxHash}</span>

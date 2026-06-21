@@ -87,7 +87,7 @@ export default function CreateTradePage() {
       if (!created) throw new Error('TradeProposed event missing from receipt');
 
       const tradeId = created.args.id.toString();
-      toast.success(`Trade #${tradeId} created`, { href: arcExplorerTxUrl(txHash), hrefLabel: 'view tx ↗' });
+      toast.success(`Trade #${tradeId} created`, { href: arcExplorerTxUrl(txHash), hrefLabel: 'view tx' });
       router.push(`/trade/${tradeId}`);
     } catch (err) {
       setSubmission({ status: 'error', message: err instanceof Error ? err.message : String(err) });

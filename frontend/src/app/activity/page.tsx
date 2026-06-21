@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
 import { useSigner } from '@/hooks/use-signer';
 import { arcExplorerTxUrl } from '@/lib/explorers';
+import { ExternalLinkIcon } from '@/components/external-link-icon';
 
 type Filter = 'all' | 'action' | 'trade' | 'pool';
 
@@ -186,7 +187,7 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
                 onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-0.5 text-neutral-400 hover:text-neutral-100"
               >
-                View tx ↗
+                View tx <ExternalLinkIcon />
               </a>
             )}
           </div>

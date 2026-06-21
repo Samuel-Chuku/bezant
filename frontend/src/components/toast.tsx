@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { ExternalLinkIcon } from '@/components/external-link-icon';
 
 type ToastType = 'success' | 'error' | 'info';
 type ToastOpts = { href?: string; hrefLabel?: string };
@@ -108,9 +109,9 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
               href={toast.href}
               target="_blank"
               rel="noreferrer"
-              className="text-sky-300 underline underline-offset-2 hover:text-sky-200"
+              className="inline-flex items-center gap-1 text-sky-300 underline underline-offset-2 hover:text-sky-200"
             >
-              {toast.hrefLabel ?? 'view tx ↗'}
+              {toast.hrefLabel ?? 'view tx'} <ExternalLinkIcon />
             </a>
           </>
         )}

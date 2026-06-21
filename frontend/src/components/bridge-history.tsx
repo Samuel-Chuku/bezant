@@ -5,6 +5,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { loadBridgeHistory, type BridgeHistoryEntry } from '@/lib/bridge-history';
 import { shortHash } from '@/lib/format';
 import { ChainLogo } from '@/components/chain-logo';
+import { ExternalLinkIcon } from '@/components/external-link-icon';
 import {
   BRIDGE_STEP_LABELS,
   BRIDGE_STEP_ORDER,
@@ -290,9 +291,9 @@ function HistoryRow({ row }: { row: MergedRow }) {
           href={row.mintExplorerUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1.5 inline-block font-mono text-[11px] text-neutral-500 hover:text-neutral-300"
+          className="mt-1.5 inline-flex items-center gap-1 font-mono text-[11px] text-neutral-500 hover:text-neutral-300"
         >
-          Mint {shortHash(row.mintTxHash)} ↗
+          Mint {shortHash(row.mintTxHash)} <ExternalLinkIcon />
         </a>
       )}
       {!ok && row.errorMessage && (

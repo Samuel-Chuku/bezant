@@ -12,6 +12,7 @@ import { describeTradeStep } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
+import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
   getTrade,
@@ -45,16 +46,30 @@ const STATUS_COLOR: Record<string, string> = {
 
 const EVENT_LABEL: Record<string, string> = {
   TradeProposed: 'Proposed',
-  TradeCountered: 'Countered',
-  TradeAgreed: 'Agreed',
+  TradeCountered: 'Counter-offer',
+  TradeAgreed: 'Terms agreed',
   TradeCancelled: 'Cancelled',
-  TradeFunded: 'Funded',
-  FinancingAdvanced: 'Financing advanced',
-  Attested: 'Delivery attested',
-  Released: 'Settled — paid to seller',
+  TradeFunded: 'Buyer funded escrow',
+  FinancingAdvanced: 'Advance to seller',
+  Attested: 'Delivery verified',
+  Released: 'Settled',
   Disputed: 'Disputed',
   Resolved: 'Dispute resolved',
-  Refunded: 'Refunded',
+  Refunded: 'Refunded to buyer',
+};
+
+// One-line plain-English explanation shown under each event. The Released row is
+// handled separately because its wording depends on whether the trade was financed.
+const EVENT_HINT: Record<string, string> = {
+  TradeProposed: 'Buyer proposed the trade.',
+  TradeCountered: 'A new amount was proposed.',
+  TradeAgreed: 'Both sides agreed the terms.',
+  TradeFunded: 'Buyer locked the deposit in escrow.',
+  FinancingAdvanced: 'Seller drew an early payout from the financing pool while goods ship — repaid automatically at settlement.',
+  Attested: 'The Trade Officer confirmed delivery.',
+  Disputed: 'Flagged for the arbitrator to resolve.',
+  Resolved: 'The arbitrator decided the outcome.',
+  Refunded: 'Deposit returned to the buyer.',
 };
 
 export default function TradeDetailPage() {
@@ -265,8 +280,8 @@ export default function TradeDetailPage() {
           {lastTx && (
             <p className="mt-4 text-sm text-neutral-400">
               Last tx:{' '}
-              <a href={arcExplorerTxUrl(lastTx)} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
-                {lastTx.slice(0, 10)}… ↗
+              <a href={arcExplorerTxUrl(lastTx)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-300 hover:underline">
+                {lastTx.slice(0, 10)}… <ExternalLinkIcon />
               </a>
             </p>
           )}
@@ -463,20 +478,38 @@ export default function TradeDetailPage() {
             <div className="mt-10">
               <h2 className="text-xs uppercase tracking-wide text-neutral-500">Activity</h2>
               <ol className="mt-3 space-y-2">
-                {events.map((e, i) => (
-                  // One tx can emit several events (e.g. attest auto-settle →
-                  // Attested + Released share a txHash), so the key includes kind + index.
-                  <li key={`${e.txHash}-${e.kind}-${i}`} className="flex items-center justify-between rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-sm">
-                    <div>
-                      <span className="text-neutral-200">{EVENT_LABEL[e.kind] ?? e.kind}</span>
-                      {e.amountUsdc && <span className="text-neutral-500"> · {e.amountUsdc} USDC</span>}
-                      {e.actor && <span className="text-neutral-600"> · {short(e.actor)}</span>}
-                    </div>
-                    <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="text-xs text-sky-300 hover:underline">
-                      tx ↗
-                    </a>
-                  </li>
-                ))}
+                {(() => {
+                  // If the seller drew financing, the Settled amount is only the
+                  // remaining balance — explain that so it doesn't read as the
+                  // whole trade being settled for a fraction of its value.
+                  const financed = events.find((e) => e.kind === 'FinancingAdvanced')?.amountUsdc;
+                  return events.map((e, i) => {
+                    const financedSettle = e.kind === 'Released' && !!financed;
+                    const hint =
+                      e.kind === 'Released'
+                        ? financed
+                          ? `Final ${e.amountUsdc} USDC to the seller — the other ${financed} USDC was paid early from the financing pool, so the full amount was delivered.`
+                          : 'Full amount released to the seller.'
+                        : EVENT_HINT[e.kind];
+                    return (
+                      // One tx can emit several events (e.g. attest auto-settle →
+                      // Attested + Released share a txHash), so the key includes kind + index.
+                      <li key={`${e.txHash}-${e.kind}-${i}`} className="flex items-start justify-between gap-3 rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-sm">
+                        <div>
+                          <div>
+                            <span className="text-neutral-200">{EVENT_LABEL[e.kind] ?? e.kind}</span>
+                            {e.amountUsdc && !financedSettle && <span className="text-neutral-500"> · {e.amountUsdc} USDC</span>}
+                            {e.actor && <span className="text-neutral-600"> · {short(e.actor)}</span>}
+                          </div>
+                          {hint && <p className="mt-0.5 text-xs text-neutral-500">{hint}</p>}
+                        </div>
+                        <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-xs text-sky-300 hover:underline">
+                          tx <ExternalLinkIcon />
+                        </a>
+                      </li>
+                    );
+                  });
+                })()}
               </ol>
             </div>
           )}
