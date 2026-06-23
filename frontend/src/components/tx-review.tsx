@@ -105,12 +105,12 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => (inFlight ? undefined : onCancel())}
           />
-          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3.5">
-              <span className="text-sm font-medium text-neutral-200">{meta.title}</span>
+          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+              <span className="text-base font-semibold text-fg">{meta.title}</span>
               {!inFlight && (
-                <button onClick={onCancel} aria-label="Close" className="text-neutral-500 hover:text-neutral-200">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <button onClick={onCancel} aria-label="Close" className="text-muted hover:text-fg">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
                   </svg>
                 </button>
@@ -126,16 +126,16 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
               {/* Amount */}
               {meta.amountUsdc ? (
                 <div className="text-center">
-                  <div className="text-3xl font-semibold tracking-tight text-neutral-100">
-                    {meta.amountUsdc} <span className="text-lg text-neutral-400">{meta.token ?? 'USDC'}</span>
+                  <div className="text-3xl font-semibold tracking-tight text-fg">
+                    {meta.amountUsdc} <span className="text-lg text-muted">{meta.token ?? 'USDC'}</span>
                   </div>
                 </div>
               ) : (
-                <p className="text-center text-sm text-neutral-400">{meta.title}</p>
+                <p className="text-center text-sm text-muted">{meta.title}</p>
               )}
 
               {/* Detail rows */}
-              <dl className="mt-5 space-y-2.5 rounded-xl border border-neutral-800/80 bg-neutral-900/40 p-3.5 text-xs">
+              <dl className="mt-5 space-y-2.5 rounded-xl border border-line bg-surface-2 p-3.5 text-xs">
                 <Row label="Network" value={meta.network} />
                 {meta.contract && (
                   <Row
@@ -147,7 +147,7 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
                   <Row
                     label="Transaction"
                     value={
-                      <a href={txUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300">
+                      <a href={txUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:text-primary-hover">
                         {short(txHash)} <ExternalLinkIcon />
                       </a>
                     }
@@ -156,32 +156,32 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
               </dl>
 
               <div className="mt-3 min-h-[1rem] text-center text-xs">
-                {phase === 'signing' && <span className="text-neutral-400">Awaiting your signature…</span>}
-                {phase === 'submitted' && <span className="text-sky-300">Submitted — confirming on Arc…</span>}
-                {phase === 'confirmed' && <span className="text-emerald-400">Confirmed ✓</span>}
-                {phase === 'failed' && <span className="text-red-400">{error ?? 'Transaction failed.'}</span>}
+                {phase === 'signing' && <span className="text-muted">Awaiting your signature…</span>}
+                {phase === 'submitted' && <span className="text-info">Submitted — confirming on Arc…</span>}
+                {phase === 'confirmed' && <span className="text-primary">Confirmed ✓</span>}
+                {phase === 'failed' && <span className="text-danger">{error ?? 'Transaction failed.'}</span>}
               </div>
             </div>
 
             {/* Footer actions */}
-            <div className="border-t border-neutral-800 px-5 py-3.5">
+            <div className="border-t border-line px-5 py-3.5">
               {phase === 'review' && (
                 <div className="flex gap-2">
-                  <button onClick={onCancel} className="flex-1 rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:text-neutral-100">
+                  <button onClick={onCancel} className="flex-1 rounded-lg border border-line px-4 py-2 text-sm text-fg transition hover:border-line-strong">
                     Cancel
                   </button>
-                  <button onClick={onSign} className="flex-1 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white">
+                  <button onClick={onSign} className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg transition hover:bg-primary-hover">
                     Sign transaction
                   </button>
                 </div>
               )}
               {inFlight && (
-                <button disabled className="w-full rounded-lg bg-neutral-800 px-4 py-2 text-sm text-neutral-400">
+                <button disabled className="w-full rounded-lg bg-surface-2 px-4 py-2 text-sm text-muted">
                   {phase === 'signing' ? 'Waiting for signature…' : 'Confirming…'}
                 </button>
               )}
               {(phase === 'confirmed' || phase === 'failed') && (
-                <button onClick={close} className="w-full rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:text-neutral-100">
+                <button onClick={close} className="w-full rounded-lg border border-line px-4 py-2 text-sm text-fg transition hover:border-line-strong">
                   Close
                 </button>
               )}
@@ -196,8 +196,8 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <dt className="text-neutral-500">{label}</dt>
-      <dd className="text-neutral-200">{value}</dd>
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-fg">{value}</dd>
     </div>
   );
 }
@@ -205,7 +205,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 function StatusIcon({ phase }: { phase: Phase }) {
   if (phase === 'confirmed') {
     return (
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
         <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
@@ -214,7 +214,7 @@ function StatusIcon({ phase }: { phase: Phase }) {
   }
   if (phase === 'failed') {
     return (
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-danger-soft text-danger">
         <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
         </svg>
@@ -223,7 +223,7 @@ function StatusIcon({ phase }: { phase: Phase }) {
   }
   if (phase === 'signing' || phase === 'submitted') {
     return (
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-500/10 text-sky-400">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
         <svg className="h-6 w-6 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
           <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" className="opacity-20" />
           <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
@@ -232,7 +232,7 @@ function StatusIcon({ phase }: { phase: Phase }) {
     );
   }
   return (
-    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-800 text-neutral-300">
+    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-muted">
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
       </svg>
