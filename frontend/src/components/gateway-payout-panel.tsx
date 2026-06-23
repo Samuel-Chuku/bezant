@@ -15,6 +15,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
+import { useTxFlow, type FlowStep } from '@/components/tx-flow';
 import {
   getGatewayDestinations,
   getGatewayPayoutPlan,
@@ -32,16 +33,6 @@ const ERC20_APPROVE_ABI = [
 const GATEWAY_DEPOSIT_ABI = [
   { type: 'function', name: 'deposit', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'value', type: 'uint256' }], outputs: [] },
 ] as const;
-
-type Phase = 'idle' | 'approving' | 'depositing' | 'crediting' | 'signing' | 'settling' | 'done';
-const PHASE_ORDER: Phase[] = ['approving', 'depositing', 'crediting', 'signing', 'settling'];
-const PHASE_LABEL: Record<Exclude<Phase, 'idle' | 'done'>, string> = {
-  approving: 'Approve USDC on Arc',
-  depositing: 'Deposit into Gateway',
-  crediting: 'Wait for Gateway to credit',
-  signing: 'Sign the transfer',
-  settling: 'Mint on destination',
-};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -71,19 +62,19 @@ export function GatewayPayoutPanel({
 }) {
   const signer = useSigner();
   const toast = useToast();
+  const txFlow = useTxFlow();
   const [destinations, setDestinations] = useState<GatewayDestination[]>([]);
   const [destKey, setDestKey] = useState('');
   const [amount, setAmount] = useState(defaultAmountUsdc);
   const [pref, setPref] = useState<string | null>(null);
   const [open, setOpen] = useState(false); // full chain picker (change / fallback)
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [routing, setRouting] = useState(false);
   const [result, setResult] = useState<GatewayPayoutResult | null>(null);
   const [existing, setExisting] = useState<GatewayPayoutRecord | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const isSeller = signer.isConnected && signer.address.toLowerCase() === sellerAddress.toLowerCase();
-  const busy = phase !== 'idle' && phase !== 'done';
+  const busy = routing;
 
   // Load supported chains once, the saved preference, and (settle mode) any
   // already-recorded payout so a refresh shows "done" instead of re-routing.
@@ -112,72 +103,68 @@ export function GatewayPayoutPanel({
 
   const run = useCallback(async () => {
     if (!signer.isConnected) return;
-    setError(null);
-    setResult(null);
+    if (signer.mode !== 'external') {
+      toast.error('Connect an external wallet (MetaMask, Rabby, etc.) to route your payout — passkey wallets aren’t supported for this yet.');
+      return;
+    }
+    if (!destKey) { toast.error('Pick a destination chain.'); return; }
+    if (!amount || Number(amount) <= 0) { toast.error('Enter an amount to route.'); return; }
+
+    setRouting(true);
     try {
-      if (signer.mode !== 'external') {
-        throw new Error('Connect an external wallet (MetaMask, Rabby, etc.) to route your payout — passkey wallets aren’t supported for this yet.');
-      }
-      if (!destKey) throw new Error('Pick a destination chain.');
-      if (!amount || Number(amount) <= 0) throw new Error('Enter an amount to route.');
-
       const plan = await getGatewayPayoutPlan(tradeId, destKey, { amountUsdc: amount });
+      const sendStep = async (to: `0x${string}`, data: `0x${string}`) => {
+        const sent = await signer.sendCall({ to, data }, { review: false });
+        if ((await sent.wait()).status !== 'success') throw new Error('Transaction reverted.');
+      };
 
+      const steps: FlowStep[] = [];
       if (plan.needsDeposit) {
         const depositRaw = parseUnits(plan.depositUsdc, 6);
-        setPhase('approving');
-        const approve = await signer.sendCall({
-          to: plan.contracts.arcUsdc,
-          data: encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: 'approve', args: [plan.contracts.gatewayWallet, depositRaw] }),
+        steps.push({
+          key: 'approve', label: 'Approve USDC', action: 'Approve',
+          run: async () => sendStep(plan.contracts.arcUsdc, encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: 'approve', args: [plan.contracts.gatewayWallet, depositRaw] })),
         });
-        if ((await approve.wait()).status !== 'success') throw new Error('Approve reverted.');
-
-        setPhase('depositing');
-        const deposit = await signer.sendCall({
-          to: plan.contracts.gatewayWallet,
-          data: encodeFunctionData({ abi: GATEWAY_DEPOSIT_ABI, functionName: 'deposit', args: [plan.contracts.arcUsdc, depositRaw] }),
+        steps.push({
+          key: 'deposit', label: 'Deposit into Gateway', action: 'Deposit',
+          run: async () => {
+            await sendStep(plan.contracts.gatewayWallet, encodeFunctionData({ abi: GATEWAY_DEPOSIT_ABI, functionName: 'deposit', args: [plan.contracts.arcUsdc, depositRaw] }));
+            // Wait for Gateway to credit the unified balance (no signature).
+            const required = Number(plan.requiredUsdc);
+            const deadline = Date.now() + 120_000;
+            let credited = Number(plan.unifiedBalanceUsdc);
+            while (Date.now() < deadline && credited < required) {
+              await sleep(3_000);
+              credited = Number(await getGatewayBalance(sellerAddress));
+            }
+            if (credited < required) throw new Error('Gateway hasn’t credited the deposit yet — try again in a moment.');
+          },
         });
-        if ((await deposit.wait()).status !== 'success') throw new Error('Deposit reverted.');
-
-        setPhase('crediting');
-        const required = Number(plan.requiredUsdc);
-        const deadline = Date.now() + 120_000;
-        let credited = Number(plan.unifiedBalanceUsdc);
-        while (Date.now() < deadline && credited < required) {
-          await sleep(3_000);
-          credited = Number(await getGatewayBalance(sellerAddress));
-        }
-        if (credited < required) throw new Error('Gateway hasn’t credited the deposit yet — try again in a moment.');
       }
-
-      // Sign the burn intent (numeric fields → bigint for viem; the original
-      // string message is submitted back unchanged).
-      setPhase('signing');
-      const m = plan.typedData.message;
-      const signature = (await signer.signTypedData({
-        domain: plan.typedData.domain,
-        types: plan.typedData.types,
-        primaryType: plan.typedData.primaryType,
-        message: {
-          maxBlockHeight: BigInt(m.maxBlockHeight),
-          maxFee: BigInt(m.maxFee),
-          spec: { ...m.spec, value: BigInt(m.spec.value as string) },
+      steps.push({
+        key: 'route', label: `Sign & route to ${plan.destination.name}`, action: 'Sign',
+        run: async () => {
+          const m = plan.typedData.message;
+          const signature = (await signer.signTypedData({
+            domain: plan.typedData.domain,
+            types: plan.typedData.types,
+            primaryType: plan.typedData.primaryType,
+            message: { maxBlockHeight: BigInt(m.maxBlockHeight), maxFee: BigInt(m.maxFee), spec: { ...m.spec, value: BigInt(m.spec.value as string) } },
+          })) as Hex;
+          const res = await submitGatewayPayout(tradeId, plan.typedData.message, signature);
+          setResult(res);
+          writePref(tradeId, sellerAddress, null); // consume the preference
         },
-      })) as Hex;
+      });
 
-      setPhase('settling');
-      const res = await submitGatewayPayout(tradeId, plan.typedData.message, signature);
-      setResult(res);
-      setPhase('done');
-      writePref(tradeId, sellerAddress, null); // consume the preference
-      toast.success(`Routed ${res.deliveredUsdc} USDC to ${res.destination.name}.`);
+      const ok = await txFlow.start({ title: `Route ${amount} USDC to ${plan.destination.name}`, amountUsdc: amount, steps });
+      if (ok) toast.success(`Routed to ${plan.destination.name}.`);
     } catch (err) {
-      setPhase('idle');
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRouting(false);
     }
-  }, [signer, amount, destKey, tradeId, sellerAddress, toast]);
+  }, [signer, amount, destKey, tradeId, sellerAddress, toast, txFlow]);
 
   if (!isSeller || !loaded) return null;
 
@@ -264,7 +251,7 @@ export function GatewayPayoutPanel({
             {busy ? 'Routing…' : 'Route now'}
           </button>
         </div>
-        <RouteStatus phase={phase} error={error} signerMode={signer.isConnected ? signer.mode : null} />
+        <RouteFootnote signerMode={signer.isConnected ? signer.mode : null} />
       </div>
     );
   }
@@ -309,7 +296,7 @@ export function GatewayPayoutPanel({
         </button>
       </div>
 
-      <RouteStatus phase={phase} error={error} signerMode={signer.isConnected ? signer.mode : null} />
+      <RouteFootnote signerMode={signer.isConnected ? signer.mode : null} />
     </div>
   );
 }
@@ -329,27 +316,12 @@ function ChainChip({ label, chainKey, selected, disabled, onClick }: { label: st
   );
 }
 
-function RouteStatus({ phase, error, signerMode }: { phase: Phase; error: string | null; signerMode: 'external' | 'circle' | null }) {
-  const busy = phase !== 'idle' && phase !== 'done';
+function RouteFootnote({ signerMode }: { signerMode: 'external' | 'circle' | null }) {
   return (
     <>
       {signerMode !== null && signerMode !== 'external' && (
         <p className="text-xs text-amber-300">Passkey wallets can’t route cross-chain yet — connect an external wallet.</p>
       )}
-      {busy && (
-        <ol className="space-y-1 text-xs">
-          {PHASE_ORDER.map((p) => {
-            const active = phase === p;
-            const passed = PHASE_ORDER.indexOf(phase) > PHASE_ORDER.indexOf(p);
-            return (
-              <li key={p} className={active ? 'text-sky-300' : passed ? 'text-emerald-400' : 'text-neutral-600'}>
-                {passed ? '✓' : active ? '•' : '○'} {PHASE_LABEL[p as Exclude<Phase, 'idle' | 'done'>]}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      {error && <p className="text-xs text-red-300">{error}</p>}
       <p className="text-[11px] text-neutral-600">A small Gateway fee (≈0.02 USDC) is taken on top of the amount.</p>
     </>
   );
