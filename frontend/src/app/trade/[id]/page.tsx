@@ -10,6 +10,9 @@ import { HandleAddr } from '@/components/handle-addr';
 import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
+import { useBalance } from 'wagmi';
+import { arcTestnet } from '@/lib/chains';
+import { useTxFlow } from '@/components/tx-flow';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
@@ -78,6 +81,12 @@ export default function TradeDetailPage() {
   const id = String(params.id);
   const signer = useSigner();
   const toast = useToast();
+  const txFlow = useTxFlow();
+  const { data: usdcBalance } = useBalance({
+    address: signer.isConnected ? signer.address : undefined,
+    chainId: arcTestnet.id,
+    query: { enabled: signer.isConnected, refetchInterval: 15_000 },
+  });
 
   const [trade, setTrade] = useState<TradeState | null>(null);
   const [events, setEvents] = useState<TradeEvent[]>([]);
@@ -166,12 +175,36 @@ export default function TradeDetailPage() {
       return signAndWait(await buildCounterTradeUnsigned(id, counterAmount));
     }, 'Counter-offer sent');
   const doCancel = () => run('cancel', async () => signAndWait(await buildCancelTradeUnsigned(id)), 'Trade cancelled');
-  const doFund = () =>
-    run('fund', async () => {
-      if (!trade) return;
-      await signAndWait(await buildApproveTradeUnsigned(trade.estimatedDepositUsdc));
-      return signAndWait(await buildFundTradeUnsigned(id));
-    }, 'Funded');
+  // Fund pilots the multi-step "Actions" modal: approve → lock, with a
+  // before→after overview. Steps send with review:false so this one modal owns
+  // the review instead of stacking the per-tx review modals.
+  const doFund = async () => {
+    if (!trade || !signer.isConnected) return;
+    const deposit = trade.estimatedDepositUsdc;
+    const bal = usdcBalance ? Number(usdcBalance.formatted) : null;
+    const sendStep = async (unsigned: UnsignedTx, label: string) => {
+      const sent = await signer.sendCall({ to: unsigned.to, data: unsigned.data, value: BigInt(unsigned.value) }, { review: false });
+      const { txHash, status } = await sent.wait();
+      if (status !== 'success') throw new Error(`${label} ${status}`);
+      return txHash;
+    };
+    const ok = await txFlow.start({
+      title: `Fund ${trade.amountUsdc} USDC`,
+      amountUsdc: deposit,
+      overview: [
+        { label: 'Deposit locked', before: '0', after: `${deposit} USDC` },
+        ...(bal !== null ? [{ label: 'Your balance', before: `${bal} USDC`, after: `${Math.max(0, bal - Number(deposit)).toFixed(2)} USDC` }] : []),
+      ],
+      steps: [
+        { key: 'approve', label: 'Approve USDC', run: async () => { await sendStep(await buildApproveTradeUnsigned(deposit), 'Approve'); } },
+        { key: 'fund', label: 'Lock deposit in escrow', run: async () => { setLastTx(await sendStep(await buildFundTradeUnsigned(id), 'Fund')); } },
+      ],
+    });
+    if (ok) {
+      toast.success('Funded');
+      await refresh();
+    }
+  };
   const doFinance = () => run('finance', async () => signAndWait(await buildRequestFinancingUnsigned(id)), 'Financing advanced');
   const doRaiseDispute = () => run('dispute', async () => signAndWait(await buildRaiseDisputeUnsigned(id)), 'Dispute raised');
   const doRefund = () => run('refund', async () => signAndWait(await buildRefundTradeUnsigned(id)), 'Refunded to buyer');

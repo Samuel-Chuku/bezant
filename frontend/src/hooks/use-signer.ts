@@ -37,11 +37,15 @@ export type TypedDataParam = {
   message: Record<string, unknown>;
 };
 
+// `review: false` skips the single-tx review modal — used by multi-step flows
+// that drive their own combined review/progress modal (see tx-flow.tsx).
+export type SendCallOpts = { review?: boolean };
+
 type ConnectedState = {
   isConnected: true;
   mode: SignerMode;
   address: Address;
-  sendCall: (params: SendCallParams) => Promise<SendCallResult>;
+  sendCall: (params: SendCallParams, opts?: SendCallOpts) => Promise<SendCallResult>;
   signMessage: (message: string) => Promise<Hex>;
   signTypedData: (data: TypedDataParam) => Promise<Hex>;
   disconnect: () => void;
@@ -87,9 +91,10 @@ export function useSigner(): ConnectedState | DisconnectedState {
       isConnected: true,
       mode: 'external',
       address: wagmi.address!,
-      sendCall: async ({ to, data, value }) => {
+      sendCall: async ({ to, data, value }, opts) => {
+        const useReview = opts?.review !== false;
         // Pre-sign review — user confirms what they're signing first.
-        if (!(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
+        if (useReview && !(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
         let hash: Hex;
         try {
           // Force Arc — wagmi will prompt a switch if the wallet is elsewhere
@@ -97,16 +102,18 @@ export function useSigner(): ConnectedState | DisconnectedState {
           // try to prevent the click, but this is belt-and-suspenders.
           hash = await sendTransactionAsync({ to, data, value: value ?? 0n, chainId: arcTestnet.id });
         } catch (err) {
-          txReview.failed(err instanceof Error ? err.message : String(err));
+          if (useReview) txReview.failed(err instanceof Error ? err.message : String(err));
           throw err;
         }
-        txReview.submitted(hash, arcExplorerTxUrl(hash));
+        if (useReview) txReview.submitted(hash, arcExplorerTxUrl(hash));
         const receiptPromise = (async () => {
           if (!wagmiPublic) throw new Error('No wagmi public client available');
           const receipt = await wagmiPublic.waitForTransactionReceipt({ hash });
           refreshChainData();
-          if (receipt.status === 'success') txReview.confirmed();
-          else txReview.failed('Transaction reverted on-chain.');
+          if (useReview) {
+            if (receipt.status === 'success') txReview.confirmed();
+            else txReview.failed('Transaction reverted on-chain.');
+          }
           return receipt;
         })();
         return {
@@ -131,8 +138,9 @@ export function useSigner(): ConnectedState | DisconnectedState {
       isConnected: true,
       mode: 'circle',
       address: smartAccount.address,
-      sendCall: async ({ to, data, value }) => {
-        if (!(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
+      sendCall: async ({ to, data, value }, opts) => {
+        const useReview = opts?.review !== false;
+        if (useReview && !(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
         let userOpHash: Hex;
         try {
           // Circle's bundler enforces a 1 gwei minimum priority fee on UserOps;
@@ -145,20 +153,22 @@ export function useSigner(): ConnectedState | DisconnectedState {
             maxFeePerGas: 50_000_000_000n,        // 50 gwei ceiling
           });
         } catch (err) {
-          txReview.failed(err instanceof Error ? err.message : String(err));
+          if (useReview) txReview.failed(err instanceof Error ? err.message : String(err));
           throw err;
         }
         // No tx hash until the userOp is bundled — keep the modal in-flight.
-        txReview.signing();
+        if (useReview) txReview.signing();
         const receiptPromise = (async () => {
           const receipt = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
           refreshChainData();
           const txHash = receipt.receipt.transactionHash;
-          if (receipt.success) {
-            txReview.submitted(txHash, arcExplorerTxUrl(txHash));
-            txReview.confirmed();
-          } else {
-            txReview.failed('Transaction reverted on-chain.');
+          if (useReview) {
+            if (receipt.success) {
+              txReview.submitted(txHash, arcExplorerTxUrl(txHash));
+              txReview.confirmed();
+            } else {
+              txReview.failed('Transaction reverted on-chain.');
+            }
           }
           return receipt;
         })();

@@ -8,6 +8,7 @@ import '@rainbow-me/rainbowkit/styles.css';
 import { wagmiConfig } from '@/lib/wagmi';
 import { CircleAccountProvider } from '@/hooks/use-circle-account';
 import { TxReviewProvider } from '@/components/tx-review';
+import { TxFlowProvider } from '@/components/tx-flow';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -17,7 +18,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={darkTheme()} modalSize="compact">
           <CircleAccountProvider>
-            <TxReviewProvider>{children}</TxReviewProvider>
+            <TxReviewProvider>
+              <TxFlowProvider>{children}</TxFlowProvider>
+            </TxReviewProvider>
           </CircleAccountProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
