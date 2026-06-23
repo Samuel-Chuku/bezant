@@ -193,11 +193,11 @@ export default function TradeDetailPage() {
       amountUsdc: deposit,
       overview: [
         { label: 'Deposit locked', before: '0', after: `${deposit} USDC` },
-        ...(bal !== null ? [{ label: 'Your balance', before: `${bal} USDC`, after: `${Math.max(0, bal - Number(deposit)).toFixed(2)} USDC` }] : []),
+        ...(bal !== null ? [{ label: 'Your balance', before: `${bal.toFixed(2)} USDC`, after: `${Math.max(0, bal - Number(deposit)).toFixed(2)} USDC` }] : []),
       ],
       steps: [
-        { key: 'approve', label: 'Approve USDC', run: async () => { await sendStep(await buildApproveTradeUnsigned(deposit), 'Approve'); } },
-        { key: 'fund', label: 'Lock deposit in escrow', run: async () => { setLastTx(await sendStep(await buildFundTradeUnsigned(id), 'Fund')); } },
+        { key: 'approve', label: 'Approve USDC', action: 'Approve', icon: <ShieldIcon />, run: async () => { await sendStep(await buildApproveTradeUnsigned(deposit), 'Approve'); } },
+        { key: 'fund', label: 'Lock deposit in escrow', action: 'Lock', icon: <LockIcon />, run: async () => { setLastTx(await sendStep(await buildFundTradeUnsigned(id), 'Fund')); } },
       ],
     });
     if (ok) {
@@ -637,4 +637,22 @@ function Waiting({ children }: { children: React.ReactNode }) {
 
 function short(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function ShieldIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
 }

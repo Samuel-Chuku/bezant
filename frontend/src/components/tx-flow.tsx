@@ -1,14 +1,22 @@
 'use client';
 
-// Multi-step "Actions" transaction modal (Aave-style): one modal that shows the
-// whole flow — amount, a before→after overview, and numbered steps (e.g. Approve
-// → Lock deposit) with per-step status and Try Again on failure. Callers drive it
-// via useTxFlow().start({...}); each step's `run` should send its tx with
-// signer.sendCall(..., { review: false }) so this modal owns the review.
+// Multi-step "Actions" transaction modal (Spark/Aave-style): one modal showing
+// amount, a before→after overview, and numbered steps — each with its OWN action
+// button on the right. Steps unlock in order (later buttons stay disabled until
+// earlier ones complete); a failed step's button becomes "Try again". Callers
+// drive it via useTxFlow().start({...}); each step's `run` should send its tx
+// with signer.sendCall(..., { review: false }) so this modal owns the review.
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { UsdcIcon } from '@/components/usdc-icon';
 
 export type OverviewRow = { label: string; before: string; after: string };
-export type FlowStep = { key: string; label: string; run: () => Promise<void> };
+export type FlowStep = {
+  key: string;
+  label: string; // descriptive ("Approve USDC")
+  action: string; // button verb ("Approve")
+  run: () => Promise<void>;
+  icon?: ReactNode; // small glyph shown in the row
+};
 export type TxFlowSpec = {
   title: string;
   amountUsdc?: string;
@@ -17,7 +25,6 @@ export type TxFlowSpec = {
 };
 
 type StepState = 'upcoming' | 'active' | 'done' | 'error';
-type Phase = 'review' | 'running' | 'error' | 'done';
 
 type TxFlowApi = { start: (spec: TxFlowSpec) => Promise<boolean> };
 
@@ -29,11 +36,15 @@ export function useTxFlow(): TxFlowApi {
 
 export function TxFlowProvider({ children }: { children: ReactNode }) {
   const [spec, setSpec] = useState<TxFlowSpec | null>(null);
-  const [phase, setPhase] = useState<Phase>('review');
   const [states, setStates] = useState<StepState[]>([]);
-  const [errorAt, setErrorAt] = useState<number | null>(null);
+  const [runningIndex, setRunningIndex] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const resolver = useRef<((ok: boolean) => void) | null>(null);
+
+  const running = runningIndex !== null;
+  const allDone = states.length > 0 && states.every((s) => s === 'done');
+  // First step that isn't done yet — the only one whose button is live.
+  const currentIndex = states.findIndex((s) => s !== 'done');
 
   const close = useCallback((ok: boolean) => {
     resolver.current?.(ok);
@@ -41,61 +52,59 @@ export function TxFlowProvider({ children }: { children: ReactNode }) {
     setSpec(null);
   }, []);
 
-  const runFrom = useCallback(
-    async (start: number, s: TxFlowSpec) => {
-      setPhase('running');
-      setErrorAt(null);
+  const runStep = useCallback(
+    async (i: number) => {
+      if (!spec) return;
       setErrorMsg(null);
-      for (let i = start; i < s.steps.length; i++) {
-        setStates((prev) => prev.map((st, idx) => (idx === i ? 'active' : st)));
-        try {
-          await s.steps[i].run();
-          setStates((prev) => prev.map((st, idx) => (idx === i ? 'done' : st)));
-        } catch (err) {
-          setStates((prev) => prev.map((st, idx) => (idx === i ? 'error' : st)));
-          setErrorAt(i);
-          setErrorMsg(err instanceof Error ? err.message : String(err));
-          setPhase('error');
-          return;
-        }
+      setRunningIndex(i);
+      setStates((prev) => prev.map((s, idx) => (idx === i ? 'active' : s)));
+      try {
+        await spec.steps[i].run();
+        setRunningIndex(null);
+        setStates((prev) => {
+          const next = prev.map((s, idx) => (idx === i ? ('done' as StepState) : s));
+          if (next.every((s) => s === 'done')) {
+            resolver.current?.(true);
+            resolver.current = null;
+          }
+          return next;
+        });
+      } catch (err) {
+        setRunningIndex(null);
+        setStates((prev) => prev.map((s, idx) => (idx === i ? 'error' : s)));
+        setErrorMsg(err instanceof Error ? err.message : String(err));
       }
-      setPhase('done');
-      resolver.current?.(true);
-      resolver.current = null;
     },
-    [],
+    [spec],
   );
 
   const api = useMemo<TxFlowApi>(
     () => ({
       start: (s) =>
         new Promise<boolean>((resolve) => {
-          resolver.current?.(false); // settle any orphan
+          resolver.current?.(false);
           resolver.current = resolve;
           setSpec(s);
           setStates(s.steps.map(() => 'upcoming'));
-          setErrorAt(null);
+          setRunningIndex(null);
           setErrorMsg(null);
-          setPhase('review');
         }),
     }),
     [],
   );
-
-  const running = phase === 'running';
 
   return (
     <Ctx.Provider value={api}>
       {children}
       {spec && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => (running ? undefined : close(phase === 'done'))} />
-          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => (running ? undefined : close(allDone))} />
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-line px-5 py-4">
-              <h2 className="text-base font-semibold text-fg">{spec.title}</h2>
+            <div className="flex items-center justify-between border-b border-line px-6 py-4">
+              <h2 className="text-lg font-semibold text-fg">{spec.title}</h2>
               {!running && (
-                <button onClick={() => close(phase === 'done')} aria-label="Close" className="text-muted hover:text-fg">
+                <button onClick={() => close(allDone)} aria-label="Close" className="text-muted hover:text-fg">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
                   </svg>
@@ -103,28 +112,33 @@ export function TxFlowProvider({ children }: { children: ReactNode }) {
               )}
             </div>
 
-            <div className="space-y-5 px-5 py-5">
+            <div className="space-y-6 px-6 py-6">
               {/* Amount */}
               {spec.amountUsdc && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted">Amount</div>
-                  <div className="mt-1.5 flex items-baseline gap-2 rounded-xl border border-line bg-surface-2 px-4 py-3">
-                    <span className="text-2xl font-semibold tracking-tight text-fg">{spec.amountUsdc}</span>
-                    <span className="text-sm text-muted">USDC</span>
-                    <span className="ml-auto text-xs text-muted">≈ ${spec.amountUsdc}</span>
+                <section>
+                  <div className="text-sm text-muted">Amount</div>
+                  <div className="mt-2 flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-4 py-4">
+                    <span className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5">
+                      <UsdcIcon className="h-5 w-5" />
+                      <span className="text-sm font-medium text-fg">USDC</span>
+                    </span>
+                    <div className="ml-auto text-right">
+                      <div className="text-2xl font-semibold tracking-tight text-fg">{spec.amountUsdc}</div>
+                      <div className="text-xs text-muted">≈ ${spec.amountUsdc}</div>
+                    </div>
                   </div>
-                </div>
+                </section>
               )}
 
               {/* Transaction overview */}
               {spec.overview && spec.overview.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted">Transaction overview</div>
-                  <dl className="mt-1.5 space-y-2 rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm">
+                <section>
+                  <div className="text-sm text-muted">Transaction overview</div>
+                  <dl className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line">
                     {spec.overview.map((row) => (
-                      <div key={row.label} className="flex items-center justify-between gap-3">
+                      <div key={row.label} className="flex items-center justify-between gap-3 bg-surface-2 px-4 py-3.5 text-sm">
                         <dt className="text-muted">{row.label}</dt>
-                        <dd className="flex items-center gap-1.5 text-fg">
+                        <dd className="flex items-center gap-2 text-fg">
                           <span className="text-muted">{row.before}</span>
                           <svg className="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
@@ -134,52 +148,89 @@ export function TxFlowProvider({ children }: { children: ReactNode }) {
                       </div>
                     ))}
                   </dl>
-                </div>
+                </section>
               )}
 
-              {/* Actions / steps */}
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted">Actions</div>
-                <ol className="mt-1.5 divide-y divide-line overflow-hidden rounded-xl border border-line">
-                  {spec.steps.map((step, i) => (
-                    <li key={step.key} className="flex items-center gap-3 bg-surface-2 px-4 py-3">
-                      <StepBadge index={i + 1} state={states[i]} />
-                      <div className="min-w-0">
-                        <p className={states[i] === 'upcoming' ? 'text-sm text-muted' : 'text-sm text-fg'}>{step.label}</p>
-                        {states[i] === 'error' && errorAt === i && <p className="mt-0.5 text-xs text-danger">{errorMsg ?? 'Failed.'}</p>}
-                        {states[i] === 'active' && <p className="mt-0.5 text-xs text-info">Awaiting signature…</p>}
-                      </div>
-                    </li>
-                  ))}
+              {/* Actions */}
+              <section>
+                <div className="text-sm text-muted">Actions</div>
+                <ol className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line">
+                  {spec.steps.map((step, i) => {
+                    const state = states[i];
+                    const isCurrent = i === currentIndex;
+                    return (
+                      <li key={step.key} className="flex items-center gap-3 bg-surface-2 px-4 py-4">
+                        <StepBadge index={i + 1} state={state} />
+                        {step.icon && <span className="text-muted">{step.icon}</span>}
+                        <UsdcIcon className="h-5 w-5" />
+                        <div className="min-w-0">
+                          <p className={state === 'upcoming' ? 'text-sm text-muted' : 'text-sm font-medium text-fg'}>{step.label}</p>
+                          {state === 'error' && errorMsg && <p className="mt-0.5 text-xs text-danger">{errorMsg}</p>}
+                        </div>
+                        <div className="ml-auto">
+                          <StepButton
+                            state={state}
+                            action={step.action}
+                            enabled={isCurrent && !running}
+                            running={running && runningIndex === i}
+                            onClick={() => runStep(i)}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ol>
-              </div>
+              </section>
             </div>
 
-            {/* Footer */}
-            <div className="border-t border-line px-5 py-4">
-              {phase === 'review' && spec && (
-                <button onClick={() => void runFrom(0, spec)} className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:bg-primary-hover">
-                  Confirm
-                </button>
-              )}
-              {running && (
-                <button disabled className="w-full rounded-lg bg-surface-2 px-4 py-2.5 text-sm text-muted">Signing…</button>
-              )}
-              {phase === 'error' && spec && errorAt !== null && (
-                <button onClick={() => void runFrom(errorAt, spec)} className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:bg-primary-hover">
-                  Try again
-                </button>
-              )}
-              {phase === 'done' && (
-                <button onClick={() => close(true)} className="w-full rounded-lg border border-line px-4 py-2.5 text-sm text-fg transition hover:border-line-strong">
+            {allDone && (
+              <div className="border-t border-line px-6 py-4">
+                <button onClick={() => close(true)} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-medium text-fg transition hover:border-line-strong">
                   Done
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
     </Ctx.Provider>
+  );
+}
+
+function StepButton({ state, action, enabled, running, onClick }: { state: StepState; action: string; enabled: boolean; running: boolean; onClick: () => void }) {
+  if (state === 'done') {
+    return <span className="text-sm font-medium text-primary">Done</span>;
+  }
+  if (running) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-lg bg-surface px-4 py-2 text-sm text-muted">
+        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" className="opacity-20" />
+          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+        Signing…
+      </span>
+    );
+  }
+  if (state === 'error') {
+    return (
+      <button onClick={onClick} className="rounded-lg bg-gradient-to-b from-primary-hover to-primary px-4 py-2 text-sm font-semibold text-primary-fg shadow-md shadow-primary/20 transition hover:brightness-110">
+        Try again
+      </button>
+    );
+  }
+  return (
+    <button
+      onClick={onClick}
+      disabled={!enabled}
+      className={
+        enabled
+          ? 'rounded-lg bg-gradient-to-b from-primary-hover to-primary px-4 py-2 text-sm font-semibold text-primary-fg shadow-md shadow-primary/20 transition hover:brightness-110'
+          : 'cursor-not-allowed rounded-lg border border-line bg-surface px-4 py-2 text-sm text-muted'
+      }
+    >
+      {action}
+    </button>
   );
 }
 
@@ -197,23 +248,15 @@ function StepBadge({ index, state }: { index: number; state: StepState }) {
     return (
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-danger-soft text-danger">
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v5M12 16.5v.5" />
           <circle cx="12" cy="12" r="9" strokeWidth="2" />
-        </svg>
-      </span>
-    );
-  }
-  if (state === 'active') {
-    return (
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
-        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" className="opacity-20" />
-          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v5M12 16.5v.5" />
         </svg>
       </span>
     );
   }
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line text-xs font-medium text-muted">{index}</span>
+    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-xs font-medium ${state === 'active' ? 'border-primary/40 bg-primary-soft text-primary' : 'border-line text-muted'}`}>
+      {index}
+    </span>
   );
 }
