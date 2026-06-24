@@ -3605,8 +3605,8 @@ async function verifierAssignmentsFor(
   if (!STAKED_VERIFIER_ADDRESS) return [];
   const v = STAKED_VERIFIER_ADDRESS;
   const rows = db
-    .prepare('SELECT trade_id FROM verification_assignments WHERE verifier = ? ORDER BY trade_id DESC')
-    .all(address.toLowerCase()) as { trade_id: number }[];
+    .prepare('SELECT trade_id FROM verification_assignments WHERE verifier = ? AND module = ? ORDER BY trade_id DESC')
+    .all(address.toLowerCase(), v.toLowerCase()) as { trade_id: number }[];
   const out: { tradeId: string; deadline: number; status: AssignStatus }[] = [];
   for (const r of rows) {
     try {
@@ -3798,8 +3798,8 @@ app.post<{ Params: { id: string }; Body: { content?: string; signature?: string;
       // Replace the whole membership for this trade — on a retry the panel is
       // redrawn, so old rows (incl. excluded no-shows) must not linger.
       db.prepare('DELETE FROM verification_assignments WHERE trade_id = ?').run(Number(request.params.id));
-      const ins = db.prepare('INSERT OR REPLACE INTO verification_assignments (trade_id, verifier, deadline) VALUES (?, ?, ?)');
-      for (const member of panel as readonly string[]) ins.run(Number(request.params.id), member.toLowerCase(), deadline);
+      const ins = db.prepare('INSERT OR REPLACE INTO verification_assignments (trade_id, verifier, module, deadline) VALUES (?, ?, ?, ?)');
+      for (const member of panel as readonly string[]) ins.run(Number(request.params.id), member.toLowerCase(), v.toLowerCase(), deadline);
       return { tradeId: request.params.id, assigned: true, txHash: tx.txHash };
     } catch (err) {
       return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });

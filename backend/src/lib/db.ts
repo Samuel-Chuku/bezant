@@ -354,6 +354,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS verification_assignments (
     trade_id   INTEGER NOT NULL,
     verifier   TEXT NOT NULL,
+    module     TEXT NOT NULL DEFAULT '',
     deadline   INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (trade_id, verifier)
@@ -400,6 +401,14 @@ const deliverableCols = db
   .prepare("SELECT name FROM pragma_table_info('deliverables')")
   .all() as { name: string }[];
 const colNames = new Set(deliverableCols.map((c) => c.name));
+// Idempotent ALTER: pre-existing verification_assignments rows predate the
+// `module` column. Scoping by module stops a redeployed module from showing the
+// old module's assignments as bogus "missed" entries.
+const vaCols = db.prepare("SELECT name FROM pragma_table_info('verification_assignments')").all() as { name: string }[];
+if (vaCols.length > 0 && !new Set(vaCols.map((c) => c.name)).has('module')) {
+  db.exec("ALTER TABLE verification_assignments ADD COLUMN module TEXT NOT NULL DEFAULT ''");
+}
+
 if (!colNames.has('mime')) db.exec('ALTER TABLE deliverables ADD COLUMN mime TEXT');
 if (!colNames.has('size_bytes')) db.exec('ALTER TABLE deliverables ADD COLUMN size_bytes INTEGER');
 if (!colNames.has('file_path')) db.exec('ALTER TABLE deliverables ADD COLUMN file_path TEXT');

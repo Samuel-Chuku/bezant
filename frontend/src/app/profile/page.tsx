@@ -79,14 +79,25 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {userState.status === 'ready' && user && (
+            {userState.status === 'ready' && (
               <div className="md:w-72 md:shrink-0">
-                <AgentLinkCard
-                  variant="compact"
-                  currentAgentId={user.agentId}
-                  onLink={(agentId) => linkAgentId(agentId)}
-                  onRegister={() => registerAgent()}
-                />
+                {user ? (
+                  <AgentLinkCard
+                    variant="compact"
+                    currentAgentId={user.agentId}
+                    onLink={(agentId) => linkAgentId(agentId)}
+                    onRegister={() => registerAgent()}
+                  />
+                ) : (
+                  // No backend record yet — agentId links to your user row, so a
+                  // profile must exist first (claim a handle via the top banner).
+                  <div className="rounded-xl border border-violet-800/50 bg-violet-950/25 p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-300">ERC-8004 agent</div>
+                    <p className="mt-1 text-[11px] leading-snug text-violet-300/70">
+                      Set up a profile (claim a handle) to link or mint an agent and carry your reputation.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
