@@ -3023,6 +3023,31 @@ app.post<{ Params: { id: string }; Body: { message?: any; signature?: string } }
   },
 );
 
+// Seller's chosen payout chain — set during the active trade, read at settlement.
+// Server-side so it syncs across the seller's devices (was localStorage-only).
+app.get<{ Params: { id: string }; Querystring: { seller?: string } }>('/arc/trade/:id/payout/pref', async (request, reply) => {
+  const seller = request.query.seller;
+  if (!seller || !/^0x[0-9a-fA-F]{40}$/.test(seller)) return reply.code(400).send({ error: 'seller (0x) query param is required' });
+  const row = db.prepare('SELECT destination_key FROM payout_prefs WHERE trade_id = ? AND seller = ?').get(Number(request.params.id), seller.toLowerCase()) as { destination_key: string } | undefined;
+  return { destinationKey: row?.destination_key ?? null };
+});
+
+app.post<{ Params: { id: string }; Body: { seller?: string; destinationKey?: string | null } }>('/arc/trade/:id/payout/pref', async (request, reply) => {
+  const { seller, destinationKey } = request.body ?? {};
+  if (!seller || !/^0x[0-9a-fA-F]{40}$/.test(seller)) return reply.code(400).send({ error: 'seller (0x) is required' });
+  const id = Number(request.params.id);
+  const s = seller.toLowerCase();
+  if (destinationKey) {
+    db.prepare(
+      `INSERT INTO payout_prefs (trade_id, seller, destination_key) VALUES (?, ?, ?)
+       ON CONFLICT(trade_id, seller) DO UPDATE SET destination_key = excluded.destination_key`,
+    ).run(id, s, destinationKey);
+  } else {
+    db.prepare('DELETE FROM payout_prefs WHERE trade_id = ? AND seller = ?').run(id, s);
+  }
+  return { destinationKey: destinationKey ?? null };
+});
+
 // The recorded cross-chain payout for a trade, if any. The frontend loads this
 // on mount so a completed payout survives refresh (and can't be re-run).
 app.get<{ Params: { id: string } }>('/arc/trade/:id/payout', async (request) => {
@@ -3437,6 +3462,20 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
         kind: 'event',
         summary: `Trade #${id} ${EVENT_LABEL[e.kind] ?? e.kind}`,
         whenMs: new Date(e.indexed_at + 'Z').getTime() || Date.now(),
+      });
+    }
+
+    // Cross-chain payout (Gateway), if this trade was routed off Arc.
+    const payout = db
+      .prepare('SELECT destination_name, amount_usdc, created_at FROM gateway_payouts WHERE trade_id = ?')
+      .get(id) as { destination_name: string; amount_usdc: string; created_at: string } | undefined;
+    if (payout) {
+      items.push({
+        tradeId: String(id),
+        key: `trade:${id}:payout`,
+        kind: 'event',
+        summary: `Trade #${id} — routed ${payout.amount_usdc} USDC to ${payout.destination_name}`,
+        whenMs: new Date(payout.created_at + 'Z').getTime() || Date.now(),
       });
     }
   }
