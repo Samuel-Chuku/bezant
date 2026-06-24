@@ -1969,6 +1969,9 @@ async function readReputationSummary(agentIdStr: string) {
       agentId: agentIdStr,
       summary: { count: 0, value: '0', valueDecimals: 0 },
       clientsConsulted: [] as readonly `0x${string}`[],
+      operatorVerified: false,
+      boostMultiplier: 1,
+      boostedValue: '0',
     };
   }
   const [count, summaryValue, summaryValueDecimals] = await arcClient.readContract({
@@ -1977,6 +1980,26 @@ async function readReputationSummary(agentIdStr: string) {
     functionName: 'getSummary',
     args: [agentIdBig, clients, '', ''],
   });
+
+  // Operator boost: if the trusted operator left an `operator-verified`
+  // endorsement (only happens when a settled trade also got a counterparty 👍),
+  // apply a 1.2× composite on top of the raw ERC-8004 value. Raw data untouched.
+  let operatorVerified = false;
+  try {
+    const [opCount] = await arcClient.readContract({
+      address: ERC8004_REPUTATION_ADDRESS,
+      abi: reputationRegistryAbi,
+      functionName: 'getSummary',
+      args: [agentIdBig, [CIRCLE_OPERATOR_ADDRESS as `0x${string}`], 'arc-trade', 'operator-verified'],
+    });
+    operatorVerified = Number(opCount) > 0;
+  } catch {
+    /* leave unboosted on read failure */
+  }
+  const boostMultiplier = operatorVerified ? 1.2 : 1;
+  const rawValue = Number(summaryValue) / 10 ** Number(summaryValueDecimals);
+  const boostedValue = (rawValue * boostMultiplier).toString();
+
   return {
     agentId: agentIdStr,
     summary: {
@@ -1985,6 +2008,9 @@ async function readReputationSummary(agentIdStr: string) {
       valueDecimals: Number(summaryValueDecimals),
     },
     clientsConsulted: clients,
+    operatorVerified,
+    boostMultiplier,
+    boostedValue,
   };
 }
 
@@ -2141,6 +2167,68 @@ app.post<{ Body: { agentId?: string; positive?: boolean } }>('/arc/reputation/fe
   });
   return { to: ERC8004_REPUTATION_ADDRESS, data, value: '0' };
 });
+
+// ─── Operator reputation boost ─────────────────────────────────────────────
+// Extra trusted-operator endorsement on top of the passport + counterparty 👍.
+// Fires only when BOTH are positive: the trade settled (Released) AND the rater
+// left a positive on-chain feedback for the counterparty's agent. The operator
+// adds its own `operator-verified` feedback entry; the read layer then applies a
+// 1.2× composite. One endorsement per (trade, agent) — replay-safe.
+app.post<{ Params: { id: string }; Body: { agentId?: string; rater?: string } }>(
+  '/arc/trade/:id/feedback/boost',
+  async (request, reply) => {
+    if (!escrowReady(reply)) return;
+    const { agentId, rater } = request.body ?? {};
+    if (!agentId || !/^\d+$/.test(agentId)) return reply.code(400).send({ error: 'agentId (uint) is required' });
+    if (!rater || !/^0x[0-9a-fA-F]{40}$/.test(rater)) return reply.code(400).send({ error: 'rater (0x) is required' });
+
+    const id = Number(request.params.id);
+    const t = await getTrade(BigInt(request.params.id));
+    if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released'` });
+
+    const raterLc = rater.toLowerCase();
+    const isBuyer = raterLc === t.buyer.toLowerCase();
+    const isSeller = raterLc === t.seller.toLowerCase();
+    if (!isBuyer && !isSeller) return reply.code(403).send({ error: 'rater is not a party to this trade' });
+
+    // The boosted agent must belong to the rater's counterparty.
+    const counterparty = (isBuyer ? t.seller : t.buyer).toLowerCase();
+    const cpRow = db.prepare('SELECT agent_id FROM users WHERE lower(wallet_address) = ?').get(counterparty) as { agent_id: string | null } | undefined;
+    if (!cpRow?.agent_id || cpRow.agent_id !== agentId) {
+      return reply.code(409).send({ error: 'agentId does not belong to the counterparty (or they haven’t linked one)' });
+    }
+
+    // Counterparty feedback must be net-positive from the rater (i.e. a 👍).
+    const [fbCount, fbValue] = await arcClient.readContract({
+      address: ERC8004_REPUTATION_ADDRESS,
+      abi: reputationRegistryAbi,
+      functionName: 'getSummary',
+      args: [BigInt(agentId), [rater as `0x${string}`], '', ''],
+    });
+    if (Number(fbCount) === 0 || fbValue <= 0n) {
+      return reply.code(409).send({ error: 'no positive counterparty feedback found for this agent yet' });
+    }
+
+    // Replay-safe: one operator endorsement per (trade, agent).
+    const existing = db.prepare('SELECT tx_hash FROM reputation_boosts WHERE trade_id = ? AND agent_id = ?').get(id, agentId) as { tx_hash: string | null } | undefined;
+    if (existing) return { tradeId: request.params.id, agentId, boosted: true, already: true, txHash: existing.tx_hash };
+
+    try {
+      const exec = await circle.createContractExecutionTransaction({
+        walletId: CIRCLE_OPERATOR_WALLET_ID,
+        contractAddress: ERC8004_REPUTATION_ADDRESS,
+        abiFunctionSignature: 'giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)',
+        abiParameters: [agentId, '1', '0', 'arc-trade', 'operator-verified', '', '', `0x${'0'.repeat(64)}`],
+        fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+      });
+      const tx = await waitForCircleTx(exec.data!.id);
+      db.prepare('INSERT OR IGNORE INTO reputation_boosts (trade_id, agent_id, tx_hash) VALUES (?, ?, ?)').run(id, agentId, tx.txHash ?? null);
+      return { tradeId: request.params.id, agentId, boosted: true, txHash: tx.txHash };
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
 
 // ─── ERC-8004 agent self-registration (M32) ────────────────────────────────
 // Two routes. register-unsigned returns the calldata to mint a fresh

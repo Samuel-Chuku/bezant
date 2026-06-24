@@ -329,6 +329,17 @@ db.exec(`
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Operator reputation boost: one trusted operator endorsement per (trade,
+  -- agent) when a settled trade also got a counterparty thumbs-up. Dedup key
+  -- stops replay/spam (one boost per agent per trade).
+  CREATE TABLE IF NOT EXISTS reputation_boosts (
+    trade_id   INTEGER NOT NULL,
+    agent_id   TEXT NOT NULL,
+    tx_hash    TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (trade_id, agent_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);

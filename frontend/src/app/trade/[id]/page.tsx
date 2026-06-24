@@ -34,6 +34,7 @@ import {
   buildRefundTradeUnsigned,
   buildResolveDisputeUnsigned,
   buildFeedbackUnsigned,
+  triggerFeedbackBoost,
   getUserByAddress,
   type TradeState,
   type TradeEvent,
@@ -521,8 +522,8 @@ export default function TradeDetailPage() {
                   Settled — funds released to the seller and the buyer&apos;s credit passport updated.
                 </p>
                 <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="settle" />
-                {(isBuyer || isSeller) && (
-                  <RateCounterparty counterparty={isBuyer ? trade.seller : trade.buyer} onRate={rateCounterparty} />
+                {(isBuyer || isSeller) && signer.isConnected && (
+                  <RateCounterparty tradeId={id} rater={signer.address} counterparty={isBuyer ? trade.seller : trade.buyer} onRate={rateCounterparty} />
                 )}
               </div>
             )}
@@ -650,7 +651,7 @@ function short(addr: string): string {
 
 // Thumbs up/down on the counterparty after settlement. Only renders when the
 // counterparty has linked an ERC-8004 agentId (reputation is agentId-based).
-function RateCounterparty({ counterparty, onRate }: { counterparty: string; onRate: (agentId: string, positive: boolean) => Promise<void> }) {
+function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: string; rater: string; counterparty: string; onRate: (agentId: string, positive: boolean) => Promise<void> }) {
   const toast = useToast();
   const [agentId, setAgentId] = useState<string | null | undefined>(undefined); // undefined = loading
   const [busy, setBusy] = useState(false);
@@ -676,6 +677,13 @@ function RateCounterparty({ counterparty, onRate }: { counterparty: string; onRa
       await onRate(agentId, positive);
       setRated(positive);
       toast.success('Feedback submitted');
+      // A 👍 on a settled trade earns a trusted operator endorsement (1.2×).
+      // Best-effort: the 👍 already landed; don't surface boost failures.
+      if (positive) {
+        triggerFeedbackBoost(tradeId, agentId, rater)
+          .then((r) => { if (r.boosted) toast.success('Operator-verified boost applied (1.2×)'); })
+          .catch(() => {});
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {

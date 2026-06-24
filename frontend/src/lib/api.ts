@@ -980,6 +980,12 @@ export async function buildFeedbackUnsigned(agentId: string, positive: boolean):
   return jsonFetch('POST', '/arc/reputation/feedback/unsigned', { agentId, positive });
 }
 
+// Operator boost: trusted endorsement after a settled trade got a 👍. Operator-
+// signed server-side; safe to call after the rater's 👍 confirms (idempotent).
+export async function triggerFeedbackBoost(tradeId: string, agentId: string, rater: string): Promise<{ boosted: boolean; txHash?: string }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/feedback/boost`, { agentId, rater });
+}
+
 export async function buildAcceptTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/accept/unsigned`);
 }
