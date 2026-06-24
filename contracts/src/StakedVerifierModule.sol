@@ -43,7 +43,7 @@ contract StakedVerifierModule {
     address public operator; // assigns panels when the seller submits delivery
 
     // Tunable economics (owner-settable).
-    uint8 public panelSize = 3;
+    uint8 public panelSize = 4;
     uint256 public minStake; // minimum stake to be eligible
     uint16 public bondBps = 5000; // bond locked per panelist per assignment = stake * bondBps/10000 (at risk)
     uint16 public slashBps = 5000; // % of that bond a dishonest/no-show panelist forfeits
@@ -70,9 +70,11 @@ contract StakedVerifierModule {
         address[] panel;
         mapping(address => uint256) bonded; // per-panelist bond locked for this trade
         mapping(address => uint8) vote; // 0 none, 1 pass, 2 fail
+        mapping(address => bool) excluded; // no-shows barred from this trade's future panels
         uint8 passes;
         uint8 fails;
         uint8 cast;
+        uint8 rounds; // panels drawn so far (a void+retry increments this)
     }
 
     mapping(uint256 => V) internal V_;
@@ -84,6 +86,7 @@ contract StakedVerifierModule {
     event PanelAssigned(uint256 indexed tradeId, address[] panel, uint256 fee);
     event Voted(uint256 indexed tradeId, address indexed verifier, bool pass);
     event Resolved(uint256 indexed tradeId, bool passed, uint256 rewardPool, uint256 honestCount);
+    event VerificationVoided(uint256 indexed tradeId, uint8 round); // no quorum → reset for a fresh panel
 
     error NotOwner();
     error NotOperator();
@@ -196,32 +199,76 @@ contract StakedVerifierModule {
         v.cast++;
         emit Voted(tradeId, msg.sender, pass);
 
-        uint8 majority = uint8(v.panel.length) / 2 + 1;
-        if (v.passes >= majority || v.fails >= majority) _resolve(tradeId, v);
+        // Resolve early only when EVERYONE has voted — never on a bare majority,
+        // so no panelist is ever denied their turn (and thus never slashed for a
+        // resolution that beat them to it). Otherwise it waits for resolveTimeout.
+        if (v.cast == v.panel.length) _resolve(tradeId, v);
     }
 
-    /// @notice After the window, resolve on the votes cast (or void if none).
+    /// @notice After the window: resolve if quorum was met, else void + retry.
     function resolveTimeout(uint256 tradeId) external {
         V storage v = V_[tradeId];
         require(v.assigned && !v.resolved, "not open");
         require(block.timestamp > v.deadline, "not expired");
-        if (v.cast == 0) {
-            // Nobody voted → void: unlock bonds, refund the fee, leave the trade
-            // Funded (the buyer can still refund after the trade deadline). No attest.
-            v.resolved = true;
-            for (uint256 i; i < v.panel.length; i++) {
-                lockedOf[v.panel[i]] -= v.bonded[v.panel[i]];
-            }
-            uint256 fee = v.fee;
-            v.fee = 0;
-            if (fee > 0) {
-                (address buyer,,,) = _trade(tradeId);
-                require(usdc.transfer(buyer, fee), "refund");
-            }
-            emit Resolved(tradeId, false, 0, 0);
-            return;
+        // Quorum = panel − 1 (e.g. 3 of 4): everyone had the full window, so the
+        // votes cast are decisive and the no-shows are legitimately slashed.
+        // Below quorum → void + retry instead of deciding on too few votes.
+        uint256 quorum = v.panel.length > 1 ? v.panel.length - 1 : 1;
+        if (v.cast >= quorum) {
+            _resolve(tradeId, v);
+        } else {
+            _voidRetry(tradeId, v);
         }
-        _resolve(tradeId, v);
+    }
+
+    /// @notice Below-quorum timeout: slash & bar the no-shows, reward whoever
+    /// showed (or compensate the buyer), then reset so the seller can resubmit
+    /// for a fresh panel. The buyer's fee is KEPT — retry isn't double-charged.
+    function _voidRetry(uint256 tradeId, V storage v) internal {
+        address[] memory panel = v.panel;
+        uint256 n = panel.length;
+        address[] memory showers = new address[](n);
+        uint256 showed;
+        uint256 slashedPool;
+
+        for (uint256 i; i < n; i++) {
+            address a = panel[i];
+            uint256 bnd = v.bonded[a];
+            lockedOf[a] -= bnd;
+            if (v.vote[a] == 0) {
+                // No-show: slash, bar from this trade's future panels, rep hit.
+                uint256 slash = (bnd * slashBps) / 10000;
+                stakeOf[a] -= slash;
+                slashedPool += slash;
+                v.excluded[a] = true;
+                totalVotes[a] += 1;
+            } else {
+                showers[showed++] = a;
+            }
+            v.bonded[a] = 0;
+            v.vote[a] = 0;
+        }
+
+        if (slashedPool > 0) {
+            if (showed > 0) {
+                uint256 share = slashedPool / showed;
+                for (uint256 i; i < showed; i++) stakeOf[showers[i]] += share;
+            } else {
+                (address buyer,,,) = _trade(tradeId);
+                require(usdc.transfer(buyer, slashedPool), "comp");
+            }
+        }
+
+        // Reset for a fresh panel — fee stays prepaid (feePrepaid untouched).
+        delete v.panel;
+        v.assigned = false;
+        v.passes = 0;
+        v.fails = 0;
+        v.cast = 0;
+        v.proofHash = bytes32(0);
+        v.deadline = 0;
+        v.rounds += 1;
+        emit VerificationVoided(tradeId, v.rounds);
     }
 
     function _resolve(uint256 tradeId, V storage v) internal {
@@ -275,6 +322,7 @@ contract StakedVerifierModule {
         for (uint256 i; i < n; i++) {
             address a = verifiers[i];
             if (a == buyer || a == seller) continue;
+            if (V_[tradeId].excluded[a]) continue; // barred no-show from a prior round
             uint256 free = stakeOf[a] - lockedOf[a];
             uint256 bnd = (stakeOf[a] * bondBps) / 10000;
             if (stakeOf[a] >= minStake && bnd > 0 && free >= bnd) {

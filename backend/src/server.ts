@@ -3746,6 +3746,9 @@ app.post<{ Params: { id: string }; Body: { content?: string; signature?: string;
         arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
       ]);
       const deadline = Number((vstate as readonly unknown[])[2]); // V.deadline
+      // Replace the whole membership for this trade — on a retry the panel is
+      // redrawn, so old rows (incl. excluded no-shows) must not linger.
+      db.prepare('DELETE FROM verification_assignments WHERE trade_id = ?').run(Number(request.params.id));
       const ins = db.prepare('INSERT OR REPLACE INTO verification_assignments (trade_id, verifier, deadline) VALUES (?, ?, ?)');
       for (const member of panel as readonly string[]) ins.run(Number(request.params.id), member.toLowerCase(), deadline);
       return { tradeId: request.params.id, assigned: true, txHash: tx.txHash };

@@ -52,14 +52,13 @@ contract StakedVerifierModuleTest is Test {
     uint16 constant BOND_BPS = 5000; // bond = 50% of stake
     uint256 constant STAKE = 20 * USD;
     uint256 constant EXPECTED_BOND = (STAKE * BOND_BPS) / 10000; // 10 USDC
+    uint256 constant SLASH = (EXPECTED_BOND * 5000) / 10000; // 50% of bond = 5 USDC
     uint256 constant AMOUNT = 100 * USD;
     uint8 constant FUNDED = 3;
 
     address buyer = makeAddr("buyer");
     address seller = makeAddr("seller");
-    address v1 = makeAddr("v1");
-    address v2 = makeAddr("v2");
-    address v3 = makeAddr("v3");
+    address[6] vs;
     bytes32 constant PROOF = keccak256("delivery");
 
     function setUp() public {
@@ -67,11 +66,12 @@ contract StakedVerifierModuleTest is Test {
         escrow = new MockEscrow();
         // This test contract is owner + operator.
         mod = new StakedVerifierModule(address(usdc), address(escrow), MIN_STAKE, BOND_BPS);
-        mod.setParams(3, MIN_STAKE, BOND_BPS, 5000, 100, 1 hours); // bond 50% of stake, 50% slash, 1% fee
+        mod.setParams(4, MIN_STAKE, BOND_BPS, 5000, 100, 1 hours); // panel 4, 50% slash, 1% fee
 
-        _stake(v1);
-        _stake(v2);
-        _stake(v3);
+        for (uint256 i; i < 6; i++) {
+            vs[i] = makeAddr(string(abi.encodePacked("v", vm.toString(i))));
+            _stake(vs[i]);
+        }
 
         // Trade #1: attester = module, Funded, amount 100.
         escrow.setTrade(1, buyer, seller, address(mod), AMOUNT, FUNDED);
@@ -88,49 +88,111 @@ contract StakedVerifierModuleTest is Test {
         vm.stopPrank();
     }
 
-    // Happy path: buyer funds fee → panel assigned → 2 pass / 1 fail → settles
-    // pass, minority slashed, honest rewarded, reputation updated.
-    function test_panelVote_majorityPass_settlesAndPays() public {
+    function _vote(address v, bool pass) internal {
+        vm.prank(v);
+        mod.vote(1, pass);
+    }
+
+    function _resolvedFlag(uint256 id) internal view returns (bool resolved) {
+        (, resolved,,,,,) = mod.verificationOf(id);
+    }
+
+    function _assignedFlag(uint256 id) internal view returns (bool assigned) {
+        (assigned,,,,,,) = mod.verificationOf(id);
+    }
+
+    // All four vote → resolves early (before timeout); 3 pass / 1 fail settles
+    // pass, minority slashed, three honest split fee + slash.
+    function test_allVoted_resolvesEarly() public {
         vm.prank(buyer);
         mod.fundVerification(1);
-        assertEq(mod.feePrepaid(1), 1 * USD, "fee = 1% of 100");
-
         mod.assignPanel(1, PROOF);
-        assertEq(mod.panelOf(1).length, 3, "panel of 3");
-        assertEq(mod.lockedOf(v1), EXPECTED_BOND, "v1 bonded 50% of stake");
+        address[] memory p = mod.panelOf(1);
+        assertEq(p.length, 4, "panel of 4");
 
-        // v1 pass, v2 fail, v3 pass → majority pass reached at v3.
-        vm.prank(v1);
-        mod.vote(1, true);
-        vm.prank(v2);
-        mod.vote(1, false);
-        vm.prank(v3);
-        mod.vote(1, true);
+        _vote(p[0], true);
+        _vote(p[1], true);
+        _vote(p[2], true);
+        assertFalse(_resolvedFlag(1), "not resolved at 3/4 - must wait for all or timeout");
+        _vote(p[3], false); // all voted → resolve
 
-        // Escrow attested pass with the right proof.
         assertTrue(escrow.attested(), "attested");
-        assertEq(escrow.attestedId(), 1);
         assertTrue(escrow.lastPassed(), "passed");
-        assertEq(escrow.lastProof(), PROOF);
+        // pool = fee 1 + minority slash 5 = 6; split across 3 honest → 2 each.
+        uint256 share = (1 * USD + SLASH) / 3;
+        assertEq(mod.stakeOf(p[3]), STAKE - SLASH, "minority slashed");
+        assertEq(mod.stakeOf(p[0]), STAKE + share, "honest rewarded");
+    }
 
-        // Economics: bond = 50% of 20 = 10; minority (v2) slashed 50% of bond = 5;
-        // pool = fee 1 + 5 = 6; split between v1, v3 → 3 each. Bonds unlocked.
-        uint256 slash = (EXPECTED_BOND * 5000) / 10000; // 5
-        uint256 share = (1 * USD + slash) / 2; // 3
-        assertEq(mod.stakeOf(v2), STAKE - slash, "v2 slashed");
-        assertEq(mod.stakeOf(v1), STAKE + share, "v1 rewarded");
-        assertEq(mod.stakeOf(v3), STAKE + share, "v3 rewarded");
-        assertEq(mod.lockedOf(v1), 0, "v1 unlocked");
-        assertEq(mod.lockedOf(v2), 0, "v2 unlocked");
+    // 3 of 4 vote, 1 no-show, window elapses → resolves on the 3; both the
+    // minority voter AND the no-show are slashed (they had the full window).
+    function test_timeoutQuorum_resolvesAndSlashesNoShow() public {
+        vm.prank(buyer);
+        mod.fundVerification(1);
+        mod.assignPanel(1, PROOF);
+        address[] memory p = mod.panelOf(1);
 
-        // Reputation.
-        assertEq(mod.correctVotes(v1), 1);
-        assertEq(mod.totalVotes(v1), 1);
-        assertEq(mod.correctVotes(v2), 0);
-        assertEq(mod.totalVotes(v2), 1);
+        _vote(p[0], true);
+        _vote(p[1], true);
+        _vote(p[2], false); // p[3] never votes
+        vm.warp(block.timestamp + 2 hours);
+        mod.resolveTimeout(1);
 
-        // Ledger conservation: module USDC == sum of stakes (60 + fee 1 = 61).
-        assertEq(usdc.balanceOf(address(mod)), mod.stakeOf(v1) + mod.stakeOf(v2) + mod.stakeOf(v3));
+        assertTrue(escrow.attested(), "attested");
+        assertTrue(escrow.lastPassed(), "2 pass > 1 fail");
+        assertEq(mod.stakeOf(p[2]), STAKE - SLASH, "minority slashed");
+        assertEq(mod.stakeOf(p[3]), STAKE - SLASH, "no-show slashed");
+        // No-show takes a reputation hit (drawn but didn't vote on a quorum round).
+        assertEq(mod.totalVotes(p[3]), 1);
+        assertEq(mod.correctVotes(p[3]), 0);
+    }
+
+    // A bare majority (2/4, or even 3/4) must NOT resolve early.
+    function test_noEarlyResolveOnMajority() public {
+        vm.prank(buyer);
+        mod.fundVerification(1);
+        mod.assignPanel(1, PROOF);
+        address[] memory p = mod.panelOf(1);
+
+        _vote(p[0], true);
+        _vote(p[1], true);
+        assertFalse(_resolvedFlag(1), "no resolve on bare majority");
+        assertFalse(escrow.attested());
+        vm.expectRevert(bytes("not expired"));
+        mod.resolveTimeout(1);
+    }
+
+    // Below quorum at timeout → void + retry: fee kept, no-shows slashed + barred,
+    // the two who showed split the slashed stake, and the redraw excludes the no-shows.
+    function test_belowQuorum_voidsAndRetriesExcludingNoShows() public {
+        vm.prank(buyer);
+        mod.fundVerification(1);
+        assertEq(mod.feePrepaid(1), 1 * USD);
+        mod.assignPanel(1, PROOF);
+        address[] memory p = mod.panelOf(1);
+
+        _vote(p[0], true);
+        _vote(p[1], false); // only 2 of 4 — p[2], p[3] no-show
+        vm.warp(block.timestamp + 2 hours);
+        mod.resolveTimeout(1);
+
+        assertFalse(escrow.attested(), "no attest on void");
+        assertEq(mod.feePrepaid(1), 1 * USD, "fee kept for retry");
+        assertFalse(_assignedFlag(1), "reset for a fresh panel");
+        assertFalse(_resolvedFlag(1), "not resolved");
+
+        assertEq(mod.stakeOf(p[2]), STAKE - SLASH, "no-show slashed");
+        assertEq(mod.stakeOf(p[3]), STAKE - SLASH, "no-show slashed");
+        // Showers split the slashed pool (2 * 5 = 10) → 5 each.
+        assertEq(mod.stakeOf(p[0]), STAKE + 5 * USD, "shower rewarded");
+        assertEq(mod.stakeOf(p[1]), STAKE + 5 * USD, "shower rewarded");
+
+        // Retry: seller resubmits → new panel excludes the barred no-shows.
+        mod.assignPanel(1, PROOF);
+        address[] memory p2 = mod.panelOf(1);
+        for (uint256 i; i < p2.length; i++) {
+            assertTrue(p2[i] != p[2] && p2[i] != p[3], "barred no-show was redrawn");
+        }
     }
 
     function test_assignPanel_requiresPrepaidFee() public {
@@ -142,42 +204,24 @@ contract StakedVerifierModuleTest is Test {
         vm.prank(buyer);
         mod.fundVerification(1);
         mod.assignPanel(1, PROOF);
-        // v1 is bonded; only free stake (STAKE - EXPECTED_BOND) is withdrawable.
-        vm.prank(v1);
+        address m = mod.panelOf(1)[0]; // a bonded panelist
+        vm.prank(m);
         vm.expectRevert(bytes("locked/insufficient"));
         mod.unstake(STAKE);
-        vm.prank(v1);
+        vm.prank(m);
         mod.unstake(STAKE - EXPECTED_BOND); // free portion ok
     }
 
-    // Conflict of interest: a staked verifier who is the trade's buyer or seller
-    // is never drawn onto its own panel.
+    // Conflict of interest: a staked verifier who is the trade's seller is never
+    // drawn onto its panel.
     function test_select_excludesTradeParties() public {
-        // Trade #2: seller is v1 (a staked verifier). With v1 excluded, only
-        // v2 + v3 remain eligible, so the panel is 2 and never contains v1.
-        escrow.setTrade(2, buyer, v1, address(mod), AMOUNT, FUNDED);
+        escrow.setTrade(2, buyer, vs[0], address(mod), AMOUNT, FUNDED); // vs[0] = seller
         vm.prank(buyer);
         mod.fundVerification(2);
         mod.assignPanel(2, PROOF);
-
-        address[] memory panel = mod.panelOf(2);
-        assertEq(panel.length, 2, "v1 excluded -> panel of 2");
-        for (uint256 i; i < panel.length; i++) {
-            assertTrue(panel[i] != v1, "trade party never on its own panel");
+        address[] memory p = mod.panelOf(2);
+        for (uint256 i; i < p.length; i++) {
+            assertTrue(p[i] != vs[0], "trade party on its own panel");
         }
-    }
-
-    function test_timeout_noVotes_voidsAndRefunds() public {
-        vm.prank(buyer);
-        mod.fundVerification(1);
-        mod.assignPanel(1, PROOF);
-        uint256 buyerBefore = usdc.balanceOf(buyer);
-
-        vm.warp(block.timestamp + 2 hours);
-        mod.resolveTimeout(1);
-
-        assertFalse(escrow.attested(), "not attested on void");
-        assertEq(usdc.balanceOf(buyer), buyerBefore + 1 * USD, "fee refunded");
-        assertEq(mod.lockedOf(v1), 0, "bond unlocked");
     }
 }

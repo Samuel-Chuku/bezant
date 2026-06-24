@@ -42,49 +42,54 @@ export default function ProfilePage() {
       <h1 className="text-3xl font-semibold tracking-tight">Profile</h1>
 
       <div className="mt-6 space-y-6">
-        {/* Identity */}
+        {/* Identity + agent linking (compact, on the right) */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
-          <div className="flex items-center gap-4">
-            <Avatar address={signer.address} size={48} />
-            <div className="min-w-0">
-              <div className="truncate text-lg font-medium text-neutral-100">
-                {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
+          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-4">
+                <Avatar address={signer.address} size={48} />
+                <div className="min-w-0">
+                  <div className="truncate text-lg font-medium text-neutral-100">
+                    {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
+                  </div>
+                  <div className="font-mono text-xs text-neutral-500">{signer.address}</div>
+                </div>
               </div>
-              <div className="font-mono text-xs text-neutral-500">{signer.address}</div>
+
+              <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
+                <Field label="Signing">
+                  {signer.mode === 'external' ? 'Browser wallet' : 'Email + passkey'}
+                </Field>
+                {user?.createdAt && (
+                  <Field label="Member since">
+                    {new Date(user.createdAt).toLocaleDateString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </Field>
+                )}
+              </dl>
+
+              {userState.status === 'loading' && (
+                <p className="mt-3 text-xs text-neutral-500">Looking up your account…</p>
+              )}
+              {userState.status === 'error' && (
+                <p className="mt-3 text-xs text-red-400">Couldn&apos;t reach the backend: {userState.message}</p>
+              )}
             </div>
+
+            {userState.status === 'ready' && user && (
+              <div className="md:w-72 md:shrink-0">
+                <AgentLinkCard
+                  variant="compact"
+                  currentAgentId={user.agentId}
+                  onLink={(agentId) => linkAgentId(agentId)}
+                  onRegister={() => registerAgent()}
+                />
+              </div>
+            )}
           </div>
-
-          <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
-            <Field label="Signing">
-              {signer.mode === 'external' ? 'Browser wallet' : 'Email + passkey'}
-            </Field>
-            {user?.createdAt && (
-              <Field label="Member since">
-                {new Date(user.createdAt).toLocaleDateString(undefined, {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </Field>
-            )}
-            {user?.agentId && (
-              <Field label="Agent ID">
-                <Link
-                  href={`/reputation/agent/${encodeURIComponent(user.agentId)}`}
-                  className="font-mono text-neutral-200 hover:text-neutral-100"
-                >
-                  #{user.agentId} ›
-                </Link>
-              </Field>
-            )}
-          </dl>
-
-          {userState.status === 'loading' && (
-            <p className="mt-3 text-xs text-neutral-500">Looking up your account…</p>
-          )}
-          {userState.status === 'error' && (
-            <p className="mt-3 text-xs text-red-400">Couldn&apos;t reach the backend: {userState.message}</p>
-          )}
         </section>
 
         {/* Send USDC — passkey (Circle Modular) wallets only; renders null otherwise */}
@@ -98,15 +103,6 @@ export default function ProfilePage() {
 
         {/* Recent activity */}
         <RecentActivity />
-
-        {/* Agent linking — only once a backend record exists */}
-        {userState.status === 'ready' && user && (
-          <AgentLinkCard
-            currentAgentId={user.agentId}
-            onLink={(agentId) => linkAgentId(agentId)}
-            onRegister={() => registerAgent()}
-          />
-        )}
       </div>
     </main>
   );
@@ -171,14 +167,19 @@ function RecentActivity() {
   const { items, isLoading } = useNotifications();
   const router = useRouter();
 
+  // Drop parked pact-era items (the standalone trade flow is the live product;
+  // the pact system is unlinked) so the feed tracks current trade/pool/verifier
+  // activity instead of stale "Pact #… " wordings.
+  const live = items.filter((it) => it.category !== 'pact');
+
   // Pending actions carry a deadline-based timestamp (often in the future), so
   // a naive "5 most recent" lets them crowd out genuinely-recent pool/trade
   // events. Reserve up to 2 slots for the most urgent pending actions, then
   // fill the rest with the latest actual events — so a fresh deposit/withdrawal
   // always shows here. Full history + "Needs action" filter live on /activity.
   const needsAction = (it: NotificationItem) => it.kind === 'action' || it.kind === 'deadline';
-  const actions = items.filter(needsAction).slice(0, 2);
-  const events = items.filter((it) => !needsAction(it)).slice(0, 5 - actions.length);
+  const actions = live.filter(needsAction).slice(0, 2);
+  const events = live.filter((it) => !needsAction(it)).slice(0, 5 - actions.length);
   const recent = [...actions, ...events];
 
   return (
