@@ -12,7 +12,7 @@ export const stakedVerifierAbi = [
   { type: 'function', name: 'panelSize', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
   { type: 'function', name: 'feeBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] },
   { type: 'function', name: 'slashBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] },
-  { type: 'function', name: 'bond', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'bondBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] },
   { type: 'function', name: 'minStake', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'voteWindow', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint64' }] },
   { type: 'function', name: 'verifierCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },

@@ -22,6 +22,7 @@ const TRADE_LINKS: NavItem[] = [
 // Desktop destinations that flank the Trades dropdown.
 const PRIMARY_AFTER: NavItem[] = [
   { href: '/pool', label: 'Pool' },
+  { href: '/verify', label: 'Verify' },
   { href: '/bridge', label: 'Bridge' },
   { href: '/profile', label: 'Profile' },
 ];

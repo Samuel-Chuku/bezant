@@ -16,6 +16,7 @@ import { useTxFlow } from '@/components/tx-flow';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
+import { VerificationPanel } from '@/components/verification-panel';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
@@ -37,6 +38,8 @@ import {
   triggerFeedbackBoost,
   officerAttestAuthMessage,
   getUserByAddress,
+  getVerifierInfo,
+  type VerifierInfo,
   type TradeState,
   type TradeEvent,
   type UnsignedTx,
@@ -103,7 +106,12 @@ export default function TradeDetailPage() {
   const [counterAmount, setCounterAmount] = useState('');
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
+  const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
   const autoFundedRef = useRef(false);
+
+  useEffect(() => {
+    getVerifierInfo().then(setVerifier).catch(() => {});
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -276,6 +284,10 @@ export default function TradeDetailPage() {
   // dispute) see the details; everyone else sees just the deadline. NOTE: this
   // is a UI courtesy — the data is public on-chain and via the API.
   const isParticipant = isBuyer || isSeller || isArbitrator;
+  // Panel-mode trades set the staked-verifier module as their attester at
+  // creation; they verify delivery via the panel instead of the Trade Officer.
+  const isPanelTrade =
+    !!trade && !!verifier?.address && trade.attester.toLowerCase() === verifier.address.toLowerCase();
 
   // Bridge-into-fund: once the CCTP bridge lands the USDC on Arc, fund the trade
   // automatically (approve + lock) so the buyer doesn't have to come back and
@@ -350,7 +362,7 @@ export default function TradeDetailPage() {
             <Field label="Financing">{trade.financingAdvanced ? `advanced (${trade.financedRepayUsdc} USDC)` : '—'}</Field>
             <Field label="Buyer"><HandleAddr address={trade.buyer} withAddress /></Field>
             <Field label="Seller"><HandleAddr address={trade.seller} withAddress /></Field>
-            <Field label="Attester (Trade Officer)"><HandleAddr address={trade.attester} withAddress /></Field>
+            <Field label={`Attester (${isPanelTrade ? 'Staked panel' : 'Trade Officer'})`}><HandleAddr address={trade.attester} withAddress /></Field>
             <Field label="Deadline">{new Date(trade.deadline * 1000).toLocaleString()}</Field>
           </div>
 
@@ -426,8 +438,13 @@ export default function TradeDetailPage() {
               <Waiting>Agreed at {trade.amountUsdc} USDC. Waiting for the buyer to fund.</Waiting>
             )}
 
+            {/* FUNDED + panel mode — staked-panel verification (fee → submit → vote) */}
+            {trade.status === 'Funded' && isPanelTrade && (
+              <VerificationPanel tradeId={id} buyer={trade.buyer} seller={trade.seller} onChange={refresh} />
+            )}
+
             {/* FUNDED — buyer challenge window open (officer approved, not yet settled) */}
-            {trade.status === 'Funded' && windowActive && trade.challengeWindowUntil != null && (
+            {trade.status === 'Funded' && !isPanelTrade && windowActive && trade.challengeWindowUntil != null && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/40 bg-amber-950/20 p-4">
                 <p className="text-sm text-amber-100">
                   {isBuyer
@@ -441,7 +458,7 @@ export default function TradeDetailPage() {
             )}
 
             {/* FUNDED — seller delivers (officer attests, auto-settles) */}
-            {trade.status === 'Funded' && isSeller && !windowActive && (
+            {trade.status === 'Funded' && !isPanelTrade && isSeller && !windowActive && (
               <div className="space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm text-neutral-300">
@@ -505,7 +522,7 @@ export default function TradeDetailPage() {
                 </div>
               </div>
             )}
-            {trade.status === 'Funded' && !isSeller && !windowActive && (
+            {trade.status === 'Funded' && !isPanelTrade && !isSeller && !windowActive && (
               <Waiting>Funded. Awaiting delivery documents from the seller; settlement is automatic once the officer attests.</Waiting>
             )}
 

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { parseEventLogs } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
-import { buildCreateTradeUnsigned, resolveAddress } from '@/lib/api';
+import { buildCreateTradeUnsigned, resolveAddress, getVerifierInfo, type VerifierInfo } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
 import { useToast } from '@/components/toast';
 import { arcExplorerTxUrl } from '@/lib/explorers';
@@ -53,6 +53,12 @@ export default function CreateTradePage() {
   const [submission, setSubmission] = useState<Submission>({ status: 'idle' });
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
+  const [verifyMode, setVerifyMode] = useState<'officer' | 'panel'>('officer');
+  const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
+
+  useEffect(() => {
+    getVerifierInfo().then(setVerifier).catch(() => {});
+  }, []);
 
   const submit = async () => {
     if (!signer.isConnected) {
@@ -72,6 +78,8 @@ export default function CreateTradePage() {
         amountUsdc,
         milestone: milestone.trim() || 'delivery',
         deadlineSeconds: Math.max(60, Math.round(deadlineValue * UNIT_SECONDS[deadlineUnit])),
+        // Staked-panel mode sets the verifier module as the trade's attester.
+        attester: verifyMode === 'panel' && verifier?.address ? verifier.address : undefined,
       });
 
       setSubmission({ status: 'signing' });
@@ -176,6 +184,30 @@ export default function CreateTradePage() {
             </select>
           </div>
         </label>
+
+        {verifier?.configured && (
+          <div>
+            <span className="text-sm text-neutral-300">Delivery verification</span>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setVerifyMode('officer')}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'officer' ? 'border-neutral-500 bg-neutral-900 text-neutral-100' : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'}`}
+              >
+                <div className="font-medium">Trade Officer</div>
+                <div className="text-xs text-neutral-500">Fast — an automated agent attests.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVerifyMode('panel')}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'panel' ? 'border-neutral-500 bg-neutral-900 text-neutral-100' : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'}`}
+              >
+                <div className="font-medium">Staked panel</div>
+                <div className="text-xs text-neutral-500">Decentralized — a {verifier.panelSize}-verifier panel votes. +{(verifier.feeBps ?? 0) / 100}% fee.</div>
+              </button>
+            </div>
+          </div>
+        )}
 
         {signer.isConnected && (
           <div>

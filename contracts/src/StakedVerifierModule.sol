@@ -45,8 +45,8 @@ contract StakedVerifierModule {
     // Tunable economics (owner-settable).
     uint8 public panelSize = 3;
     uint256 public minStake; // minimum stake to be eligible
-    uint256 public bond; // locked from each panelist per assignment (at risk)
-    uint16 public slashBps = 5000; // % of bond a dishonest/no-show panelist forfeits
+    uint16 public bondBps = 5000; // bond locked per panelist per assignment = stake * bondBps/10000 (at risk)
+    uint16 public slashBps = 5000; // % of that bond a dishonest/no-show panelist forfeits
     uint16 public feeBps = 100; // buyer verification fee = tradeAmount * feeBps/10000
     uint64 public voteWindow = 1 hours;
 
@@ -68,6 +68,7 @@ contract StakedVerifierModule {
         bytes32 proofHash;
         uint256 fee;
         address[] panel;
+        mapping(address => uint256) bonded; // per-panelist bond locked for this trade
         mapping(address => uint8) vote; // 0 none, 1 pass, 2 fail
         uint8 passes;
         uint8 fails;
@@ -92,13 +93,14 @@ contract StakedVerifierModule {
         _;
     }
 
-    constructor(address _usdc, address _escrow, uint256 _minStake, uint256 _bond) {
+    constructor(address _usdc, address _escrow, uint256 _minStake, uint16 _bondBps) {
+        require(_bondBps > 0 && _bondBps <= 10000, "bondBps");
         usdc = IERC20(_usdc);
         escrow = ITradeEscrow(_escrow);
         owner = msg.sender;
         operator = msg.sender;
         minStake = _minStake;
-        bond = _bond;
+        bondBps = _bondBps;
     }
 
     // --- owner config ---
@@ -106,14 +108,14 @@ contract StakedVerifierModule {
         operator = a;
     }
 
-    function setParams(uint8 _panelSize, uint256 _minStake, uint256 _bond, uint16 _slashBps, uint16 _feeBps, uint64 _voteWindow)
+    function setParams(uint8 _panelSize, uint256 _minStake, uint16 _bondBps, uint16 _slashBps, uint16 _feeBps, uint64 _voteWindow)
         external
         onlyOwner
     {
-        require(_panelSize > 0 && _slashBps <= 10000 && _feeBps <= 10000, "bad params");
+        require(_panelSize > 0 && _bondBps > 0 && _bondBps <= 10000 && _slashBps <= 10000 && _feeBps <= 10000, "bad params");
         panelSize = _panelSize;
         minStake = _minStake;
-        bond = _bond;
+        bondBps = _bondBps;
         slashBps = _slashBps;
         feeBps = _feeBps;
         voteWindow = _voteWindow;
@@ -171,8 +173,11 @@ contract StakedVerifierModule {
         uint256 fee = feePrepaid[tradeId];
         v.fee = fee == type(uint256).max ? 0 : fee;
         for (uint256 i; i < panel.length; i++) {
-            lockedOf[panel[i]] += bond;
-            v.panel.push(panel[i]);
+            address p = panel[i];
+            uint256 bnd = (stakeOf[p] * bondBps) / 10000;
+            lockedOf[p] += bnd;
+            v.bonded[p] = bnd;
+            v.panel.push(p);
         }
         emit PanelAssigned(tradeId, panel, v.fee);
     }
@@ -205,7 +210,7 @@ contract StakedVerifierModule {
             // Funded (the buyer can still refund after the trade deadline). No attest.
             v.resolved = true;
             for (uint256 i; i < v.panel.length; i++) {
-                lockedOf[v.panel[i]] -= bond;
+                lockedOf[v.panel[i]] -= v.bonded[v.panel[i]];
             }
             uint256 fee = v.fee;
             v.fee = 0;
@@ -232,13 +237,14 @@ contract StakedVerifierModule {
         // forfeit slashBps of their bond into the reward pool.
         for (uint256 i; i < panel.length; i++) {
             address a = panel[i];
+            uint256 bnd = v.bonded[a];
             totalVotes[a] += 1;
-            lockedOf[a] -= bond;
+            lockedOf[a] -= bnd;
             if (v.vote[a] == winSide) {
                 correctVotes[a] += 1;
                 honestCount++;
             } else {
-                uint256 slash = (bond * slashBps) / 10000;
+                uint256 slash = (bnd * slashBps) / 10000;
                 stakeOf[a] -= slash;
                 rewardPool += slash;
             }
@@ -259,14 +265,19 @@ contract StakedVerifierModule {
 
     // --- selection: weighted-random by stake × reputation (not stake alone) ---
     function _select(uint256 tradeId) internal view returns (address[] memory chosen) {
+        // No self-verification: the trade's own buyer/seller can never sit on its
+        // panel, even if they're staked verifiers (conflict of interest).
+        (address buyer, address seller,,,,,,,,,,) = escrow.trades(tradeId);
         uint256 n = verifiers.length;
         address[] memory elig = new address[](n);
         uint256[] memory wt = new uint256[](n);
         uint256 m;
         for (uint256 i; i < n; i++) {
             address a = verifiers[i];
+            if (a == buyer || a == seller) continue;
             uint256 free = stakeOf[a] - lockedOf[a];
-            if (stakeOf[a] >= minStake && free >= bond && bond > 0) {
+            uint256 bnd = (stakeOf[a] * bondBps) / 10000;
+            if (stakeOf[a] >= minStake && bnd > 0 && free >= bnd) {
                 // reputation factor 100..200; new verifiers get a neutral 150.
                 uint256 rep = totalVotes[a] == 0 ? 150 : (100 + (uint256(correctVotes[a]) * 100) / totalVotes[a]);
                 elig[m] = a;

@@ -3571,8 +3571,8 @@ app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (requ
   const v = STAKED_VERIFIER_ADDRESS;
   const read = (functionName: string, args: unknown[] = []) =>
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: functionName as never, args: args as never });
-  const [panelSize, feeBps, slashBps, bond, minStake, voteWindow, count] = await Promise.all([
-    read('panelSize'), read('feeBps'), read('slashBps'), read('bond'), read('minStake'), read('voteWindow'), read('verifierCount'),
+  const [panelSize, feeBps, slashBps, bondBps, minStake, voteWindow, count] = await Promise.all([
+    read('panelSize'), read('feeBps'), read('slashBps'), read('bondBps'), read('minStake'), read('voteWindow'), read('verifierCount'),
   ]);
   const out: Record<string, unknown> = {
     configured: true,
@@ -3580,7 +3580,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (requ
     panelSize: Number(panelSize),
     feeBps: Number(feeBps),
     slashBps: Number(slashBps),
-    bondUsdc: formatUnits(bond as bigint, 6),
+    bondBps: Number(bondBps),
     minStakeUsdc: formatUnits(minStake as bigint, 6),
     voteWindowSeconds: Number(voteWindow),
     verifierCount: Number(count),
@@ -3680,9 +3680,10 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
   const v = verifierReady(reply);
   if (!v) return;
   const id = BigInt(request.params.id);
-  const [vstate, panel] = await Promise.all([
+  const [vstate, panel, prepaidRaw] = await Promise.all([
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'panelOf', args: [id] }),
+    arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'feePrepaid', args: [id] }),
   ]);
   const [assigned, resolved, deadline, passes, fails, cast, fee] = vstate as readonly [boolean, boolean, bigint, number, number, number, bigint];
   const doc = db.prepare('SELECT content FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string } | undefined;
@@ -3694,6 +3695,7 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     fails,
     cast,
     feeUsdc: formatUnits(fee, 6),
+    prepaid: (prepaidRaw as bigint) !== 0n,
     panel: panel as readonly string[],
     document: doc?.content ?? null,
   };

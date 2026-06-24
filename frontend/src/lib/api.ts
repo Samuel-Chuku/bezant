@@ -149,6 +149,16 @@ export async function getGatewayPayout(tradeId: string): Promise<GatewayPayoutRe
   return res.payout;
 }
 
+// Seller's chosen payout chain — persisted server-side so it syncs across devices.
+export async function getPayoutPref(tradeId: string, seller: string): Promise<string | null> {
+  const res = await jsonFetch<{ destinationKey: string | null }>('GET', `/arc/trade/${encodeURIComponent(tradeId)}/payout/pref?seller=${encodeURIComponent(seller)}`);
+  return res.destinationKey;
+}
+
+export async function setPayoutPref(tradeId: string, seller: string, destinationKey: string | null): Promise<void> {
+  await jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/payout/pref`, { seller, destinationKey });
+}
+
 export async function getUserByAddress(address: string): Promise<UserRecord | null> {
   try {
     return await jsonFetch<UserRecord>('GET', `/users/by-address/${encodeURIComponent(address)}`);
@@ -963,6 +973,7 @@ export async function buildCreateTradeUnsigned(input: {
   amountUsdc: string;
   milestone?: string;
   deadlineSeconds?: number;
+  attester?: string; // omit → Trade Officer (operator); set → staked-panel module
 }): Promise<UnsignedTx> {
   return jsonFetch('POST', '/arc/trade/create/unsigned', input);
 }
@@ -984,6 +995,75 @@ export async function buildFeedbackUnsigned(agentId: string, positive: boolean):
 // signed server-side; safe to call after the rater's 👍 confirms (idempotent).
 export async function triggerFeedbackBoost(tradeId: string, agentId: string, rater: string): Promise<{ boosted: boolean; txHash?: string }> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/feedback/boost`, { agentId, rater });
+}
+
+// ── Staked verifier (Arm 2) ─────────────────────────────────────────────────
+
+export type VerifierInfo = {
+  configured: boolean;
+  address?: string;
+  panelSize?: number;
+  feeBps?: number;
+  slashBps?: number;
+  bondBps?: number;
+  minStakeUsdc?: string;
+  voteWindowSeconds?: number;
+  verifierCount?: number;
+  myStakeUsdc?: string;
+  myLockedUsdc?: string;
+};
+
+export type VerificationState = {
+  assigned: boolean;
+  resolved: boolean;
+  deadline: number;
+  passes: number;
+  fails: number;
+  cast: number;
+  feeUsdc: string;
+  prepaid: boolean;
+  panel: string[];
+  document: string | null;
+  myVote?: number; // 0 none, 1 pass, 2 fail
+};
+
+export async function getVerifierInfo(address?: string): Promise<VerifierInfo> {
+  const q = address ? `?address=${encodeURIComponent(address)}` : '';
+  return jsonFetch('GET', `/arc/verifier/info${q}`);
+}
+
+export async function buildVerifierStakeUnsigned(amountUsdc: string): Promise<{ approve: UnsignedTx; stake: UnsignedTx }> {
+  return jsonFetch('POST', '/arc/verifier/stake/unsigned', { amountUsdc });
+}
+
+export async function buildVerifierUnstakeUnsigned(amountUsdc: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/verifier/unstake/unsigned', { amountUsdc });
+}
+
+export async function getVerification(tradeId: string, address?: string): Promise<VerificationState> {
+  const q = address ? `?address=${encodeURIComponent(address)}` : '';
+  return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/verification${q}`);
+}
+
+export async function buildVerificationFundUnsigned(tradeId: string): Promise<{ feeUsdc: string; approve: UnsignedTx; fund: UnsignedTx }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/fund/unsigned`);
+}
+
+export async function buildVerificationVoteUnsigned(tradeId: string, pass: boolean): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/vote/unsigned`, { pass });
+}
+
+export async function buildVerificationResolveUnsigned(tradeId: string): Promise<UnsignedTx> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/resolve/unsigned`);
+}
+
+// Seller submits the delivery doc for a staked-panel trade (seller-sig gated).
+export async function assignVerification(tradeId: string, content: string, auth: { signature: string; ts: number }): Promise<{ assigned: boolean; txHash?: string }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/assign`, { content, ...auth });
+}
+
+export function verifyAssignAuthMessage(tradeId: string, ts: number): string {
+  return `arc-trade:verify-assign:${tradeId}:${ts}`;
 }
 
 export async function buildAcceptTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
