@@ -329,6 +329,24 @@ db.exec(`
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Seller's chosen Gateway payout chain, set during the active trade and read
+  -- back at settlement. Server-side so it syncs across the seller's devices.
+  CREATE TABLE IF NOT EXISTS payout_prefs (
+    trade_id        INTEGER NOT NULL,
+    seller          TEXT NOT NULL,
+    destination_key TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (trade_id, seller)
+  );
+
+  -- Delivery document submitted for a staked-panel trade, so panel verifiers
+  -- can review it off-chain while they vote (the chain only holds its hash).
+  CREATE TABLE IF NOT EXISTS verification_docs (
+    trade_id   INTEGER PRIMARY KEY,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   -- Operator reputation boost: one trusted operator endorsement per (trade,
   -- agent) when a settled trade also got a counterparty thumbs-up. Dedup key
   -- stops replay/spam (one boost per agent per trade).

@@ -27,6 +27,10 @@ export const WRAPPER_ADDRESS = (process.env.WRAPPER_ADDRESS ??
 export const ERC8004_REPUTATION_ADDRESS = (process.env.ARC_REPUTATION_REGISTRY_ADDRESS ??
   '0x8004B663056A597Dffe9eCcC1965A193B7388713') as `0x${string}`;
 
+// StakedVerifierModule (Arm 2 decentralized attester). Empty until deployed +
+// `escrow.setAttester(module,true)`; routes guard on it being set.
+export const STAKED_VERIFIER_ADDRESS = (process.env.STAKED_VERIFIER_ADDRESS ?? '') as `0x${string}` | '';
+
 // CCTP V2 contracts on Arc Testnet — used by the bridge-event indexer.
 // Verified 2026-05-26 against @circle-fin/app-kit chains.d.ts (Arc CCTP V2,
 // domain 26, type "split"). Both addressable separately; we watch the

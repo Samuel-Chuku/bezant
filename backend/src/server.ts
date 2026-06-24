@@ -23,9 +23,11 @@ import {
   USDC_ADDRESS,
   WRAPPER_ADDRESS,
   ERC8004_REPUTATION_ADDRESS,
+  STAKED_VERIFIER_ADDRESS,
   ARC_TESTNET_CHAIN_ID,
 } from './lib/arc.js';
 import { erc20Abi } from './lib/abis/erc20.js';
+import { stakedVerifierAbi } from './lib/abis/staked-verifier.js';
 import { pactWrapperAbi, PACT_STATUS } from './lib/abis/pact-wrapper.js';
 import {
   reputationRegistryAbi,
@@ -3551,6 +3553,157 @@ function startAttestationFinalizer(log: MiniLog): void {
       .finally(() => setTimeout(loop, 5000));
   loop();
 }
+
+// ─── Staked Verifier (Arm 2) ───────────────────────────────────────────────
+// Decentralized delivery verification: a stake-backed panel votes instead of the
+// Trade Officer. The module is an authorized escrow attester chosen per-trade.
+function verifierReady(reply: FastifyReply): `0x${string}` | null {
+  if (!STAKED_VERIFIER_ADDRESS) {
+    reply.code(501).send({ error: 'staked verifier not configured (STAKED_VERIFIER_ADDRESS unset)' });
+    return null;
+  }
+  return STAKED_VERIFIER_ADDRESS;
+}
+
+// Module address + params (+ caller's stake when ?address= given).
+app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (request) => {
+  if (!STAKED_VERIFIER_ADDRESS) return { configured: false };
+  const v = STAKED_VERIFIER_ADDRESS;
+  const read = (functionName: string, args: unknown[] = []) =>
+    arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: functionName as never, args: args as never });
+  const [panelSize, feeBps, slashBps, bond, minStake, voteWindow, count] = await Promise.all([
+    read('panelSize'), read('feeBps'), read('slashBps'), read('bond'), read('minStake'), read('voteWindow'), read('verifierCount'),
+  ]);
+  const out: Record<string, unknown> = {
+    configured: true,
+    address: v,
+    panelSize: Number(panelSize),
+    feeBps: Number(feeBps),
+    slashBps: Number(slashBps),
+    bondUsdc: formatUnits(bond as bigint, 6),
+    minStakeUsdc: formatUnits(minStake as bigint, 6),
+    voteWindowSeconds: Number(voteWindow),
+    verifierCount: Number(count),
+  };
+  const addr = (request.query.address ?? '').toLowerCase();
+  if (/^0x[0-9a-f]{40}$/.test(addr)) {
+    const [stake, locked] = await Promise.all([read('stakeOf', [addr]), read('lockedOf', [addr])]);
+    out.myStakeUsdc = formatUnits(stake as bigint, 6);
+    out.myLockedUsdc = formatUnits(locked as bigint, 6);
+  }
+  return out;
+});
+
+// Become a verifier: approve(module) + stake(amount). Client signs both.
+app.post<{ Body: { amountUsdc: string } }>('/arc/verifier/stake/unsigned', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  const amount = parseUnits(request.body.amountUsdc, 6);
+  return {
+    approve: buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [v, amount]),
+    stake: buildUnsignedTx(v, stakedVerifierAbi as Abi, 'stake', [amount]),
+  };
+});
+
+app.post<{ Body: { amountUsdc: string } }>('/arc/verifier/unstake/unsigned', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  return buildUnsignedTx(v, stakedVerifierAbi as Abi, 'unstake', [parseUnits(request.body.amountUsdc, 6)]);
+});
+
+// Buyer pre-pays the verification fee (= amount × feeBps): approve + fundVerification.
+app.post<{ Params: { id: string } }>('/arc/trade/:id/verification/fund/unsigned', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v || !escrowReady(reply)) return;
+  const t = await getTrade(BigInt(request.params.id));
+  const feeBps = Number(await arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'feeBps' }));
+  const fee = (t.amount * BigInt(feeBps)) / 10000n;
+  return {
+    feeUsdc: formatUnits(fee, 6),
+    approve: buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [v, fee]),
+    fund: buildUnsignedTx(v, stakedVerifierAbi as Abi, 'fundVerification', [BigInt(request.params.id)]),
+  };
+});
+
+// Seller submits delivery for a staked-panel trade → operator assigns the panel
+// (commits the doc hash on-chain) and stores the doc for the panel to review.
+// Seller-signature gated (same as officer-attest).
+app.post<{ Params: { id: string }; Body: { content?: string; signature?: string; ts?: number } }>(
+  '/arc/trade/:id/verification/assign',
+  async (request, reply) => {
+    const v = verifierReady(reply);
+    if (!v || !escrowReady(reply)) return;
+    const { content, signature, ts } = request.body ?? {};
+    if (!content || content.trim().length < 20) {
+      return reply.code(400).send({ error: 'delivery document (content ≥ 20 chars) required' });
+    }
+    const t = await getTrade(BigInt(request.params.id));
+    if (t.attester.toLowerCase() !== v.toLowerCase()) return reply.code(409).send({ error: 'this trade is not using the staked panel' });
+    if (t.status !== 'Funded') return reply.code(409).send({ error: `trade is '${t.status}', expected 'Funded'` });
+    if (!(await verifyActionSig(reply, { expected: t.seller as `0x${string}`, action: 'verify-assign', id: request.params.id, ts, signature }))) return;
+
+    const proofHash = keccak256(stringToBytes(content));
+    try {
+      const exec = await circle.createContractExecutionTransaction({
+        walletId: CIRCLE_OPERATOR_WALLET_ID,
+        contractAddress: v,
+        abiFunctionSignature: 'assignPanel(uint256,bytes32)',
+        abiParameters: [request.params.id, proofHash],
+        fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+      });
+      const tx = await waitForCircleTx(exec.data!.id);
+      db.prepare('INSERT OR REPLACE INTO verification_docs (trade_id, content) VALUES (?, ?)').run(Number(request.params.id), content);
+      return { tradeId: request.params.id, assigned: true, txHash: tx.txHash };
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// Panel verifier votes pass/fail.
+app.post<{ Params: { id: string }; Body: { pass?: boolean } }>('/arc/trade/:id/verification/vote/unsigned', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  if (typeof request.body?.pass !== 'boolean') return reply.code(400).send({ error: 'pass (boolean) required' });
+  return buildUnsignedTx(v, stakedVerifierAbi as Abi, 'vote', [BigInt(request.params.id), request.body.pass]);
+});
+
+// Resolve after the window if majority wasn't reached (permissionless).
+app.post<{ Params: { id: string } }>('/arc/trade/:id/verification/resolve/unsigned', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  return buildUnsignedTx(v, stakedVerifierAbi as Abi, 'resolveTimeout', [BigInt(request.params.id)]);
+});
+
+// Verification state for the trade page (panel, tallies, my vote, the doc).
+app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/trade/:id/verification', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  const id = BigInt(request.params.id);
+  const [vstate, panel] = await Promise.all([
+    arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
+    arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'panelOf', args: [id] }),
+  ]);
+  const [assigned, resolved, deadline, passes, fails, cast, fee] = vstate as readonly [boolean, boolean, bigint, number, number, number, bigint];
+  const doc = db.prepare('SELECT content FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string } | undefined;
+  const out: Record<string, unknown> = {
+    assigned,
+    resolved,
+    deadline: Number(deadline),
+    passes,
+    fails,
+    cast,
+    feeUsdc: formatUnits(fee, 6),
+    panel: panel as readonly string[],
+    document: doc?.content ?? null,
+  };
+  const addr = (request.query.address ?? '').toLowerCase();
+  if (/^0x[0-9a-f]{40}$/.test(addr)) {
+    const myVote = await arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'voteOf', args: [id, addr as `0x${string}`] });
+    out.myVote = Number(myVote); // 0 none, 1 pass, 2 fail
+  }
+  return out;
+});
 
 const port = Number(process.env.PORT ?? 3001);
 
