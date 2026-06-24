@@ -3650,6 +3650,55 @@ app.get<{ Querystring: { address?: string } }>('/arc/verifier/assignments', asyn
   return { items: await verifierAssignmentsFor(address) };
 });
 
+// Global recent stake/unstake on the current module — for the /verify feed.
+app.get('/arc/verifier/recent', async (_request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  const rows = db
+    .prepare(
+      `SELECT verifier, kind, amount_raw, block_time, tx_hash, log_index
+       FROM verifier_events WHERE module = ? ORDER BY block_number DESC, log_index DESC LIMIT 10`,
+    )
+    .all(v.toLowerCase()) as { verifier: string; kind: string; amount_raw: string; block_time: number | null; tx_hash: string; log_index: number }[];
+  return {
+    items: rows.map((r) => ({
+      key: `verifier:${r.tx_hash}:${r.log_index}`,
+      verifier: r.verifier,
+      kind: r.kind, // 'verifier-stake' | 'verifier-unstake'
+      amountUsdc: formatUnits(BigInt(r.amount_raw), 6),
+      txHash: r.tx_hash,
+      whenMs: r.block_time ?? Date.now(),
+    })),
+  };
+});
+
+// A verifier's own stake/unstake history — merged into activity + notifications.
+app.get<{ Querystring: { address?: string } }>('/arc/verifier/activity', async (request, reply) => {
+  const v = verifierReady(reply);
+  if (!v) return;
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const rows = db
+    .prepare(
+      `SELECT kind, amount_raw, block_time, tx_hash, log_index
+       FROM verifier_events WHERE module = ? AND verifier = ? ORDER BY block_number DESC, log_index DESC LIMIT 50`,
+    )
+    .all(v.toLowerCase(), address) as { kind: string; amount_raw: string; block_time: number | null; tx_hash: string; log_index: number }[];
+  return {
+    items: rows.map((r) => {
+      const amt = formatUnits(BigInt(r.amount_raw), 6);
+      return {
+        key: `verifier:${r.tx_hash}:${r.log_index}`,
+        kind: r.kind,
+        amountUsdc: amt,
+        txHash: r.tx_hash,
+        whenMs: r.block_time ?? Date.now(),
+        summary: r.kind === 'verifier-stake' ? `Staked ${amt} USDC into the verifier pool` : `Unstaked ${amt} USDC from the verifier pool`,
+      };
+    }),
+  };
+});
+
 // Module address + params (+ caller's stake when ?address= given).
 app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (request) => {
   if (!STAKED_VERIFIER_ADDRESS) return { configured: false };

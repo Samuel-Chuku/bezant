@@ -3,6 +3,7 @@ import { parseEventLogs, type Abi } from 'viem';
 import { arcClient } from './arc.js';
 import { tradeEscrowAbi } from './abis/trade-escrow.js';
 import { financingPoolAbi } from './abis/financing-pool.js';
+import { stakedVerifierAbi } from './abis/staked-verifier.js';
 import { db, getIndexerState, setIndexerState } from './db.js';
 
 // Indexes every TradeEscrow event:
@@ -13,6 +14,10 @@ import { db, getIndexerState, setIndexerState } from './db.js';
 
 const ESCROW = (process.env.TRADE_ESCROW_ADDRESS ?? '') as `0x${string}`;
 const POOL = (process.env.FINANCING_POOL_ADDRESS ?? '') as `0x${string}`;
+const VERIFIER = (process.env.STAKED_VERIFIER_ADDRESS ?? '') as `0x${string}`;
+// A freshly (re)deployed module is recent, so backfill a bounded recent window
+// on first sight rather than scanning from the escrow deploy block.
+const VERIFIER_LOOKBACK = 200_000n;
 const DEPLOY_BLOCK = BigInt(process.env.TRADE_ESCROW_DEPLOY_BLOCK ?? '45662878');
 const POLL_INTERVAL_MS = Number(process.env.TRADE_INDEXER_POLL_MS ?? 10_000);
 const MAX_BLOCKS_PER_QUERY = 5_000n;
@@ -35,6 +40,10 @@ const insertPoolEvent = db.prepare(
 );
 const insertNavSnapshot = db.prepare(
   `INSERT OR REPLACE INTO pool_nav_snapshots (ts, share_price) VALUES (?, ?)`,
+);
+const insertVerifierEvent = db.prepare(
+  `INSERT OR IGNORE INTO verifier_events (module, verifier, kind, amount_raw, block_number, block_time, tx_hash, log_index)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
 // Pull the acting address + a relevant amount out of an event's args, whatever shape it is.
@@ -99,7 +108,50 @@ async function tick(log: FastifyBaseLogger): Promise<void> {
   const poolEvents = POOL ? await tickPool(head) : 0;
   if (POOL) await maybeSnapshotNav();
 
-  if (trades > 0 || events > 0 || poolEvents > 0) log.info({ trades, events, poolEvents, head: head.toString() }, 'trade indexer caught up');
+  const verifierEvents = VERIFIER ? await tickVerifier(head) : 0;
+
+  if (trades > 0 || events > 0 || poolEvents > 0 || verifierEvents > 0)
+    log.info({ trades, events, poolEvents, verifierEvents, head: head.toString() }, 'trade indexer caught up');
+}
+
+// Scan StakedVerifierModule Staked/Unstaked into verifier_events. Checkpoint is
+// per-module so a redeploy starts fresh (and its events are tagged with `module`).
+async function tickVerifier(head: bigint): Promise<number> {
+  const key = `verifier_index:last_block:${VERIFIER.toLowerCase()}`;
+  const last = getIndexerState(key);
+  let from = last ? BigInt(last) + 1n : head > VERIFIER_LOOKBACK ? head - VERIFIER_LOOKBACK : 0n;
+  let inserted = 0;
+  while (from <= head) {
+    const to = from + MAX_BLOCKS_PER_QUERY - 1n > head ? head : from + MAX_BLOCKS_PER_QUERY - 1n;
+    const logs = await arcClient.getLogs({ address: VERIFIER, fromBlock: from, toBlock: to });
+    const evs = parseEventLogs({ abi: stakedVerifierAbi as Abi, logs }).filter(
+      (ev) => ev.eventName === 'Staked' || ev.eventName === 'Unstaked',
+    );
+    const tsByBlock = new Map<bigint, number>();
+    await Promise.all(
+      [...new Set(evs.map((ev) => ev.blockNumber))].map(async (b) => {
+        const blk = await arcClient.getBlock({ blockNumber: b });
+        tsByBlock.set(b, Number(blk.timestamp) * 1000);
+      }),
+    );
+    for (const ev of evs) {
+      const a = ev.args as { verifier: string; amount: bigint };
+      const r = insertVerifierEvent.run(
+        VERIFIER.toLowerCase(),
+        a.verifier.toLowerCase(),
+        ev.eventName === 'Staked' ? 'verifier-stake' : 'verifier-unstake',
+        a.amount.toString(),
+        Number(ev.blockNumber),
+        tsByBlock.get(ev.blockNumber) ?? null,
+        ev.transactionHash,
+        ev.logIndex ?? 0,
+      );
+      if (r.changes > 0) inserted += 1;
+    }
+    setIndexerState(key, to.toString());
+    from = to + 1n;
+  }
+  return inserted;
 }
 
 // Sample the pool's share price at most once an hour for the 24h / 7d yield.

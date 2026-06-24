@@ -1049,6 +1049,22 @@ export async function getVerifierAssignments(address: string): Promise<VerifierA
   return r.items;
 }
 
+export type VerifierStakeKind = 'verifier-stake' | 'verifier-unstake';
+export type RecentVerifierStake = { key: string; verifier: string; kind: VerifierStakeKind; amountUsdc: string; txHash: string; whenMs: number };
+export type VerifierActivity = { key: string; kind: VerifierStakeKind; amountUsdc: string; txHash: string; whenMs: number; summary: string };
+
+// Global recent stake/unstake on the verifier pool (for the /verify feed).
+export async function getVerifierRecent(): Promise<RecentVerifierStake[]> {
+  const r = await jsonFetch<{ items: RecentVerifierStake[] }>('GET', '/arc/verifier/recent');
+  return r.items;
+}
+
+// A verifier's own stake/unstake history (merged into activity + notifications).
+export async function getVerifierActivity(address: string): Promise<VerifierActivity[]> {
+  const r = await jsonFetch<{ items: VerifierActivity[] }>('GET', `/arc/verifier/activity?address=${encodeURIComponent(address)}`);
+  return r.items;
+}
+
 export async function buildVerifierStakeUnsigned(amountUsdc: string): Promise<{ approve: UnsignedTx; stake: UnsignedTx }> {
   return jsonFetch('POST', '/arc/verifier/stake/unsigned', { amountUsdc });
 }

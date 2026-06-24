@@ -360,6 +360,24 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_verif_assign_verifier ON verification_assignments(verifier);
 
+  -- Verifier staking ledger events (Staked/Unstaked from the StakedVerifierModule),
+  -- for the /verify recent list + the user's activity/notifications. The module
+  -- column is the emitting contract so a redeploy's events don't mix with the old.
+  CREATE TABLE IF NOT EXISTS verifier_events (
+    module       TEXT NOT NULL,
+    verifier     TEXT NOT NULL,
+    kind         TEXT NOT NULL, -- 'verifier-stake' | 'verifier-unstake'
+    amount_raw   TEXT NOT NULL,
+    block_number INTEGER NOT NULL,
+    block_time   INTEGER,
+    tx_hash      TEXT NOT NULL,
+    log_index    INTEGER NOT NULL,
+    indexed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tx_hash, log_index)
+  );
+  CREATE INDEX IF NOT EXISTS idx_verifier_events_verifier ON verifier_events(verifier);
+  CREATE INDEX IF NOT EXISTS idx_verifier_events_module ON verifier_events(module);
+
   -- Operator reputation boost: one trusted operator endorsement per (trade,
   -- agent) when a settled trade also got a counterparty thumbs-up. Dedup key
   -- stops replay/spam (one boost per agent per trade).

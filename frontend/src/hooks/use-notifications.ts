@@ -6,12 +6,14 @@ import {
   getNotificationFeed,
   getTradeNotifications,
   getPoolActivity,
+  getVerifierActivity,
   type FeedRow,
   type PactEvent,
   type PactLiveState,
   type PactRole,
   type TradeNotification,
   type PoolActivity,
+  type VerifierActivity,
 } from '@/lib/api';
 import { describeCurrentStep, isActionRequiredByMe } from '@/lib/pact-status';
 import { getReadKeys, markReadKeysRemote } from '@/lib/api';
@@ -21,7 +23,7 @@ import { CHAIN_REFRESH_EVENT } from './use-refresh-chain-data';
 export type NotificationKind = 'action' | 'status' | 'event' | 'deadline' | 'pool';
 
 // Broad source bucket, used by the Activities page filter.
-export type NotificationCategory = 'pact' | 'trade' | 'pool';
+export type NotificationCategory = 'pact' | 'trade' | 'pool' | 'verifier';
 
 export type NotificationItem = {
   key: string;
@@ -253,6 +255,7 @@ export function useNotifications() {
   const [state, setState] = useState<LoadState>({ status: 'idle' });
   const [tradeRaw, setTradeRaw] = useState<TradeNotification[]>([]);
   const [poolRaw, setPoolRaw] = useState<PoolActivity[]>([]);
+  const [verifierRaw, setVerifierRaw] = useState<VerifierActivity[]>([]);
   const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
   const addressRef = useRef<Address | null>(null);
 
@@ -301,6 +304,12 @@ export function useNotifications() {
       setPoolRaw(await getPoolActivity(address));
     } catch {
       /* keep previous poolRaw */
+    }
+    // Verifier stake/unstake — fourth independent source (501 if not deployed).
+    try {
+      setVerifierRaw(await getVerifierActivity(address));
+    } catch {
+      /* keep previous verifierRaw */
     }
   }, [address]);
 
@@ -362,8 +371,20 @@ export function useNotifications() {
       href: '/pool',
       txHash: p.txHash,
     }));
-    return [...pactItems, ...tradeItems, ...poolItems].sort((a, b) => b.whenMs - a.whenMs);
-  }, [state, tradeRaw, poolRaw, address, readKeys]);
+    const verifierItems: NotificationItem[] = verifierRaw.map((vAct) => ({
+      key: vAct.key,
+      pactId: '',
+      kind: 'event',
+      category: 'verifier',
+      summary: vAct.summary,
+      whenMs: vAct.whenMs,
+      whenIso: new Date(vAct.whenMs).toISOString(),
+      read: readKeys.has(vAct.key),
+      href: '/verify',
+      txHash: vAct.txHash,
+    }));
+    return [...pactItems, ...tradeItems, ...poolItems, ...verifierItems].sort((a, b) => b.whenMs - a.whenMs);
+  }, [state, tradeRaw, poolRaw, verifierRaw, address, readKeys]);
 
   const unreadCount = useMemo(() => items.filter((it) => !it.read).length, [items]);
 

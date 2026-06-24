@@ -8,13 +8,14 @@ import { useSigner } from '@/hooks/use-signer';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 
-type Filter = 'all' | 'action' | 'trade' | 'pool';
+type Filter = 'all' | 'action' | 'trade' | 'pool' | 'verifier';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'action', label: 'Needs action' },
   { id: 'trade', label: 'Trades' },
   { id: 'pool', label: 'Pool' },
+  { id: 'verifier', label: 'Verifier' },
 ];
 
 function matches(item: NotificationItem, filter: Filter): boolean {
@@ -27,6 +28,8 @@ function matches(item: NotificationItem, filter: Filter): boolean {
       return item.category === 'trade';
     case 'pool':
       return item.category === 'pool';
+    case 'verifier':
+      return item.category === 'verifier';
   }
 }
 

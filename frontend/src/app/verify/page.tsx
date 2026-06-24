@@ -6,6 +6,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
 import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
+import { RecentVerifierStakes } from '@/components/recent-verifier-stakes';
 import { CountdownChip } from '@/components/countdown';
 import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx, type VerifierAssignment } from '@/lib/api';
 
@@ -38,7 +39,6 @@ export default function VerifyPage() {
   const [info, setInfo] = useState<VerifierInfo | null>(null);
   const [stakeAmt, setStakeAmt] = useState('');
   const [unstakeAmt, setUnstakeAmt] = useState('');
-  const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>('pending');
   const { items: assignments, loaded: assignmentsLoaded } = useVerifierAssignments();
 
@@ -80,7 +80,7 @@ export default function VerifyPage() {
       ],
     });
     if (ok) {
-      toast.success('Staked');
+      toast.success(`Staked ${stakeAmt} USDC`);
       setStakeAmt('');
       await refresh();
     }
@@ -88,16 +88,18 @@ export default function VerifyPage() {
 
   const doUnstake = async () => {
     if (!signer.isConnected || !unstakeAmt || Number(unstakeAmt) <= 0) return;
-    setBusy(true);
-    try {
-      await send(await buildVerifierUnstakeUnsigned(unstakeAmt), true);
-      toast.success('Unstaked');
+    const amt = unstakeAmt;
+    const ok = await txFlow.start({
+      title: `Unstake ${amt} USDC`,
+      amountUsdc: amt,
+      steps: [
+        { key: 'unstake', label: 'Unstake from the verifier pool', action: 'Unstake', run: async () => send(await buildVerifierUnstakeUnsigned(amt), false) },
+      ],
+    });
+    if (ok) {
+      toast.success(`Unstaked ${amt} USDC`);
       setUnstakeAmt('');
       await refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -207,18 +209,33 @@ export default function VerifyPage() {
                   </label>
                   <button onClick={doStake} disabled={!stakeAmt} className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg transition hover:bg-primary-hover disabled:opacity-50">Stake</button>
                 </div>
-                <div className="flex items-end gap-2">
-                  <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
-                    Unstake (free only)
-                    <input value={unstakeAmt} onChange={(e) => setUnstakeAmt(e.target.value)} inputMode="decimal" placeholder="0.00" className="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-line-strong focus:outline-none" />
-                  </label>
-                  <button onClick={doUnstake} disabled={busy || !unstakeAmt} className="rounded-md border border-line px-4 py-2 text-sm text-fg transition hover:border-line-strong disabled:opacity-50">{busy ? 'Working…' : 'Unstake'}</button>
+                <div>
+                  <div className="flex items-end gap-2">
+                    <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
+                      Unstake (free only)
+                      <input value={unstakeAmt} onChange={(e) => setUnstakeAmt(e.target.value)} inputMode="decimal" placeholder="0.00" className="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-line-strong focus:outline-none" />
+                    </label>
+                    <button onClick={doUnstake} disabled={!unstakeAmt} className="rounded-md border border-line px-4 py-2 text-sm text-fg transition hover:border-line-strong disabled:opacity-50">Unstake</button>
+                  </div>
+                  {(() => {
+                    const free = Math.max(0, Number(info.myStakeUsdc ?? 0) - Number(info.myLockedUsdc ?? 0));
+                    if (free <= 0) return null;
+                    return (
+                      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted">
+                        <span>{free.toFixed(2)} free</span>
+                        <button type="button" onClick={() => setUnstakeAmt((free / 2).toFixed(2))} className="rounded border border-line px-1.5 py-0.5 transition hover:text-fg">50%</button>
+                        <button type="button" onClick={() => setUnstakeAmt(String(free))} className="rounded border border-line px-1.5 py-0.5 transition hover:text-fg">Max</button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
           </section>
         </div>
       )}
+
+      {info?.configured && <RecentVerifierStakes />}
     </main>
   );
 }

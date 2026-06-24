@@ -36,4 +36,7 @@ export const stakedVerifierAbi = [
       { name: 'fee', type: 'uint256' },
     ],
   },
+  // events (for the verifier stake/unstake indexer)
+  { type: 'event', name: 'Staked', inputs: [{ name: 'verifier', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }] },
+  { type: 'event', name: 'Unstaked', inputs: [{ name: 'verifier', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }] },
 ] as const;
