@@ -1120,6 +1120,7 @@ export async function getTradeEvents(tradeId: string): Promise<TradeEvent[]> {
 export async function officerAttest(
   tradeId: string,
   document: DeliveryDoc,
+  auth?: { signature: string; ts: number },
 ): Promise<{
   decision: 'pass' | 'escalate';
   attested: boolean;
@@ -1132,7 +1133,13 @@ export async function officerAttest(
   finalizeAt?: number;
   txHash?: string;
 }> {
-  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/officer-attest`, { document });
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/officer-attest`, { document, ...auth });
+}
+
+// Message the seller signs to authenticate a delivery submission (matches the
+// backend's verifyActionSig format).
+export function officerAttestAuthMessage(tradeId: string, ts: number): string {
+  return `arc-trade:officer-attest:${tradeId}:${ts}`;
 }
 
 export type TradeListItem = {

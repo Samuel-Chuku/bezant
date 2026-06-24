@@ -361,6 +361,53 @@ function requireSigner(
   return { circle_wallet_id: row.circle_wallet_id, wallet_address: row.wallet_address };
 }
 
+// ── Auth ──────────────────────────────────────────────────────────────────
+// Admin guard for operator/treasury ops (e.g. seeding the pool). When
+// ADMIN_API_KEY is set, callers must send a matching `x-admin-key` header;
+// when it's unset the routes stay open (dev) — a startup warning nags to set it.
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? '';
+function requireAdmin(request: { headers: Record<string, unknown> }, reply: FastifyReply): boolean {
+  if (!ADMIN_API_KEY) return true; // not configured → open in dev
+  if (request.headers['x-admin-key'] !== ADMIN_API_KEY) {
+    reply.code(401).send({ error: 'admin key required' });
+    return false;
+  }
+  return true;
+}
+
+// Per-request wallet-signature auth for user-behalf actions the backend takes
+// without an on-chain tx. The caller signs `arc-trade:<action>:<id>:<ts>`; we
+// verify it recovers to `expected` (works for EOAs and ERC-1271 smart accounts
+// via the public client) and reject stale signatures. Stateless — no sessions.
+const ACTION_SIG_TTL_MS = 5 * 60_000;
+async function verifyActionSig(
+  reply: FastifyReply,
+  opts: { expected: `0x${string}`; action: string; id: string; ts?: number; signature?: string },
+): Promise<boolean> {
+  const { expected, action, id, ts, signature } = opts;
+  if (!signature || !ts) {
+    reply.code(401).send({ error: 'signature and ts are required' });
+    return false;
+  }
+  const age = Date.now() - Number(ts);
+  if (!(age >= -60_000 && age <= ACTION_SIG_TTL_MS)) {
+    reply.code(401).send({ error: 'signature expired — retry' });
+    return false;
+  }
+  const message = `arc-trade:${action}:${id}:${ts}`;
+  let ok = false;
+  try {
+    ok = await arcClient.verifyMessage({ address: expected, message, signature: signature as `0x${string}` });
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    reply.code(401).send({ error: 'invalid signature for this action' });
+    return false;
+  }
+  return true;
+}
+
 // Health probe: liveness vs readiness. Returns 200 when both dependencies
 // (SQLite + Arc RPC) respond; 503 when either is down so external monitors
 // can distinguish "process is running" from "process can actually serve".
@@ -2986,6 +3033,7 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/payout', async (request) => 
 // Seed the pool from the operator (treasury) wallet — operator becomes an LP.
 app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {
   if (!escrowReady(reply)) return;
+  if (!requireAdmin(request, reply)) return; // operator/treasury seed — admin only
   const { amountUsdc } = request.body;
   if (!amountUsdc || Number(amountUsdc) <= 0) {
     return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
@@ -3150,11 +3198,11 @@ app.get('/arc/trade/pool/yield', async (_request, reply) => {
 // check, and either auto-attest from the operator (agent) wallet or escalate to a
 // staked human verifier. No signer in the body: the agent acts autonomously as
 // the trade's assigned attester (the operator wallet set at deploy).
-app.post<{ Params: { id: string }; Body: { document: DeliveryDoc } }>(
+app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: string; ts?: number } }>(
   '/arc/trade/:id/officer-attest',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const { document } = request.body;
+    const { document, signature, ts } = request.body;
     if (!document || typeof document.content !== 'string') {
       return reply.code(400).send({ error: 'document with a content string is required' });
     }
@@ -3164,6 +3212,8 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc } }>(
     if (trade.status !== 'Funded') {
       return reply.code(409).send({ error: `trade is '${trade.status}', expected 'Funded' to attest` });
     }
+    // Only the trade's seller may submit delivery for review.
+    if (!(await verifyActionSig(reply, { expected: trade.seller as `0x${string}`, action: 'officer-attest', id: request.params.id, ts, signature }))) return;
 
     const decision = await decideDelivery(
       { amountUsdc: Number(formatUnits(trade.amount, 6)), seller: trade.seller },
@@ -3468,6 +3518,7 @@ const port = Number(process.env.PORT ?? 3001);
 app
   .listen({ port, host: '0.0.0.0' })
   .then(() => {
+    if (!ADMIN_API_KEY) app.log.warn('ADMIN_API_KEY not set — operator/treasury routes (e.g. pool/fund) are unauthenticated. Set it in .env to lock them down.');
     startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
     startTradeIndexer(app.log);

@@ -35,6 +35,7 @@ import {
   buildResolveDisputeUnsigned,
   buildFeedbackUnsigned,
   triggerFeedbackBoost,
+  officerAttestAuthMessage,
   getUserByAddress,
   type TradeState,
   type TradeEvent,
@@ -227,9 +228,17 @@ export default function TradeDetailPage() {
       setError('Paste the full delivery document — name the document type and include a real reference number.');
       return;
     }
+    if (!signer.isConnected) {
+      setError('Connect a wallet first.');
+      return;
+    }
     setBusy('attest');
     try {
-      const r = await officerAttest(id, { kind: 'bill_of_lading', content: doc });
+      // Authenticate the submission: only the seller may submit delivery, proven
+      // by a wallet signature the backend verifies against the trade's seller.
+      const ts = Date.now();
+      const signature = await signer.signMessage(officerAttestAuthMessage(id, ts));
+      const r = await officerAttest(id, { kind: 'bill_of_lading', content: doc }, { signature, ts });
       if (r.decision === 'pass') {
         // Officer approved → buyer challenge window opens; the finalizer settles after it elapses.
         setOfficerNote(null);
@@ -510,7 +519,11 @@ export default function TradeDetailPage() {
                   </div>
                 )}
                 <div>
-                  <p className="mb-2 text-xs text-neutral-500">Something wrong with this trade? Flag it for the arbitrator to resolve.</p>
+                  <p className="mb-2 text-xs text-neutral-500">
+                    {isSeller
+                      ? 'Delivered but it isn’t settling, or worried about an unfair refund? Raising a dispute pauses the buyer’s refund and lets the arbitrator decide.'
+                      : 'Something wrong with this trade? Flag it for the arbitrator to resolve.'}
+                  </p>
                   <Action onClick={doRaiseDispute} busy={busy === 'dispute'} variant="ghost">Raise a dispute</Action>
                 </div>
               </div>
