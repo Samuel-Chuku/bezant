@@ -104,25 +104,31 @@ export function PoolPanel() {
             <PoolYieldStrip />
           </div>
 
-          {signer.isConnected && stats.myShares && stats.myShares !== '0' && (
-            <p className="mt-3 text-sm text-emerald-300">Your position: {stats.myValueUsdc} USDC</p>
-          )}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => setAction('deposit')}
-              disabled={!signer.isConnected}
-              className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-40"
-            >
-              Deposit
-            </button>
-            <button
-              onClick={() => setAction('withdraw')}
-              disabled={!signer.isConnected}
-              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 disabled:opacity-40"
-            >
-              Withdraw
-            </button>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAction('deposit')}
+                disabled={!signer.isConnected}
+                className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-40"
+              >
+                Deposit
+              </button>
+              <button
+                onClick={() => setAction('withdraw')}
+                disabled={!signer.isConnected}
+                className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 disabled:opacity-40"
+              >
+                Withdraw
+              </button>
+            </div>
+            {signer.isConnected && stats.myShares && stats.myShares !== '0' && (
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500">Your position</div>
+                <div className="text-2xl font-semibold leading-tight text-emerald-300">
+                  {stats.myValueUsdc} <span className="text-sm font-normal text-neutral-500">USDC</span>
+                </div>
+              </div>
+            )}
           </div>
           {!signer.isConnected && (
             <p className="mt-2 text-xs text-neutral-600">Connect a wallet to deposit or withdraw.</p>
