@@ -5,9 +5,28 @@ import Link from 'next/link';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
-import { useVerifierPending } from '@/hooks/use-verifier-pending';
+import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
 import { CountdownChip } from '@/components/countdown';
-import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx } from '@/lib/api';
+import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx, type VerifierAssignment } from '@/lib/api';
+
+type Filter = 'pending' | 'voted' | 'done' | 'all';
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'pending', label: 'Pending' },
+  { key: 'voted', label: 'Voted' },
+  { key: 'done', label: 'Done' },
+  { key: 'all', label: 'All' },
+];
+const EMPTY: Record<Filter, string> = {
+  pending: 'No verifications awaiting your vote.',
+  voted: 'You haven’t voted on any open panels.',
+  done: 'No completed verifications yet.',
+  all: 'You haven’t been drawn onto any panels yet. Stake to join the pool.',
+};
+function inFilter(a: VerifierAssignment, f: Filter): boolean {
+  if (f === 'all') return true;
+  if (f === 'done') return a.status === 'resolved' || a.status === 'expired';
+  return a.status === f;
+}
 
 // Staked-verifier (Arm 2) console: stake to join the panel, see the economics,
 // withdraw free stake. Selected verifiers vote on delivery for trades that chose
@@ -20,7 +39,8 @@ export default function VerifyPage() {
   const [stakeAmt, setStakeAmt] = useState('');
   const [unstakeAmt, setUnstakeAmt] = useState('');
   const [busy, setBusy] = useState(false);
-  const { items: pending } = useVerifierPending();
+  const [filter, setFilter] = useState<Filter>('pending');
+  const { items: assignments, loaded: assignmentsLoaded } = useVerifierAssignments();
 
   const refresh = useCallback(async () => {
     try {
@@ -88,23 +108,55 @@ export default function VerifyPage() {
         Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery — honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
       </p>
 
-      {signer.isConnected && pending.length > 0 && (
-        <section className="mt-8 rounded-xl border border-primary/40 bg-primary-soft p-5">
-          <div className="flex items-center gap-2 text-sm font-medium text-fg">
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-fg">{pending.length}</span>
-            Verification{pending.length > 1 ? 's' : ''} awaiting your vote
+      {signer.isConnected && info?.configured && (
+        <section className="mt-8 rounded-xl border border-line bg-surface p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-fg">My verifications</h2>
+            <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
+              {FILTERS.map((f) => {
+                const n = f.key === 'all' ? assignments.length : assignments.filter((a) => inFilter(a, f.key)).length;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilter(f.key)}
+                    className={`rounded-md px-2.5 py-1 text-xs transition ${filter === f.key ? 'bg-surface text-fg' : 'text-muted hover:text-fg'}`}
+                  >
+                    {f.label}
+                    {n > 0 && <span className="ml-1 text-[10px] text-muted">{n}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <ul className="mt-3 space-y-2">
-            {pending.map((p) => (
-              <li key={p.tradeId} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
-                <span className="text-fg">Trade #{p.tradeId}</span>
-                <div className="flex items-center gap-3">
-                  <CountdownChip unix={p.deadline} label="Closes" />
-                  <Link href={`/trade/${p.tradeId}`} className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-primary-hover">Review &amp; vote</Link>
-                </div>
-              </li>
-            ))}
-          </ul>
+
+          {(() => {
+            const shown = assignments.filter((a) => inFilter(a, filter));
+            if (!assignmentsLoaded) return <p className="mt-4 text-sm text-muted">Loading…</p>;
+            if (shown.length === 0) return <p className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-6 text-center text-sm text-muted">{EMPTY[filter]}</p>;
+            return (
+              <ul className="mt-4 space-y-2">
+                {shown.map((a) => (
+                  <li key={a.tradeId} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-fg">Trade #{a.tradeId}</span>
+                      <StatusPill status={a.status} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {a.status === 'pending' && <CountdownChip unix={a.deadline} label="Closes" />}
+                      <Link
+                        href={`/trade/${a.tradeId}`}
+                        className={a.status === 'pending'
+                          ? 'rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-primary-hover'
+                          : 'rounded-md border border-line px-3 py-1.5 text-xs text-fg transition hover:border-line-strong'}
+                      >
+                        {a.status === 'pending' ? 'Review & vote' : 'View'}
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
         </section>
       )}
 
@@ -173,4 +225,20 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd className="text-fg">{children}</dd>
     </div>
   );
+}
+
+function StatusPill({ status }: { status: VerifierAssignment['status'] }) {
+  const style: Record<VerifierAssignment['status'], string> = {
+    pending: 'bg-emerald-500/15 text-emerald-300',
+    voted: 'bg-sky-500/15 text-sky-300',
+    resolved: 'bg-neutral-500/15 text-neutral-300',
+    expired: 'bg-red-500/15 text-red-300',
+  };
+  const label: Record<VerifierAssignment['status'], string> = {
+    pending: 'needs your vote',
+    voted: 'voted',
+    resolved: 'resolved',
+    expired: 'missed',
+  };
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${style[status]}`}>{label[status]}</span>;
 }

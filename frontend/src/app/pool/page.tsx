@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { PoolPanel } from '@/components/pool-panel';
+import { RecentPoolStakes } from '@/components/recent-pool-stakes';
 
 // Dedicated financing-pool page: a short explainer of the LP vault (what it
 // funds, who can deposit, the risk) plus the deposit/withdraw panel.
@@ -29,6 +30,8 @@ export default function PoolPage() {
       <div className="mt-8">
         <PoolPanel />
       </div>
+
+      <RecentPoolStakes />
 
       <p className="mt-6 text-xs text-neutral-600">
         Track your position on your{' '}

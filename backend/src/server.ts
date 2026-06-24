@@ -3192,6 +3192,26 @@ app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async
   return { items };
 });
 
+// Global recent pool deposits (10 most recent), so the pool page isn't blank for
+// new visitors. Addresses are public on-chain; the UI masks them for display.
+app.get('/arc/trade/pool/recent', async (_request, reply) => {
+  if (!escrowReady(reply)) return;
+  const rows = db
+    .prepare(
+      `SELECT lp, assets_raw, block_time, tx_hash, log_index
+       FROM pool_events WHERE kind = 'pool-deposit' ORDER BY block_number DESC, log_index DESC LIMIT 10`,
+    )
+    .all() as { lp: string; assets_raw: string; block_time: number | null; tx_hash: string; log_index: number }[];
+  const items = rows.map((r) => ({
+    key: `pool-recent:${r.tx_hash}:${r.log_index}`,
+    lp: r.lp,
+    amountUsdc: formatUnits(BigInt(r.assets_raw), 6),
+    txHash: r.tx_hash,
+    whenMs: r.block_time ?? Date.now(),
+  }));
+  return { items };
+});
+
 // Yield tracking — cumulative (since inception, = sharePrice − 1) plus 24h / 7d
 // windows from the NAV snapshots. Windows are null until enough history exists.
 app.get('/arc/trade/pool/yield', async (_request, reply) => {
@@ -3576,16 +3596,18 @@ function verifierReady(reply: FastifyReply): `0x${string}` | null {
   return STAKED_VERIFIER_ADDRESS;
 }
 
-// Trades where `address` is a drawn panelist who still owes a vote (not resolved,
-// hasn't voted, before the deadline). Membership comes from the DB (captured at
-// assign); the open/voted check is read live on-chain.
-async function pendingVerificationsFor(address: string): Promise<{ tradeId: string; deadline: number }[]> {
+// Every panel `address` was drawn onto, with its live status. Membership comes
+// from the DB (captured at assign); status is read on-chain per trade.
+type AssignStatus = 'pending' | 'voted' | 'resolved' | 'expired';
+async function verifierAssignmentsFor(
+  address: string,
+): Promise<{ tradeId: string; deadline: number; status: AssignStatus }[]> {
   if (!STAKED_VERIFIER_ADDRESS) return [];
   const v = STAKED_VERIFIER_ADDRESS;
   const rows = db
-    .prepare('SELECT trade_id FROM verification_assignments WHERE verifier = ?')
+    .prepare('SELECT trade_id FROM verification_assignments WHERE verifier = ? ORDER BY trade_id DESC')
     .all(address.toLowerCase()) as { trade_id: number }[];
-  const pending: { tradeId: string; deadline: number }[] = [];
+  const out: { tradeId: string; deadline: number; status: AssignStatus }[] = [];
   for (const r of rows) {
     try {
       const id = BigInt(r.trade_id);
@@ -3595,23 +3617,37 @@ async function pendingVerificationsFor(address: string): Promise<{ tradeId: stri
       ]);
       const resolved = (vstate as readonly unknown[])[1] as boolean;
       const deadline = Number((vstate as readonly unknown[])[2]);
-      if (!resolved && Number(myVote) === 0 && Date.now() / 1000 < deadline) {
-        pending.push({ tradeId: String(r.trade_id), deadline });
-      }
+      const vote = Number(myVote);
+      const status: AssignStatus = resolved ? 'resolved' : vote !== 0 ? 'voted' : Date.now() / 1000 > deadline ? 'expired' : 'pending';
+      out.push({ tradeId: String(r.trade_id), deadline, status });
     } catch {
       /* skip trades we can't read */
     }
   }
-  return pending;
+  return out;
 }
 
-// Pending verifications for a connected verifier (powers the /verify list + the
-// subtle nav counter).
+// Just the still-actionable (pending) subset — powers the nav badge + notifications.
+async function pendingVerificationsFor(address: string): Promise<{ tradeId: string; deadline: number }[]> {
+  return (await verifierAssignmentsFor(address))
+    .filter((a) => a.status === 'pending')
+    .map((a) => ({ tradeId: a.tradeId, deadline: a.deadline }));
+}
+
+// Pending only (badge/notifications).
 app.get<{ Querystring: { address?: string } }>('/arc/verifier/pending', async (request, reply) => {
   if (!verifierReady(reply)) return;
   const address = (request.query.address ?? '').toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
   return { items: await pendingVerificationsFor(address) };
+});
+
+// Full assignment history with status (powers the /verify list + filter).
+app.get<{ Querystring: { address?: string } }>('/arc/verifier/assignments', async (request, reply) => {
+  if (!verifierReady(reply)) return;
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  return { items: await verifierAssignmentsFor(address) };
 });
 
 // Module address + params (+ caller's stake when ?address= given).

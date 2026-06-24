@@ -1040,6 +1040,15 @@ export async function getVerifierPending(address: string): Promise<VerifierPendi
   return r.items;
 }
 
+export type VerifierAssignmentStatus = 'pending' | 'voted' | 'resolved' | 'expired';
+export type VerifierAssignment = { tradeId: string; deadline: number; status: VerifierAssignmentStatus };
+
+// Every panel this verifier was drawn onto, with status (for the /verify list).
+export async function getVerifierAssignments(address: string): Promise<VerifierAssignment[]> {
+  const r = await jsonFetch<{ items: VerifierAssignment[] }>('GET', `/arc/verifier/assignments?address=${encodeURIComponent(address)}`);
+  return r.items;
+}
+
 export async function buildVerifierStakeUnsigned(amountUsdc: string): Promise<{ approve: UnsignedTx; stake: UnsignedTx }> {
   return jsonFetch('POST', '/arc/verifier/stake/unsigned', { amountUsdc });
 }
@@ -1148,6 +1157,14 @@ export type PoolActivity = {
 
 export async function getPoolActivity(address: string): Promise<PoolActivity[]> {
   const r = await jsonFetch<{ items: PoolActivity[] }>('GET', `/arc/trade/pool/activity?address=${encodeURIComponent(address)}`);
+  return r.items;
+}
+
+export type RecentPoolStake = { key: string; lp: string; amountUsdc: string; txHash: string; whenMs: number };
+
+// Global 10 most-recent pool deposits (any LP) — for the pool page activity list.
+export async function getRecentPoolStakes(): Promise<RecentPoolStake[]> {
+  const r = await jsonFetch<{ items: RecentPoolStake[] }>('GET', '/arc/trade/pool/recent');
   return r.items;
 }
 
