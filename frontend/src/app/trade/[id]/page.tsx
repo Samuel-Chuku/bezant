@@ -39,6 +39,7 @@ import {
   officerAttestAuthMessage,
   getUserByAddress,
   getVerifierInfo,
+  getVerification,
   type VerifierInfo,
   type TradeState,
   type TradeEvent,
@@ -107,6 +108,8 @@ export default function TradeDetailPage() {
   const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
   const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
+  const [isPanelist, setIsPanelist] = useState(false);
+  const [panelAssigned, setPanelAssigned] = useState(false);
   const autoFundedRef = useRef(false);
 
   useEffect(() => {
@@ -274,7 +277,7 @@ export default function TradeDetailPage() {
   const me = signer.isConnected ? signer.address.toLowerCase() : null;
   const isBuyer = !!trade && me === trade.buyer.toLowerCase();
   const isSeller = !!trade && me === trade.seller.toLowerCase();
-  const myRole = isBuyer ? 'buyer' : isSeller ? 'seller' : me ? 'observer' : null;
+  const myRole = isBuyer ? 'buyer' : isSeller ? 'seller' : isPanelist ? 'verifier' : me ? 'observer' : null;
   const myOffer = !!trade && me === trade.lastProposer.toLowerCase();
   const myTurn = !!trade && trade.status === 'Proposing' && (isBuyer || isSeller) && !myOffer;
   const isArbitrator = !!trade && me === trade.arbitrator.toLowerCase();
@@ -283,11 +286,34 @@ export default function TradeDetailPage() {
   // Only the trade's parties (+ the arbitrator, who may need to resolve a
   // dispute) see the details; everyone else sees just the deadline. NOTE: this
   // is a UI courtesy — the data is public on-chain and via the API.
-  const isParticipant = isBuyer || isSeller || isArbitrator;
   // Panel-mode trades set the staked-verifier module as their attester at
   // creation; they verify delivery via the panel instead of the Trade Officer.
   const isPanelTrade =
     !!trade && !!verifier?.address && trade.attester.toLowerCase() === verifier.address.toLowerCase();
+  // A drawn panelist isn't the buyer/seller but must reach the trade to review
+  // the delivery doc and vote, so they count as a participant here.
+  const isParticipant = isBuyer || isSeller || isArbitrator || isPanelist;
+
+  // For panel trades, track membership (gates page access) + whether the panel
+  // has been drawn (gates the dispute button). Poll so both stay fresh as the
+  // seller submits and the panel forms.
+  useEffect(() => {
+    if (!isPanelTrade) {
+      setIsPanelist(false);
+      setPanelAssigned(false);
+      return;
+    }
+    const load = () =>
+      getVerification(id, signer.isConnected ? signer.address : undefined)
+        .then((v) => {
+          setPanelAssigned(v.assigned);
+          setIsPanelist(!!me && v.panel.some((p) => p.toLowerCase() === me));
+        })
+        .catch(() => {});
+    void load();
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [isPanelTrade, me, id, signer.isConnected, signer.address]);
 
   // Bridge-into-fund: once the CCTP bridge lands the USDC on Arc, fund the trade
   // automatically (approve + lock) so the buyer doesn't have to come back and
@@ -308,6 +334,10 @@ export default function TradeDetailPage() {
   const step = trade ? describeTradeStep(trade, me) : null;
   const windowActive =
     !!trade && trade.status === 'Funded' && trade.challengeWindowUntil != null && trade.challengeWindowUntil > Date.now() / 1000;
+  // "Delivery submitted" = there's actually something to contest: the officer
+  // challenge window opened, or the staked panel has been drawn. The dispute
+  // button only shows from this point (not during the wait for delivery).
+  const deliverySubmitted = isPanelTrade ? panelAssigned : !!trade && trade.challengeWindowUntil != null;
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
@@ -440,7 +470,7 @@ export default function TradeDetailPage() {
 
             {/* FUNDED + panel mode — staked-panel verification (fee → submit → vote) */}
             {trade.status === 'Funded' && isPanelTrade && (
-              <VerificationPanel tradeId={id} buyer={trade.buyer} seller={trade.seller} onChange={refresh} />
+              <VerificationPanel tradeId={id} buyer={trade.buyer} seller={trade.seller} amountUsdc={trade.amountUsdc} onChange={refresh} />
             )}
 
             {/* FUNDED — buyer challenge window open (officer approved, not yet settled) */}
@@ -526,8 +556,9 @@ export default function TradeDetailPage() {
               <Waiting>Funded. Awaiting delivery documents from the seller; settlement is automatic once the officer attests.</Waiting>
             )}
 
-            {/* FUNDED — either party can flag a problem; buyer can reclaim after the deadline */}
-            {trade.status === 'Funded' && (isBuyer || isSeller) && (
+            {/* FUNDED — buyer can reclaim after the deadline; either party can
+                dispute once delivery is in (nothing to contest before that). */}
+            {trade.status === 'Funded' && (isBuyer || isSeller) && (deliverySubmitted || (isBuyer && deadlinePassed)) && (
               <div className="space-y-2 border-t border-neutral-900 pt-3">
                 {isBuyer && deadlinePassed && (
                   <div>
@@ -535,14 +566,16 @@ export default function TradeDetailPage() {
                     <Action onClick={doRefund} busy={busy === 'refund'} variant="ghost">Claim refund</Action>
                   </div>
                 )}
-                <div>
-                  <p className="mb-2 text-xs text-neutral-500">
-                    {isSeller
-                      ? 'Delivered but it isn’t settling, or worried about an unfair refund? Raising a dispute pauses the buyer’s refund and lets the arbitrator decide.'
-                      : 'Something wrong with this trade? Flag it for the arbitrator to resolve.'}
-                  </p>
-                  <Action onClick={doRaiseDispute} busy={busy === 'dispute'} variant="ghost">Raise a dispute</Action>
-                </div>
+                {deliverySubmitted && (
+                  <div>
+                    <p className="mb-2 text-xs text-neutral-500">
+                      {isSeller
+                        ? 'Delivered but it isn’t settling, or worried about an unfair refund? Raising a dispute pauses the buyer’s refund and lets the arbitrator decide.'
+                        : 'Something wrong with this delivery? Flag it for the arbitrator to resolve.'}
+                    </p>
+                    <Action onClick={doRaiseDispute} busy={busy === 'dispute'} variant="ghost">Raise a dispute</Action>
+                  </div>
+                )}
               </div>
             )}
 

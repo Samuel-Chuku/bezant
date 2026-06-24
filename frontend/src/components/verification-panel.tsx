@@ -20,7 +20,7 @@ import {
   type UnsignedTx,
 } from '@/lib/api';
 
-export function VerificationPanel({ tradeId, buyer, seller, onChange }: { tradeId: string; buyer: string; seller: string; onChange: () => void }) {
+export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange }: { tradeId: string; buyer: string; seller: string; amountUsdc: string; onChange: () => void }) {
   const signer = useSigner();
   const toast = useToast();
   const txFlow = useTxFlow();
@@ -59,10 +59,17 @@ export function VerificationPanel({ tradeId, buyer, seller, onChange }: { tradeI
 
   const payFee = async () => {
     const { feeUsdc, approve, fund } = await buildVerificationFundUnsigned(tradeId);
+    // Derive the rate from fee/amount so the buyer sees what they're paying and on what.
+    const amt = Number(amountUsdc);
+    const pct = amt > 0 ? +((Number(feeUsdc) / amt) * 100).toFixed(2) : 0;
     const ok = await txFlow.start({
       title: `Verification fee · ${feeUsdc} USDC`,
       amountUsdc: feeUsdc,
-      overview: [{ label: 'Verification', before: '—', after: 'Staked panel' }],
+      overview: [
+        { label: 'Verification fee', before: '—', after: `${feeUsdc} USDC` },
+        { label: 'Fee rate', before: '—', after: `${pct}% of ${amountUsdc} USDC` },
+        { label: 'Verified by', before: '—', after: 'Staked panel' },
+      ],
       steps: [
         { key: 'approve', label: 'Approve USDC', action: 'Approve', run: async () => send(approve, false) },
         { key: 'fund', label: 'Pay verification fee', action: 'Pay', run: async () => send(fund, false) },
