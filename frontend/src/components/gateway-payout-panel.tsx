@@ -22,6 +22,8 @@ import {
   getGatewayBalance,
   submitGatewayPayout,
   getGatewayPayout,
+  getPayoutPref,
+  setPayoutPref,
   type GatewayDestination,
   type GatewayPayoutResult,
   type GatewayPayoutRecord,
@@ -35,19 +37,6 @@ const GATEWAY_DEPOSIT_ABI = [
 ] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// Payout-chain preference, saved locally from the active-trade step and read back
-// at settlement. Per trade + seller; no backend needed for a per-device choice.
-const prefKey = (tradeId: string, seller: string) => `arc-trade:payout-pref:${tradeId}:${seller.toLowerCase()}`;
-const readPref = (tradeId: string, seller: string): string | null => {
-  try { return localStorage.getItem(prefKey(tradeId, seller)); } catch { return null; }
-};
-const writePref = (tradeId: string, seller: string, key: string | null) => {
-  try {
-    if (key) localStorage.setItem(prefKey(tradeId, seller), key);
-    else localStorage.removeItem(prefKey(tradeId, seller));
-  } catch { /* ignore */ }
-};
 
 export function GatewayPayoutPanel({
   tradeId,
@@ -79,9 +68,9 @@ export function GatewayPayoutPanel({
   // Load supported chains once, the saved preference, and (settle mode) any
   // already-recorded payout so a refresh shows "done" instead of re-routing.
   useEffect(() => {
-    const p = readPref(tradeId, sellerAddress);
-    setPref(p);
-    if (p) setDestKey(p);
+    getPayoutPref(tradeId, sellerAddress)
+      .then((p) => { setPref(p); if (p) setDestKey(p); })
+      .catch(() => {});
     getGatewayDestinations().then((list) => setDestinations(list.filter((d) => d.supported))).catch(() => {});
     if (mode === 'settle') {
       getGatewayPayout(tradeId).then(setExisting).catch(() => {}).finally(() => setLoaded(true));
@@ -93,7 +82,7 @@ export function GatewayPayoutPanel({
   const destName = (key: string) => destinations.find((d) => d.key === key)?.name ?? key;
 
   const choosePref = (key: string | null) => {
-    writePref(tradeId, sellerAddress, key);
+    setPayoutPref(tradeId, sellerAddress, key).catch(() => {});
     setPref(key);
     if (key) {
       setDestKey(key);
@@ -153,7 +142,7 @@ export function GatewayPayoutPanel({
           })) as Hex;
           const res = await submitGatewayPayout(tradeId, plan.typedData.message, signature);
           setResult(res);
-          writePref(tradeId, sellerAddress, null); // consume the preference
+          setPayoutPref(tradeId, sellerAddress, null).catch(() => {}); // consume the preference
         },
       });
 
