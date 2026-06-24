@@ -132,16 +132,21 @@ export default function VerifyPage() {
           {(() => {
             const shown = assignments.filter((a) => inFilter(a, filter));
             if (!assignmentsLoaded) return <p className="mt-4 text-sm text-muted">Loading…</p>;
-            if (shown.length === 0) return <p className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-6 text-center text-sm text-muted">{EMPTY[filter]}</p>;
+            if (shown.length === 0) return <p className="mt-4 rounded-xl border border-line bg-surface-2 px-3 py-8 text-center text-sm text-muted">{EMPTY[filter]}</p>;
             return (
-              <ul className="mt-4 space-y-2">
+              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface-2">
                 {shown.map((a) => (
-                  <li key={a.tradeId} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-fg">Trade #{a.tradeId}</span>
-                      <StatusPill status={a.status} />
+                  <li key={a.tradeId} className="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-surface">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <VerifyGlyph />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-fg">Trade #{a.tradeId}</span>
+                        <StatusPill status={a.status} />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-3">
                       {a.status === 'pending' && <CountdownChip unix={a.deadline} label="Closes" />}
                       <Link
                         href={`/trade/${a.tradeId}`}
@@ -224,6 +229,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dt className="text-muted">{label}</dt>
       <dd className="text-fg">{children}</dd>
     </div>
+  );
+}
+
+function VerifyGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
   );
 }
 
