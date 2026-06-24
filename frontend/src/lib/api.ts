@@ -1050,7 +1050,7 @@ export async function getVerifierAssignments(address: string): Promise<VerifierA
 }
 
 export type VerifierStakeKind = 'verifier-stake' | 'verifier-unstake';
-export type RecentVerifierStake = { key: string; verifier: string; kind: VerifierStakeKind; amountUsdc: string; txHash: string; whenMs: number };
+export type RecentVerifierStake = { key: string; verifier: string; handle: string | null; kind: VerifierStakeKind; amountUsdc: string; txHash: string; whenMs: number };
 export type VerifierActivity = { key: string; kind: VerifierStakeKind; amountUsdc: string; txHash: string; whenMs: number; summary: string };
 
 // Global recent stake/unstake on the verifier pool (for the /verify feed).

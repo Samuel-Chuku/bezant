@@ -93,6 +93,14 @@ contract StakedVerifierModuleTest is Test {
         mod.vote(1, pass);
     }
 
+    function _stakeOn(StakedVerifierModule m, address v, uint256 amount) internal {
+        usdc.mint(v, amount);
+        vm.startPrank(v);
+        usdc.approve(address(m), type(uint256).max);
+        m.stake(amount);
+        vm.stopPrank();
+    }
+
     function _resolvedFlag(uint256 id) internal view returns (bool resolved) {
         (, resolved,,,,,) = mod.verificationOf(id);
     }
@@ -223,5 +231,57 @@ contract StakedVerifierModuleTest is Test {
         for (uint256 i; i < p.length; i++) {
             assertTrue(p[i] != vs[0], "trade party on its own panel");
         }
+    }
+
+    // A sub-minimum stake is rejected on-chain (not just in the UI).
+    function test_stake_belowMinReverts() public {
+        address x = makeAddr("staker_x");
+        usdc.mint(x, 100 * USD);
+        vm.startPrank(x);
+        usdc.approve(address(mod), type(uint256).max);
+        vm.expectRevert(bytes("below minStake"));
+        mod.stake(9 * USD); // below the 10 USDC floor
+        mod.stake(10 * USD); // exactly the minimum is fine
+        vm.stopPrank();
+        assertEq(mod.stakeOf(x), 10 * USD);
+    }
+
+    // Reward is proportional to bond (= stake): the 2x-staked honest voter earns
+    // twice the share of an equal-staked one. Fresh module with exactly 4 verifiers
+    // so the panel is deterministically all four.
+    function test_rewards_proportionalToBond() public {
+        StakedVerifierModule m = new StakedVerifierModule(address(usdc), address(escrow), MIN_STAKE, BOND_BPS);
+        m.setParams(4, MIN_STAKE, BOND_BPS, 5000, 100, 1 hours);
+        address a = makeAddr("ra");
+        address b = makeAddr("rb");
+        address c = makeAddr("rc");
+        address d = makeAddr("rd");
+        _stakeOn(m, a, 40 * USD); // bond 20
+        _stakeOn(m, b, 20 * USD); // bond 10
+        _stakeOn(m, c, 20 * USD); // bond 10
+        _stakeOn(m, d, 20 * USD); // bond 10
+
+        escrow.setTrade(9, buyer, seller, address(m), AMOUNT, FUNDED);
+        usdc.mint(buyer, 10 * USD);
+        vm.prank(buyer);
+        usdc.approve(address(m), type(uint256).max);
+        vm.prank(buyer);
+        m.fundVerification(9);
+        m.assignPanel(9, PROOF);
+
+        vm.prank(a);
+        m.vote(9, true);
+        vm.prank(b);
+        m.vote(9, true);
+        vm.prank(c);
+        m.vote(9, true);
+        vm.prank(d);
+        m.vote(9, false); // all voted → resolve, pass wins
+
+        // d (minority) slashed 50% of bond 10 = 5. pool = fee 1 + 5 = 6.
+        // honest bonds: a 20 + b 10 + c 10 = 40 → a gets 6*20/40 = 3, b/c get 1.5 each.
+        assertEq(m.stakeOf(a), 40 * USD + 3 * USD, "2x bond -> 2x share");
+        assertEq(m.stakeOf(b), 20 * USD + 1_500_000, "proportional share");
+        assertEq(m.stakeOf(d), 20 * USD - 5 * USD, "minority slashed");
     }
 }

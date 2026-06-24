@@ -3656,14 +3656,17 @@ app.get('/arc/verifier/recent', async (_request, reply) => {
   if (!v) return;
   const rows = db
     .prepare(
-      `SELECT verifier, kind, amount_raw, block_time, tx_hash, log_index
-       FROM verifier_events WHERE module = ? ORDER BY block_number DESC, log_index DESC LIMIT 10`,
+      `SELECT ve.verifier, ve.kind, ve.amount_raw, ve.block_time, ve.tx_hash, ve.log_index, u.handle
+       FROM verifier_events ve
+       LEFT JOIN users u ON u.wallet_address = ve.verifier
+       WHERE ve.module = ? ORDER BY ve.block_number DESC, ve.log_index DESC LIMIT 10`,
     )
-    .all(v.toLowerCase()) as { verifier: string; kind: string; amount_raw: string; block_time: number | null; tx_hash: string; log_index: number }[];
+    .all(v.toLowerCase()) as { verifier: string; kind: string; amount_raw: string; block_time: number | null; tx_hash: string; log_index: number; handle: string | null }[];
   return {
     items: rows.map((r) => ({
       key: `verifier:${r.tx_hash}:${r.log_index}`,
       verifier: r.verifier,
+      handle: r.handle ?? null,
       kind: r.kind, // 'verifier-stake' | 'verifier-unstake'
       amountUsdc: formatUnits(BigInt(r.amount_raw), 6),
       txHash: r.tx_hash,

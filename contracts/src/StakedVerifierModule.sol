@@ -127,6 +127,9 @@ contract StakedVerifierModule {
     // --- staking ---
     function stake(uint256 amount) external {
         require(amount > 0, "amount");
+        // Enforce the floor on-chain (not just in the UI): a sub-minimum stake
+        // would never be eligible for selection, so reject it outright.
+        require(stakeOf[msg.sender] + amount >= minStake, "below minStake");
         require(usdc.transferFrom(msg.sender, address(this), amount), "transfer");
         stakeOf[msg.sender] += amount;
         if (!known[msg.sender]) {
@@ -298,9 +301,16 @@ contract StakedVerifierModule {
         }
 
         if (honestCount > 0 && rewardPool > 0) {
-            uint256 share = rewardPool / honestCount;
+            // Reward in proportion to bond at risk (= stake): a verifier who put
+            // more on the line earns a bigger slice of the pot. Equal bonds → equal split.
+            uint256 honestBond;
             for (uint256 i; i < panel.length; i++) {
-                if (v.vote[panel[i]] == winSide) stakeOf[panel[i]] += share;
+                if (v.vote[panel[i]] == winSide) honestBond += v.bonded[panel[i]];
+            }
+            if (honestBond > 0) {
+                for (uint256 i; i < panel.length; i++) {
+                    if (v.vote[panel[i]] == winSide) stakeOf[panel[i]] += (rewardPool * v.bonded[panel[i]]) / honestBond;
+                }
             }
         }
         // (If honestCount == 0 — impossible here since a side won — the fee would
