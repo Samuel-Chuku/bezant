@@ -33,6 +33,8 @@ import {
   buildRaiseDisputeUnsigned,
   buildRefundTradeUnsigned,
   buildResolveDisputeUnsigned,
+  buildFeedbackUnsigned,
+  getUserByAddress,
   type TradeState,
   type TradeEvent,
   type UnsignedTx,
@@ -207,6 +209,10 @@ export default function TradeDetailPage() {
   };
   const doFinance = () => run('finance', async () => signAndWait(await buildRequestFinancingUnsigned(id)), 'Financing advanced');
   const doRaiseDispute = () => run('dispute', async () => signAndWait(await buildRaiseDisputeUnsigned(id)), 'Dispute raised');
+  // Reputation write — rate the counterparty's agentId after settlement.
+  const rateCounterparty = async (agentId: string, positive: boolean) => {
+    await signAndWait(await buildFeedbackUnsigned(agentId, positive));
+  };
   const doRefund = () => run('refund', async () => signAndWait(await buildRefundTradeUnsigned(id)), 'Refunded to buyer');
   const doResolve = (releaseToSeller: boolean) =>
     run(
@@ -515,6 +521,9 @@ export default function TradeDetailPage() {
                   Settled — funds released to the seller and the buyer&apos;s credit passport updated.
                 </p>
                 <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="settle" />
+                {(isBuyer || isSeller) && (
+                  <RateCounterparty counterparty={isBuyer ? trade.seller : trade.buyer} onRate={rateCounterparty} />
+                )}
               </div>
             )}
             {trade.status === 'Cancelled' && <Waiting>This trade was cancelled before funding.</Waiting>}
@@ -637,6 +646,52 @@ function Waiting({ children }: { children: React.ReactNode }) {
 
 function short(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+// Thumbs up/down on the counterparty after settlement. Only renders when the
+// counterparty has linked an ERC-8004 agentId (reputation is agentId-based).
+function RateCounterparty({ counterparty, onRate }: { counterparty: string; onRate: (agentId: string, positive: boolean) => Promise<void> }) {
+  const toast = useToast();
+  const [agentId, setAgentId] = useState<string | null | undefined>(undefined); // undefined = loading
+  const [busy, setBusy] = useState(false);
+  const [rated, setRated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    getUserByAddress(counterparty)
+      .then((u) => setAgentId(u?.agentId ?? null))
+      .catch(() => setAgentId(null));
+  }, [counterparty]);
+
+  if (agentId === undefined) return null;
+  if (agentId === null) {
+    return <p className="text-xs text-neutral-500">Your counterparty hasn&apos;t linked an agent, so there&apos;s no reputation to leave.</p>;
+  }
+  if (rated !== null) {
+    return <p className="text-xs text-emerald-300">Thanks — you left {rated ? '👍' : '👎'} feedback.</p>;
+  }
+
+  const rate = async (positive: boolean) => {
+    setBusy(true);
+    try {
+      await onRate(agentId, positive);
+      setRated(positive);
+      toast.success('Feedback submitted');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/40 px-4 py-3">
+      <span className="text-sm text-neutral-300">Rate your counterparty</span>
+      <div className="ml-auto flex gap-2">
+        <button onClick={() => rate(true)} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-50">👍</button>
+        <button onClick={() => rate(false)} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-red-700 hover:text-red-300 disabled:opacity-50">👎</button>
+      </div>
+    </div>
+  );
 }
 
 function ShieldIcon() {

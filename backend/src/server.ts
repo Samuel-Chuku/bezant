@@ -2125,6 +2125,23 @@ app.get<{
   },
 );
 
+// ─── ERC-8004 reputation WRITE (giveFeedback) ──────────────────────────────
+// After a settled trade, a party rates the counterparty's agentId. Returns the
+// calldata; the rater signs with their own wallet. value +1/-1 = thumbs up/down
+// (valueDecimals 0). Permissionless per EIP-8004 (rater must not own the agent).
+app.post<{ Body: { agentId?: string; positive?: boolean } }>('/arc/reputation/feedback/unsigned', async (request, reply) => {
+  const { agentId, positive } = request.body ?? {};
+  if (!agentId || !/^\d+$/.test(agentId)) return reply.code(400).send({ error: 'agentId (uint) is required' });
+  if (typeof positive !== 'boolean') return reply.code(400).send({ error: 'positive (boolean) is required' });
+
+  const data = encodeFunctionData({
+    abi: reputationRegistryAbi,
+    functionName: 'giveFeedback',
+    args: [BigInt(agentId), positive ? 1n : -1n, 0, 'arc-trade', '', '', '', `0x${'0'.repeat(64)}`],
+  });
+  return { to: ERC8004_REPUTATION_ADDRESS, data, value: '0' };
+});
+
 // ─── ERC-8004 agent self-registration (M32) ────────────────────────────────
 // Two routes. register-unsigned returns the calldata to mint a fresh
 // agentId; the frontend signs it with whichever wallet is connected.

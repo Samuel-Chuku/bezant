@@ -73,6 +73,25 @@ export const reputationRegistryAbi = [
     ],
     outputs: [{ type: 'uint64' }],
   },
+  // Write side: leave feedback for an agent. Permissionless per EIP-8004 (the
+  // submitter just MUST NOT be the agent's owner/operator). value +1/-1 with
+  // valueDecimals 0 = a thumbs up/down; tag1 namespaces the source.
+  {
+    type: 'function',
+    name: 'giveFeedback',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'agentId', type: 'uint256' },
+      { name: 'value', type: 'int128' },
+      { name: 'valueDecimals', type: 'uint8' },
+      { name: 'tag1', type: 'string' },
+      { name: 'tag2', type: 'string' },
+      { name: 'endpoint', type: 'string' },
+      { name: 'feedbackURI', type: 'string' },
+      { name: 'feedbackHash', type: 'bytes32' },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 // IdentityRegistry — ownership accessors for the link verification path

@@ -975,6 +975,11 @@ export async function buildFundTradeUnsigned(tradeId: string): Promise<UnsignedT
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/fund/unsigned`);
 }
 
+// ERC-8004 reputation write: leave thumbs up/down feedback for an agentId.
+export async function buildFeedbackUnsigned(agentId: string, positive: boolean): Promise<UnsignedTx> {
+  return jsonFetch('POST', '/arc/reputation/feedback/unsigned', { agentId, positive });
+}
+
 export async function buildAcceptTradeUnsigned(tradeId: string): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/accept/unsigned`);
 }
