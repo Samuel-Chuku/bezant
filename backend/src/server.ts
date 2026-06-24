@@ -3482,6 +3482,17 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
     }
   }
 
+  // Staked-verifier panels this user is on that still need their vote.
+  for (const p of await pendingVerificationsFor(address)) {
+    items.push({
+      tradeId: p.tradeId,
+      key: `verify:${p.tradeId}:pending`,
+      kind: 'action',
+      summary: `Trade #${p.tradeId} — cast your verifier verdict on delivery`,
+      whenMs: Date.now(),
+    });
+  }
+
   items.sort((a, b) => b.whenMs - a.whenMs);
   return { items };
 });
@@ -3564,6 +3575,44 @@ function verifierReady(reply: FastifyReply): `0x${string}` | null {
   }
   return STAKED_VERIFIER_ADDRESS;
 }
+
+// Trades where `address` is a drawn panelist who still owes a vote (not resolved,
+// hasn't voted, before the deadline). Membership comes from the DB (captured at
+// assign); the open/voted check is read live on-chain.
+async function pendingVerificationsFor(address: string): Promise<{ tradeId: string; deadline: number }[]> {
+  if (!STAKED_VERIFIER_ADDRESS) return [];
+  const v = STAKED_VERIFIER_ADDRESS;
+  const rows = db
+    .prepare('SELECT trade_id FROM verification_assignments WHERE verifier = ?')
+    .all(address.toLowerCase()) as { trade_id: number }[];
+  const pending: { tradeId: string; deadline: number }[] = [];
+  for (const r of rows) {
+    try {
+      const id = BigInt(r.trade_id);
+      const [vstate, myVote] = await Promise.all([
+        arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
+        arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'voteOf', args: [id, address as `0x${string}`] }),
+      ]);
+      const resolved = (vstate as readonly unknown[])[1] as boolean;
+      const deadline = Number((vstate as readonly unknown[])[2]);
+      if (!resolved && Number(myVote) === 0 && Date.now() / 1000 < deadline) {
+        pending.push({ tradeId: String(r.trade_id), deadline });
+      }
+    } catch {
+      /* skip trades we can't read */
+    }
+  }
+  return pending;
+}
+
+// Pending verifications for a connected verifier (powers the /verify list + the
+// subtle nav counter).
+app.get<{ Querystring: { address?: string } }>('/arc/verifier/pending', async (request, reply) => {
+  if (!verifierReady(reply)) return;
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  return { items: await pendingVerificationsFor(address) };
+});
 
 // Module address + params (+ caller's stake when ?address= given).
 app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (request) => {
@@ -3653,6 +3702,16 @@ app.post<{ Params: { id: string }; Body: { content?: string; signature?: string;
       });
       const tx = await waitForCircleTx(exec.data!.id);
       db.prepare('INSERT OR REPLACE INTO verification_docs (trade_id, content) VALUES (?, ?)').run(Number(request.params.id), content);
+      // Record panel membership so each drawn verifier can be alerted there's a
+      // vote to cast (the module has no verifier→trades reverse index).
+      const id = BigInt(request.params.id);
+      const [panel, vstate] = await Promise.all([
+        arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'panelOf', args: [id] }),
+        arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
+      ]);
+      const deadline = Number((vstate as readonly unknown[])[2]); // V.deadline
+      const ins = db.prepare('INSERT OR REPLACE INTO verification_assignments (trade_id, verifier, deadline) VALUES (?, ?, ?)');
+      for (const member of panel as readonly string[]) ins.run(Number(request.params.id), member.toLowerCase(), deadline);
       return { tradeId: request.params.id, assigned: true, txHash: tx.txHash };
     } catch (err) {
       return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });

@@ -1032,6 +1032,14 @@ export async function getVerifierInfo(address?: string): Promise<VerifierInfo> {
   return jsonFetch('GET', `/arc/verifier/info${q}`);
 }
 
+export type VerifierPending = { tradeId: string; deadline: number };
+
+// Trades where this verifier was drawn and still owes a vote.
+export async function getVerifierPending(address: string): Promise<VerifierPending[]> {
+  const r = await jsonFetch<{ items: VerifierPending[] }>('GET', `/arc/verifier/pending?address=${encodeURIComponent(address)}`);
+  return r.items;
+}
+
 export async function buildVerifierStakeUnsigned(amountUsdc: string): Promise<{ approve: UnsignedTx; stake: UnsignedTx }> {
   return jsonFetch('POST', '/arc/verifier/stake/unsigned', { amountUsdc });
 }

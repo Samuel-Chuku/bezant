@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
+import { useVerifierPending } from '@/hooks/use-verifier-pending';
 import { arcTestnet } from '@/lib/chains';
 import { shortAddress } from '@/lib/format';
 import { ArcLogo } from './arc-logo';
@@ -40,16 +41,22 @@ const NAV_ITEMS: NavItem[] = [
   // { href: '/reputation', label: 'Reputation' },
 ];
 
-function NavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+function NavLink({ href, label, active, badge = 0 }: { href: string; label: string; active: boolean; badge?: number }) {
   return (
     <Link
       href={href}
       className={[
-        'rounded-md px-3 py-1.5 text-sm transition',
+        'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition',
         active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
       ].join(' ')}
     >
       {label}
+      {badge > 0 && (
+        // Subtle pending-verifications counter — muted emerald, not the bell's red.
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/15 px-1 text-[10px] font-medium text-emerald-300" aria-label={`${badge} pending`}>
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -101,6 +108,7 @@ export function TopNav() {
   const { switchChain } = useSwitchChain();
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { count: verifyPending } = useVerifierPending();
 
   // External-mode users can drift off Arc via the bridge widget; passkey
   // users stay on Arc by construction so we don't pester them.
@@ -135,7 +143,7 @@ export function TopNav() {
             <NavLink href="/" label="Home" active={pathname === '/'} />
             <TradesMenu pathname={pathname} />
             {PRIMARY_AFTER.map((item) => (
-              <NavLink key={item.href} href={item.href} label={item.label} active={pathname.startsWith(item.href)} />
+              <NavLink key={item.href} href={item.href} label={item.label} active={pathname.startsWith(item.href)} badge={item.href === '/verify' ? verifyPending : 0} />
             ))}
           </nav>
 

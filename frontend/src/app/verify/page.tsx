@@ -1,9 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
+import { useVerifierPending } from '@/hooks/use-verifier-pending';
+import { CountdownChip } from '@/components/countdown';
 import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx } from '@/lib/api';
 
 // Staked-verifier (Arm 2) console: stake to join the panel, see the economics,
@@ -17,6 +20,7 @@ export default function VerifyPage() {
   const [stakeAmt, setStakeAmt] = useState('');
   const [unstakeAmt, setUnstakeAmt] = useState('');
   const [busy, setBusy] = useState(false);
+  const { items: pending } = useVerifierPending();
 
   const refresh = useCallback(async () => {
     try {
@@ -38,6 +42,14 @@ export default function VerifyPage() {
 
   const doStake = async () => {
     if (!signer.isConnected || !stakeAmt || Number(stakeAmt) <= 0) return;
+    // minStake is enforced at selection, not in stake() — a sub-min stake would
+    // sit idle and never be drawn. Block it here so it can't happen by accident.
+    const min = Number(info?.minStakeUsdc ?? 0);
+    const current = Number(info?.myStakeUsdc ?? 0);
+    if (current + Number(stakeAmt) < min) {
+      toast.error(`Minimum stake is ${info?.minStakeUsdc} USDC — add at least ${(min - current).toFixed(2)} more to qualify.`);
+      return;
+    }
     const { approve, stake } = await buildVerifierStakeUnsigned(stakeAmt);
     const ok = await txFlow.start({
       title: `Stake ${stakeAmt} USDC`,
@@ -75,6 +87,26 @@ export default function VerifyPage() {
       <p className="mt-2 max-w-2xl text-sm text-muted">
         Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery — honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
       </p>
+
+      {signer.isConnected && pending.length > 0 && (
+        <section className="mt-8 rounded-xl border border-primary/40 bg-primary-soft p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-fg">
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-fg">{pending.length}</span>
+            Verification{pending.length > 1 ? 's' : ''} awaiting your vote
+          </div>
+          <ul className="mt-3 space-y-2">
+            {pending.map((p) => (
+              <li key={p.tradeId} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
+                <span className="text-fg">Trade #{p.tradeId}</span>
+                <div className="flex items-center gap-3">
+                  <CountdownChip unix={p.deadline} label="Closes" />
+                  <Link href={`/trade/${p.tradeId}`} className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-primary-hover">Review &amp; vote</Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {!info?.configured ? (
         <p className="mt-8 rounded-xl border border-line bg-surface p-5 text-sm text-muted">

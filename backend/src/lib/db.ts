@@ -347,6 +347,19 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Panel membership per staked-panel trade, captured when the operator draws
+  -- the panel. Lets us answer "which trades need verifier X's vote" without a
+  -- reverse scan (the module has no verifier→trades index). Live vote/resolved
+  -- status is read on-chain when listing; this is just the membership map.
+  CREATE TABLE IF NOT EXISTS verification_assignments (
+    trade_id   INTEGER NOT NULL,
+    verifier   TEXT NOT NULL,
+    deadline   INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (trade_id, verifier)
+  );
+  CREATE INDEX IF NOT EXISTS idx_verif_assign_verifier ON verification_assignments(verifier);
+
   -- Operator reputation boost: one trusted operator endorsement per (trade,
   -- agent) when a settled trade also got a counterparty thumbs-up. Dedup key
   -- stops replay/spam (one boost per agent per trade).
