@@ -1022,6 +1022,7 @@ export type VerificationState = {
   cast: number;
   feeUsdc: string;
   prepaid: boolean;
+  slashBps?: number;
   panel: string[];
   document: string | null;
   myVote?: number; // 0 none, 1 confirm, 2 reject
@@ -1077,6 +1078,13 @@ export async function buildVerifierUnstakeUnsigned(amountUsdc: string): Promise<
 export async function getVerification(tradeId: string, address?: string): Promise<VerificationState> {
   const q = address ? `?address=${encodeURIComponent(address)}` : '';
   return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/verification${q}`);
+}
+
+export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string };
+
+// Trade Officer (automated) review snapshot for an officer-route trade.
+export async function getOfficerReview(tradeId: string): Promise<OfficerReview> {
+  return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/officer-review`);
 }
 
 export async function buildVerificationFundUnsigned(tradeId: string): Promise<{ feeUsdc: string; approve: UnsignedTx; fund: UnsignedTx }> {

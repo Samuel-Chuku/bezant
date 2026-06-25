@@ -339,6 +339,17 @@ db.exec(`
     PRIMARY KEY (trade_id, seller)
   );
 
+  -- Trade Officer (automated) review snapshot for officer-route trades: the
+  -- submitted document + the agent's pass reasons/confidence, so the trade page
+  -- can show an honest "document validated (not full verification)" view later.
+  CREATE TABLE IF NOT EXISTS officer_reviews (
+    trade_id   INTEGER PRIMARY KEY,
+    document   TEXT NOT NULL,
+    reasons    TEXT NOT NULL DEFAULT '[]',
+    confidence REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   -- Delivery document submitted for a staked-panel trade, so panel verifiers
   -- can review it off-chain while they vote (the chain only holds its hash).
   CREATE TABLE IF NOT EXISTS verification_docs (

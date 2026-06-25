@@ -3289,6 +3289,9 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
     const finalizeAt = Math.floor(Date.now() / 1000) + CHALLENGE_WINDOW_SECONDS;
     db.prepare('INSERT OR REPLACE INTO pending_attestations (trade_id, proof_hash, finalize_at) VALUES (?, ?, ?)')
       .run(Number(id), decision.proofHash, finalizeAt);
+    // Snapshot the review so the trade page can show it after settlement.
+    db.prepare('INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence) VALUES (?, ?, ?, ?)')
+      .run(Number(id), document.content, JSON.stringify(decision.reasons ?? []), decision.confidence ?? null);
     return {
       tradeId: request.params.id,
       decision: 'pass',
@@ -3830,10 +3833,11 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
   const v = verifierReady(reply);
   if (!v) return;
   const id = BigInt(request.params.id);
-  const [vstate, panel, prepaidRaw] = await Promise.all([
+  const [vstate, panel, prepaidRaw, slashBps] = await Promise.all([
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'panelOf', args: [id] }),
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'feePrepaid', args: [id] }),
+    arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'slashBps' }),
   ]);
   const [assigned, resolved, deadline, passes, fails, cast, fee] = vstate as readonly [boolean, boolean, bigint, number, number, number, bigint];
   const doc = db.prepare('SELECT content FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string } | undefined;
@@ -3846,6 +3850,7 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     cast,
     feeUsdc: formatUnits(fee, 6),
     prepaid: (prepaidRaw as bigint) !== 0n,
+    slashBps: Number(slashBps),
     panel: panel as readonly string[],
     document: doc?.content ?? null,
   };
@@ -3871,6 +3876,22 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     out.myVote = Number(myVote); // 0 none, 1 confirm, 2 reject
   }
   return out;
+});
+
+// Trade Officer review snapshot for officer-route trades (the doc + the agent's
+// reasons), so the trade page can show an honest "document validated" view.
+app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (request) => {
+  const row = db
+    .prepare('SELECT document, reasons, confidence, created_at FROM officer_reviews WHERE trade_id = ?')
+    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string } | undefined;
+  if (!row) return { exists: false };
+  let reasons: string[] = [];
+  try {
+    reasons = JSON.parse(row.reasons) as string[];
+  } catch {
+    /* leave empty */
+  }
+  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at };
 });
 
 const port = Number(process.env.PORT ?? 3001);

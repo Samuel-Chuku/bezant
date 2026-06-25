@@ -258,6 +258,9 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
   const outcome = v.resolved ? (v.passes >= v.fails ? 'Delivery confirmed' : 'Delivery rejected') : 'Voting in progress';
   const label = (vote: number) =>
     vote === 1 ? { t: 'Confirmed', c: 'text-emerald-300' } : vote === 2 ? { t: 'Rejected', c: 'text-red-300' } : { t: 'Awaiting', c: 'text-neutral-500' };
+  const winSide = v.passes >= v.fails ? 1 : 2; // contract: ties → confirm
+  const honestCount = decisions.filter((d) => d.vote === winSide).length;
+  const slashPct = (v.slashBps ?? 5000) / 100;
 
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
@@ -277,17 +280,31 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
           {decisions.map((d) => {
             const l = label(d.vote);
             const mine = !!me && d.address.toLowerCase() === me;
+            const slashed = v.resolved && d.vote !== winSide; // minority or no-show
             return (
               <div key={d.address} className="flex items-center justify-between gap-3 rounded-lg border border-neutral-900 bg-neutral-950/60 px-3 py-2 text-sm">
                 <span className="truncate text-neutral-200">
                   {d.handle ? `@${d.handle}` : shortAddress(d.address)}
                   {mine && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-violet-400">you</span>}
                 </span>
-                <span className={`shrink-0 text-xs font-medium ${l.c}`}>{l.t}</span>
+                <span className="flex shrink-0 items-center gap-2 text-xs font-medium">
+                  {v.resolved && (
+                    <span className={slashed ? 'text-red-400' : 'text-emerald-400'}>{slashed ? 'Slashed' : 'Rewarded'}</span>
+                  )}
+                  <span className={l.c}>{l.t}</span>
+                </span>
               </div>
             );
           })}
         </div>
+
+        {v.resolved && (
+          <div className="mt-3 rounded-lg border border-neutral-900 bg-neutral-950/40 p-3 text-xs leading-relaxed text-neutral-500">
+            <span className="font-medium text-neutral-400">Slashing:</span> losing voters and no-shows forfeited{' '}
+            <strong className="text-neutral-300">{slashPct}% of their bonded stake</strong>, split among the {honestCount} honest
+            voter{honestCount === 1 ? '' : 's'} together with the buyer&apos;s fee.
+          </div>
+        )}
 
         <div className="mt-4 rounded-lg border border-neutral-900 bg-neutral-950/40 p-3 text-xs leading-relaxed text-neutral-500">
           <span className="font-medium text-neutral-400">How this panel was chosen:</span> verifiers were drawn at

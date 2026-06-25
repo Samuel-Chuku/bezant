@@ -17,6 +17,7 @@ import { BridgeWidget } from '@/components/bridge-widget';
 import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { VerificationPanel, PanelModal } from '@/components/verification-panel';
+import { OfficerReviewModal } from '@/components/officer-review-modal';
 import { TradeStatusTracker } from '@/components/trade-status-tracker';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
@@ -41,6 +42,8 @@ import {
   getUserByAddress,
   getVerifierInfo,
   getVerification,
+  getOfficerReview,
+  type OfficerReview,
   type VerificationState,
   type VerifierInfo,
   type TradeState,
@@ -114,6 +117,8 @@ export default function TradeDetailPage() {
   const [panelAssigned, setPanelAssigned] = useState(false);
   const [verification, setVerification] = useState<VerificationState | null>(null);
   const [showPanelModal, setShowPanelModal] = useState(false);
+  const [officerReview, setOfficerReview] = useState<OfficerReview | null>(null);
+  const [showOfficerModal, setShowOfficerModal] = useState(false);
   const autoFundedRef = useRef(false);
 
   useEffect(() => {
@@ -321,6 +326,15 @@ export default function TradeDetailPage() {
     return () => clearInterval(t);
   }, [isPanelTrade, me, id, signer.isConnected, signer.address]);
 
+  // Officer-route review snapshot (powers the "Trade Officer review" link/modal).
+  useEffect(() => {
+    if (isPanelTrade || !trade) {
+      setOfficerReview(null);
+      return;
+    }
+    getOfficerReview(id).then(setOfficerReview).catch(() => setOfficerReview(null));
+  }, [isPanelTrade, id, trade?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Bridge-into-fund: once the CCTP bridge lands the USDC on Arc, fund the trade
   // automatically (approve + lock) so the buyer doesn't have to come back and
   // click again. Guarded so it fires once per bridge run.
@@ -386,6 +400,11 @@ export default function TradeDetailPage() {
             {isPanelTrade && verification?.assigned && (
               <button onClick={() => setShowPanelModal(true)} className="mt-3 text-xs text-violet-300 hover:text-violet-200">
                 View panel decision →
+              </button>
+            )}
+            {!isPanelTrade && officerReview?.exists && (
+              <button onClick={() => setShowOfficerModal(true)} className="mt-3 text-xs text-emerald-300 hover:text-emerald-200">
+                View Trade Officer review →
               </button>
             )}
           </div>
@@ -671,6 +690,7 @@ export default function TradeDetailPage() {
       )}
 
       {showPanelModal && verification && <PanelModal v={verification} me={me} onClose={() => setShowPanelModal(false)} />}
+      {showOfficerModal && officerReview?.exists && <OfficerReviewModal review={officerReview} onClose={() => setShowOfficerModal(false)} />}
 
       <BridgeProgressModal
         run={bridgeRun}
