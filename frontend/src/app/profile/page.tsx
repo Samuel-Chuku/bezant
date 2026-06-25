@@ -11,7 +11,7 @@ import { AgentLinkCard } from '@/components/agent-link-card';
 import { SendPanel } from '@/components/send-panel';
 import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
-import { getPoolStats, type PoolStats } from '@/lib/api';
+import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 
 // Profile hub: identity (handle / address / signing mode / agent ID), credit
@@ -20,8 +20,23 @@ import { shortAddress } from '@/lib/format';
 export default function ProfilePage() {
   const signer = useSigner();
   const { state: userState, linkAgentId, registerAgent } = useUserRecord();
+  const [stats, setStats] = useState<UserStats | null>(null);
 
   const user = userState.status === 'ready' ? userState.user : null;
+
+  useEffect(() => {
+    if (!signer.isConnected) {
+      setStats(null);
+      return;
+    }
+    let live = true;
+    getUserStats(signer.address)
+      .then((s) => live && setStats(s))
+      .catch(() => live && setStats(null));
+    return () => {
+      live = false;
+    };
+  }, [signer.isConnected, signer.address]);
 
   if (!signer.isConnected) {
     return (
@@ -103,19 +118,75 @@ export default function ProfilePage() {
           </div>
         </section>
 
+        {/* At-a-glance stats */}
+        <StatsStrip stats={stats} />
+
         {/* Send USDC — passkey (Circle Modular) wallets only; renders null otherwise */}
         <SendPanel />
 
-        {/* Credit passport */}
-        <PassportPanel address={signer.address} />
-
-        {/* LP position */}
-        <LpPositionCard address={signer.address} />
-
-        {/* Recent activity */}
-        <RecentActivity />
+        {/* Two columns: credit/verifier on the left, pool/activity on the right */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-6">
+            <PassportPanel address={signer.address} />
+            {stats?.verifier && <VerifierBlock v={stats.verifier} />}
+          </div>
+          <div className="space-y-6">
+            <LpPositionCard address={signer.address} />
+            <RecentActivity />
+          </div>
+        </div>
       </div>
     </main>
+  );
+}
+
+// At-a-glance identity stats: trade history, volume, success rate, reputation.
+function StatsStrip({ stats }: { stats: UserStats | null }) {
+  const cards: { label: string; value: string; hint?: string }[] = [
+    { label: 'Trades', value: stats ? String(stats.tradesTotal) : '—', hint: stats ? `${stats.settled} settled · ${stats.active} active` : undefined },
+    { label: 'Volume', value: stats ? `${Number(stats.volumeUsdc).toLocaleString()} USDC` : '—', hint: 'settled' },
+    { label: 'Success rate', value: stats?.successRate != null ? `${Math.round(stats.successRate * 100)}%` : '—', hint: 'settled vs resolved' },
+    {
+      label: 'Reputation',
+      value: stats?.reputation ? Number(stats.reputation.value).toFixed(2) : '—',
+      hint: stats?.reputation ? `${stats.reputation.count} ratings${stats.reputation.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked',
+    },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {cards.map((c) => (
+        <div key={c.label} className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-4">
+          <div className="text-[11px] uppercase tracking-wide text-neutral-500">{c.label}</div>
+          <div className="mt-1 text-xl font-semibold text-neutral-100">{c.value}</div>
+          {c.hint && <div className="mt-0.5 text-[11px] text-neutral-500">{c.hint}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Verifier-role panel — only rendered when the user has staked / served.
+function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
+  const pnl = Number(v.netPnlUsdc);
+  return (
+    <div className="rounded-xl border border-violet-900/40 bg-violet-950/15 p-5">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-wide text-violet-300">Verifier</div>
+        <Link href="/verify" className="text-xs text-violet-300/80 hover:text-violet-200">
+          Open ›
+        </Link>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+        <Field label="Staked">{v.stakeUsdc} USDC{v.lockedUsdc !== '0' ? <span className="text-neutral-500"> · {v.lockedUsdc} locked</span> : null}</Field>
+        <Field label="Panels served">{v.panelsServed}</Field>
+        <Field label="Accuracy">{v.accuracy != null ? `${Math.round(v.accuracy * 100)}%` : '—'}</Field>
+        <Field label="Net rewards">
+          <span className={pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-red-300' : 'text-neutral-200'}>
+            {pnl > 0 ? '+' : ''}{v.netPnlUsdc} USDC
+          </span>
+        </Field>
+      </div>
+    </div>
   );
 }
 

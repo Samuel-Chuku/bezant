@@ -159,6 +159,23 @@ export async function setPayoutPref(tradeId: string, seller: string, destination
   await jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/payout/pref`, { seller, destinationKey });
 }
 
+export type UserStats = {
+  tradesTotal: number;
+  settled: number;
+  refunded: number;
+  disputed: number;
+  cancelled: number;
+  active: number;
+  volumeUsdc: string;
+  successRate: number | null;
+  reputation: { agentId: string; count: number; value: string; operatorVerified: boolean } | null;
+  verifier: { stakeUsdc: string; lockedUsdc: string; panelsServed: number; accuracy: number | null; netPnlUsdc: string } | null;
+};
+
+export async function getUserStats(address: string): Promise<UserStats> {
+  return jsonFetch('GET', `/arc/user/${encodeURIComponent(address)}/stats`);
+}
+
 export async function getUserByAddress(address: string): Promise<UserRecord | null> {
   try {
     return await jsonFetch<UserRecord>('GET', `/users/by-address/${encodeURIComponent(address)}`);

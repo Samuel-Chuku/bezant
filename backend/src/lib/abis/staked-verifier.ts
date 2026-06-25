@@ -18,6 +18,8 @@ export const stakedVerifierAbi = [
   { type: 'function', name: 'verifierCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'stakeOf', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'lockedOf', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'correctVotes', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint32' }] },
+  { type: 'function', name: 'totalVotes', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint32' }] },
   { type: 'function', name: 'feePrepaid', stateMutability: 'view', inputs: [{ name: 'tradeId', type: 'uint256' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'panelOf', stateMutability: 'view', inputs: [{ name: 'tradeId', type: 'uint256' }], outputs: [{ type: 'address[]' }] },
   { type: 'function', name: 'voteOf', stateMutability: 'view', inputs: [{ name: 'tradeId', type: 'uint256' }, { name: 'verifier', type: 'address' }], outputs: [{ type: 'uint8' }] },

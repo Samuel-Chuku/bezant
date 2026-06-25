@@ -3904,6 +3904,78 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (requ
   return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at };
 });
 
+// Profile dashboard stats: trade history summary + reputation + verifier role.
+app.get<{ Params: { address: string } }>('/arc/user/:address/stats', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const address = request.params.address.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address must be 0x…' });
+
+  // Trade history (as buyer or seller).
+  const ids = (db.prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ?').all(address, address) as { trade_id: number }[]).map((r) => r.trade_id);
+  let settled = 0, refunded = 0, disputed = 0, cancelled = 0, active = 0;
+  let volume = 0n;
+  for (const id of ids) {
+    try {
+      const t = await getTrade(BigInt(id));
+      if (t.status === 'Released') { settled += 1; volume += t.amount; }
+      else if (t.status === 'Refunded') refunded += 1;
+      else if (t.status === 'Disputed') disputed += 1;
+      else if (t.status === 'Cancelled') cancelled += 1;
+      else active += 1;
+    } catch {
+      /* skip unreadable */
+    }
+  }
+  const resolved = settled + refunded + disputed;
+
+  // Reputation (only if the user linked an ERC-8004 agent).
+  const userRow = db.prepare('SELECT agent_id FROM users WHERE wallet_address = ?').get(address) as { agent_id: string | null } | undefined;
+  let reputation: { agentId: string; count: number; value: string; operatorVerified: boolean } | null = null;
+  if (userRow?.agent_id) {
+    try {
+      const r = await readReputationSummary(userRow.agent_id);
+      reputation = { agentId: userRow.agent_id, count: r.summary.count, value: r.boostedValue, operatorVerified: r.operatorVerified };
+    } catch {
+      /* leave null */
+    }
+  }
+
+  // Verifier role (only if they've staked / served).
+  let verifier: { stakeUsdc: string; lockedUsdc: string; panelsServed: number; accuracy: number | null; netPnlUsdc: string } | null = null;
+  if (STAKED_VERIFIER_ADDRESS) {
+    const vc = STAKED_VERIFIER_ADDRESS;
+    try {
+      const read = (fn: string) => arcClient.readContract({ address: vc, abi: stakedVerifierAbi, functionName: fn as never, args: [address as `0x${string}`] as never });
+      const [stake, locked, total, correct] = (await Promise.all([read('stakeOf'), read('lockedOf'), read('totalVotes'), read('correctVotes')])) as [bigint, bigint, number, number];
+      const ev = db.prepare('SELECT kind, amount_raw FROM verifier_events WHERE module = ? AND verifier = ?').all(vc.toLowerCase(), address) as { kind: string; amount_raw: string }[];
+      let netDeposited = 0n;
+      for (const e of ev) netDeposited += e.kind === 'verifier-stake' ? BigInt(e.amount_raw) : -BigInt(e.amount_raw);
+      const totalV = Number(total);
+      if (stake > 0n || totalV > 0) {
+        const pnl = stake - netDeposited; // + earned (fees/slash), - net slashed
+        verifier = {
+          stakeUsdc: formatUnits(stake, 6),
+          lockedUsdc: formatUnits(locked, 6),
+          panelsServed: totalV,
+          accuracy: totalV > 0 ? Number(correct) / totalV : null,
+          netPnlUsdc: (pnl < 0n ? '-' : '') + formatUnits(pnl < 0n ? -pnl : pnl, 6),
+        };
+      }
+    } catch {
+      /* leave null */
+    }
+  }
+
+  return {
+    tradesTotal: ids.length,
+    settled, refunded, disputed, cancelled, active,
+    volumeUsdc: formatUnits(volume, 6),
+    successRate: resolved > 0 ? settled / resolved : null,
+    reputation,
+    verifier,
+  };
+});
+
 const port = Number(process.env.PORT ?? 3001);
 
 app
