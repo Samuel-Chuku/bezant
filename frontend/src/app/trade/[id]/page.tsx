@@ -618,42 +618,25 @@ export default function TradeDetailPage() {
 
             {trade.status === 'Released' && (
               <div className="space-y-3">
-                <div className="rounded-xl border border-emerald-900/40 bg-gradient-to-br from-emerald-950/40 to-neutral-950/30 p-5">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M20 6 9 17l-5-5" />
-                      </svg>
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold text-emerald-100">Settled</h3>
-                      <p className="mt-0.5 text-sm text-emerald-200/80">
-                        <strong className="text-emerald-100">{trade.amountUsdc} USDC</strong> released to the seller. The buyer&apos;s credit passport was updated.
-                      </p>
-                      {(() => {
-                        const settleTx = events.find((e) => e.kind === 'Released')?.txHash;
-                        return settleTx ? (
-                          <a
-                            href={arcExplorerTxUrl(settleTx)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
-                          >
-                            View settlement <ExternalLinkIcon />
-                          </a>
-                        ) : null;
-                      })()}
-                    </div>
-                  </div>
-                </div>
+                <OutcomeCard tone="emerald" title="Settled" tx={events.find((e) => e.kind === 'Released')?.txHash} txLabel="View settlement">
+                  <strong className="text-emerald-100">{trade.amountUsdc} USDC</strong> released to the seller. The buyer&apos;s credit passport was updated.
+                </OutcomeCard>
                 <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="settle" />
                 {(isBuyer || isSeller) && signer.isConnected && (
                   <RateCounterparty tradeId={id} rater={signer.address} counterparty={isBuyer ? trade.seller : trade.buyer} onRate={rateCounterparty} />
                 )}
               </div>
             )}
-            {trade.status === 'Cancelled' && <Waiting>This trade was cancelled before funding.</Waiting>}
-            {trade.status === 'Refunded' && <Waiting>Refunded to the buyer (no attestation by the deadline).</Waiting>}
+            {trade.status === 'Cancelled' && (
+              <OutcomeCard tone="neutral" title="Cancelled" tx={events.find((e) => e.kind === 'TradeCancelled')?.txHash}>
+                This trade was cancelled before it was funded.
+              </OutcomeCard>
+            )}
+            {trade.status === 'Refunded' && (
+              <OutcomeCard tone="amber" title="Refunded" tx={events.find((e) => e.kind === 'Refunded')?.txHash} txLabel="View refund">
+                <strong className="text-amber-100">{trade.depositUsdc} USDC</strong> deposit returned to the buyer — no delivery was attested by the deadline.
+              </OutcomeCard>
+            )}
             {trade.status === 'Disputed' && isArbitrator && (
               <div className="space-y-3 rounded-lg border border-red-900/40 bg-red-950/20 p-4">
                 <p className="text-sm text-red-200">
@@ -666,7 +649,9 @@ export default function TradeDetailPage() {
               </div>
             )}
             {trade.status === 'Disputed' && !isArbitrator && (
-              <Waiting>Under dispute — awaiting the arbitrator&apos;s decision.</Waiting>
+              <OutcomeCard tone="red" title="Under dispute" tx={events.find((e) => e.kind === 'Disputed')?.txHash}>
+                An arbitrator is reviewing this trade and will decide the outcome — funds stay locked until then.
+              </OutcomeCard>
             )}
 
             {!signer.isConnected && <p className="text-sm text-amber-300">Connect a wallet to act on this trade.</p>}
@@ -776,6 +761,51 @@ function Action({
 
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">{children}</p>;
+}
+
+// Terminal / in-flight outcome summary card (Settled / Refunded / Cancelled /
+// Disputed) — icon badge + headline + body + an optional "view tx" button.
+const OUTCOME_TONES = {
+  emerald: { border: 'border-emerald-900/40', from: 'from-emerald-950/40', badge: 'bg-emerald-500/15 text-emerald-300', title: 'text-emerald-100', btn: 'bg-emerald-600 hover:bg-emerald-500', icon: <path d="M20 6 9 17l-5-5" /> },
+  amber: { border: 'border-amber-900/40', from: 'from-amber-950/40', badge: 'bg-amber-500/15 text-amber-300', title: 'text-amber-100', btn: 'bg-amber-600 hover:bg-amber-500', icon: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></> },
+  red: { border: 'border-red-900/40', from: 'from-red-950/40', badge: 'bg-red-500/15 text-red-300', title: 'text-red-100', btn: 'bg-red-600 hover:bg-red-500', icon: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></> },
+  neutral: { border: 'border-neutral-800', from: 'from-neutral-900/40', badge: 'bg-neutral-500/15 text-neutral-300', title: 'text-neutral-100', btn: 'bg-neutral-700 hover:bg-neutral-600', icon: <><circle cx="12" cy="12" r="9" /><path d="m15 9-6 6M9 9l6 6" /></> },
+} as const;
+
+function OutcomeCard({
+  tone,
+  title,
+  tx,
+  txLabel = 'View transaction',
+  children,
+}: {
+  tone: keyof typeof OUTCOME_TONES;
+  title: string;
+  tx?: string;
+  txLabel?: string;
+  children: React.ReactNode;
+}) {
+  const T = OUTCOME_TONES[tone];
+  return (
+    <div className={`rounded-xl border ${T.border} bg-gradient-to-br ${T.from} to-neutral-950/30 p-5`}>
+      <div className="flex items-start gap-3">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${T.badge}`}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            {T.icon}
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className={`text-base font-semibold ${T.title}`}>{title}</h3>
+          <div className="mt-0.5 text-sm text-neutral-300">{children}</div>
+          {tx && (
+            <a href={arcExplorerTxUrl(tx)} target="_blank" rel="noreferrer" className={`mt-3 inline-flex items-center gap-1.5 rounded-lg ${T.btn} px-3 py-1.5 text-xs font-semibold text-white transition`}>
+              {txLabel} <ExternalLinkIcon />
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function short(addr: string): string {
