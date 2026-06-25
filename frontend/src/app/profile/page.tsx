@@ -13,6 +13,7 @@ import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
 import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
+import { timeAgo } from '@/lib/relative-time';
 
 // Profile hub: identity (handle / address / signing mode / agent ID), credit
 // passport, and the user's LP position in the financing pool. Agent linking
@@ -319,13 +320,14 @@ function ActivityRow({ item, onClick }: { item: NotificationItem; onClick: () =>
           }`}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 text-sm text-neutral-200">
-          {item.summary}
+        <span className="min-w-0 flex-1">
+          <span className="text-sm text-neutral-200">{item.summary}</span>
           {needsAction && (
             <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
               action
             </span>
           )}
+          <span className="mt-0.5 block text-[11px] text-neutral-500">{timeAgo(item.whenMs)}</span>
         </span>
       </button>
     </li>

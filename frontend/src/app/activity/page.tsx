@@ -7,6 +7,7 @@ import { useNotifications, type NotificationItem } from '@/hooks/use-notificatio
 import { useSigner } from '@/hooks/use-signer';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
+import { timeAgo } from '@/lib/relative-time';
 
 type Filter = 'all' | 'action' | 'trade' | 'pool' | 'verifier';
 
@@ -181,7 +182,7 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
           </div>
           <div className="mt-2 text-sm text-neutral-100">{item.summary}</div>
           <div className="mt-1 flex items-center gap-3 text-[11px] text-neutral-500">
-            {item.whenIso && <span>{new Date(item.whenIso).toLocaleString()}</span>}
+            <span>{timeAgo(item.whenMs)}</span>
             {item.txHash && (
               <a
                 href={arcExplorerTxUrl(item.txHash)}

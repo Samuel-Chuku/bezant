@@ -10,6 +10,7 @@ import { HandleAddr } from '@/components/handle-addr';
 import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
+import { sqlTimeAgo } from '@/lib/relative-time';
 import { useBalance } from 'wagmi';
 import { arcTestnet } from '@/lib/chains';
 import { useTxFlow } from '@/components/tx-flow';
@@ -656,7 +657,9 @@ export default function TradeDetailPage() {
                   // remaining balance — explain that so it doesn't read as the
                   // whole trade being settled for a fraction of its value.
                   const financed = events.find((e) => e.kind === 'FinancingAdvanced')?.amountUsdc;
-                  return events.map((e, i) => {
+                  // Newest first (events arrive oldest-first from the indexer).
+                  const ordered = [...events].sort((a, b) => b.blockNumber - a.blockNumber);
+                  return ordered.map((e, i) => {
                     const financedSettle = e.kind === 'Released' && !!financed;
                     const hint =
                       e.kind === 'Released'
@@ -676,9 +679,12 @@ export default function TradeDetailPage() {
                           </div>
                           {hint && <p className="mt-0.5 text-xs text-neutral-500">{hint}</p>}
                         </div>
-                        <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-xs text-sky-300 hover:underline">
-                          tx <ExternalLinkIcon />
-                        </a>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="text-xs text-neutral-500">{sqlTimeAgo(e.at)}</span>
+                          <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">
+                            tx <ExternalLinkIcon />
+                          </a>
+                        </div>
                       </li>
                     );
                   });

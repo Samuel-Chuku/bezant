@@ -9,16 +9,9 @@ import { getVerifierRecent, getVerifierActivity } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
+import { timeAgo } from '@/lib/relative-time';
 
 type Row = { key: string; isStake: boolean; amountUsdc: string; who: string | null; txHash: string; whenMs: number };
-
-function ago(ms: number): string {
-  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
 
 export function RecentVerifierStakes() {
   const signer = useSigner();
@@ -92,7 +85,7 @@ export function RecentVerifierStakes() {
                 {s.who && <div className={`text-xs text-muted ${s.who.startsWith('@') ? '' : 'font-mono'}`}>{s.who}</div>}
               </div>
               <div className="flex shrink-0 items-center gap-3">
-                <span className="text-xs text-muted">{ago(s.whenMs)}</span>
+                <span className="text-xs text-muted">{timeAgo(s.whenMs)}</span>
                 <a href={arcExplorerTxUrl(s.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-sky-300 transition hover:border-line-strong">
                   tx <ExternalLinkIcon />
                 </a>

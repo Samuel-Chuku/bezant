@@ -7,14 +7,7 @@ import { getRecentPoolStakes, type RecentPoolStake } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
-
-function ago(ms: number): string {
-  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
+import { timeAgo } from '@/lib/relative-time';
 
 export function RecentPoolStakes() {
   const [items, setItems] = useState<RecentPoolStake[] | null>(null);
@@ -48,7 +41,7 @@ export function RecentPoolStakes() {
                 <div className="font-mono text-xs text-neutral-500">{shortAddress(s.lp)}</div>
               </div>
               <div className="flex shrink-0 items-center gap-3">
-                <span className="text-xs text-neutral-500">{ago(s.whenMs)}</span>
+                <span className="text-xs text-neutral-500">{timeAgo(s.whenMs)}</span>
                 <a
                   href={arcExplorerTxUrl(s.txHash)}
                   target="_blank"
