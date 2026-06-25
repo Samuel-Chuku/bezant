@@ -618,9 +618,34 @@ export default function TradeDetailPage() {
 
             {trade.status === 'Released' && (
               <div className="space-y-3">
-                <p className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm text-emerald-200">
-                  Settled — funds released to the seller and the buyer&apos;s credit passport updated.
-                </p>
+                <div className="rounded-xl border border-emerald-900/40 bg-gradient-to-br from-emerald-950/40 to-neutral-950/30 p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base font-semibold text-emerald-100">Settled</h3>
+                      <p className="mt-0.5 text-sm text-emerald-200/80">
+                        <strong className="text-emerald-100">{trade.amountUsdc} USDC</strong> released to the seller. The buyer&apos;s credit passport was updated.
+                      </p>
+                      {(() => {
+                        const settleTx = events.find((e) => e.kind === 'Released')?.txHash;
+                        return settleTx ? (
+                          <a
+                            href={arcExplorerTxUrl(settleTx)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+                          >
+                            View settlement <ExternalLinkIcon />
+                          </a>
+                        ) : null;
+                      })()}
+                    </div>
+                  </div>
+                </div>
                 <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="settle" />
                 {(isBuyer || isSeller) && signer.isConnected && (
                   <RateCounterparty tradeId={id} rater={signer.address} counterparty={isBuyer ? trade.seller : trade.buyer} onRate={rateCounterparty} />
@@ -773,7 +798,11 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
 
   if (agentId === undefined) return null;
   if (agentId === null) {
-    return <p className="text-xs text-neutral-500">Your counterparty hasn&apos;t linked an agent, so there&apos;s no reputation to leave.</p>;
+    return (
+      <p className="rounded-lg border border-neutral-900 bg-neutral-950/40 px-4 py-3 text-xs text-neutral-500">
+        Your counterparty hasn&apos;t linked an agent, so there&apos;s no reputation to leave.
+      </p>
+    );
   }
   if (rated !== null) {
     return <p className="text-xs text-emerald-300">Thanks — you left {rated ? '👍' : '👎'} feedback.</p>;
