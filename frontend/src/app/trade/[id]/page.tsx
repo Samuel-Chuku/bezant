@@ -409,7 +409,9 @@ export default function TradeDetailPage() {
             )}
           </div>
 
-          {step && (
+          {/* On Funded panel trades the VerificationPanel conveys the real state
+              (pay fee → submit → panel voting), so skip the officer-centric cue. */}
+          {step && !(isPanelTrade && trade.status === 'Funded') && (
             <div className="mt-4">
               <StepCue step={step} />
             </div>

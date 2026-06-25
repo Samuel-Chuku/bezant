@@ -185,8 +185,14 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
         <span>Panel of {v.panel.length}</span>
-        <span className="text-emerald-300">{v.passes} confirmed</span>
-        <span className="text-red-300">{v.fails} rejected</span>
+        {v.resolved ? (
+          <>
+            <span className="text-emerald-300">{v.passes} confirmed</span>
+            <span className="text-red-300">{v.fails} rejected</span>
+          </>
+        ) : (
+          <span className="text-neutral-500">verdicts hidden until voting closes</span>
+        )}
         <span>· {v.cast}/{v.panel.length} voted</span>
         <button onClick={() => setShowPanel(true)} className="ml-auto rounded-md border border-violet-800/60 px-2 py-0.5 text-[11px] text-violet-200 hover:bg-violet-900/30">
           View panel &amp; decisions
@@ -257,7 +263,13 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
   const decisions = v.decisions ?? v.panel.map((address) => ({ address, handle: null, vote: 0 }));
   const outcome = v.resolved ? (v.passes >= v.fails ? 'Delivery confirmed' : 'Delivery rejected') : 'Voting in progress';
   const label = (vote: number) =>
-    vote === 1 ? { t: 'Confirmed', c: 'text-emerald-300' } : vote === 2 ? { t: 'Rejected', c: 'text-red-300' } : { t: 'Awaiting', c: 'text-neutral-500' };
+    vote === 1
+      ? { t: 'Confirmed', c: 'text-emerald-300' }
+      : vote === 2
+        ? { t: 'Rejected', c: 'text-red-300' }
+        : vote === -1
+          ? { t: 'Voted', c: 'text-neutral-400' }
+          : { t: 'Awaiting', c: 'text-neutral-500' };
   const winSide = v.passes >= v.fails ? 1 : 2; // contract: ties → confirm
   const honestCount = decisions.filter((d) => d.vote === winSide).length;
   const slashPct = (v.slashBps ?? 5000) / 100;
@@ -275,6 +287,12 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
             <XIcon />
           </button>
         </div>
+
+        {!v.resolved && (
+          <p className="mt-3 rounded-md border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-[11px] text-neutral-500">
+            Individual verdicts are hidden until voting closes — so panelists can&apos;t copy each other.
+          </p>
+        )}
 
         <div className="mt-4 space-y-1.5">
           {decisions.map((d) => {

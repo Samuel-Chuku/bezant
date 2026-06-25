@@ -3841,12 +3841,19 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
   ]);
   const [assigned, resolved, deadline, passes, fails, cast, fee] = vstate as readonly [boolean, boolean, bigint, number, number, number, bigint];
   const doc = db.prepare('SELECT content FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string } | undefined;
+  const addr = (request.query.address ?? '').toLowerCase();
+  const isAddr = /^0x[0-9a-f]{40}$/.test(addr);
+  // App-layer secret ballot: while voting is open, hide the running split + each
+  // panelist's verdict from everyone but the voter themselves (so panelists
+  // can't copy each other). Turnout (cast) stays visible. Revealed on resolve.
+  // NB: on-chain voteOf is still public — this is a UI mitigation, not crypto.
+  const liveVoting = assigned && !resolved;
   const out: Record<string, unknown> = {
     assigned,
     resolved,
     deadline: Number(deadline),
-    passes,
-    fails,
+    passes: liveVoting ? 0 : passes,
+    fails: liveVoting ? 0 : fails,
     cast,
     feeUsdc: formatUnits(fee, 6),
     prepaid: (prepaidRaw as bigint) !== 0n,
@@ -3854,24 +3861,27 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     panel: panel as readonly string[],
     document: doc?.content ?? null,
   };
-  // Each panelist's decision (0 none, 1 confirm, 2 reject) + handle, for the
-  // panel-decision modal.
+  // Each panelist's decision (0 none, 1 confirm, 2 reject, -1 voted-but-hidden) + handle.
   const members = panel as readonly string[];
   if (members.length > 0) {
     const votes = await Promise.all(
       members.map((m) => arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'voteOf', args: [id, m as `0x${string}`] })),
     );
     const handleFor = db.prepare('SELECT handle FROM users WHERE wallet_address = ?');
-    out.decisions = members.map((m, i) => ({
-      address: m,
-      handle: (handleFor.get(m.toLowerCase()) as { handle: string | null } | undefined)?.handle ?? null,
-      vote: Number(votes[i]),
-    }));
+    out.decisions = members.map((m, i) => {
+      const real = Number(votes[i]);
+      const isCaller = isAddr && m.toLowerCase() === addr;
+      const vote = liveVoting && !isCaller ? (real !== 0 ? -1 : 0) : real;
+      return {
+        address: m,
+        handle: (handleFor.get(m.toLowerCase()) as { handle: string | null } | undefined)?.handle ?? null,
+        vote,
+      };
+    });
   } else {
     out.decisions = [];
   }
-  const addr = (request.query.address ?? '').toLowerCase();
-  if (/^0x[0-9a-f]{40}$/.test(addr)) {
+  if (isAddr) {
     const myVote = await arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'voteOf', args: [id, addr as `0x${string}`] });
     out.myVote = Number(myVote); // 0 none, 1 confirm, 2 reject
   }
