@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSigner } from '@/hooks/use-signer';
 import { getTradesByAddress, type TradeListItem } from '@/lib/api';
 import { HandleAddr } from '@/components/handle-addr';
@@ -9,22 +9,40 @@ import { CountdownChip } from '@/components/countdown';
 import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 
-const STATUS_COLOR: Record<string, string> = {
-  Proposing: 'text-sky-300',
-  Agreed: 'text-amber-300',
-  Funded: 'text-violet-300',
-  Released: 'text-emerald-300',
-  Disputed: 'text-red-300',
-  Refunded: 'text-neutral-300',
-  Cancelled: 'text-neutral-400',
+// Status → coloured pill (full class strings; Tailwind can't see interpolated names).
+const STATUS_PILL: Record<string, string> = {
+  Proposing: 'bg-sky-500/15 text-sky-300',
+  Agreed: 'bg-amber-500/15 text-amber-300',
+  Funded: 'bg-violet-500/15 text-violet-300',
+  Released: 'bg-emerald-500/15 text-emerald-300',
+  Disputed: 'bg-red-500/15 text-red-300',
+  Refunded: 'bg-neutral-500/15 text-neutral-300',
+  Cancelled: 'bg-neutral-500/15 text-neutral-400',
 };
 
 const TERMINAL = new Set(['Released', 'Cancelled', 'Refunded']);
+const ACTIVE = new Set(['Proposing', 'Agreed', 'Funded']);
+const CLOSED = new Set(['Released', 'Refunded', 'Cancelled']);
+
+type Filter = 'all' | 'active' | 'closed' | 'disputed';
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'Active' },
+  { id: 'closed', label: 'Closed' },
+  { id: 'disputed', label: 'Disputed' },
+];
+function inFilter(status: string, f: Filter): boolean {
+  if (f === 'all') return true;
+  if (f === 'active') return ACTIVE.has(status);
+  if (f === 'closed') return CLOSED.has(status);
+  return status === 'Disputed';
+}
 
 export default function TradesPage() {
   const signer = useSigner();
   const [trades, setTrades] = useState<TradeListItem[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
 
   const load = useCallback(async () => {
     if (!signer.isConnected) return;
@@ -38,6 +56,8 @@ export default function TradesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const shown = useMemo(() => (trades ?? []).filter((t) => inFilter(t.status, filter)), [trades, filter]);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
@@ -58,32 +78,69 @@ export default function TradesPage() {
       )}
 
       {signer.isConnected && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-4">
           {err && <p className="text-sm text-red-400">{err}</p>}
+
+          {trades && trades.length > 0 && (
+            <div className="flex flex-wrap gap-1 rounded-lg border border-neutral-800 bg-neutral-950/50 p-0.5 sm:w-fit">
+              {FILTERS.map((f) => {
+                const n = (trades ?? []).filter((t) => inFilter(t.status, f.id)).length;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setFilter(f.id)}
+                    className={`rounded-md px-3 py-1.5 text-xs transition ${filter === f.id ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100'}`}
+                  >
+                    {f.label}
+                    <span className="ml-1.5 text-[10px] text-neutral-500">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {trades && trades.length === 0 && <p className="text-sm text-neutral-400">No trades yet — create one.</p>}
+          {trades && trades.length > 0 && shown.length === 0 && (
+            <p className="rounded-xl border border-neutral-900 bg-neutral-950/40 px-3 py-8 text-center text-sm text-neutral-500">No {filter} trades.</p>
+          )}
 
           <div className="space-y-2">
-            {trades?.map((t) => {
+            {shown.map((t) => {
               const step = describeTradeStep(t, signer.isConnected ? signer.address : null);
               const live = !TERMINAL.has(t.status);
               return (
                 <Link
                   key={t.tradeId}
                   href={`/trade/${t.tradeId}`}
-                  className="block rounded-xl border border-neutral-800 bg-neutral-950/50 px-4 py-3 text-sm hover:border-neutral-600"
+                  className="block rounded-xl border border-neutral-800 bg-neutral-950/50 px-4 py-3 transition hover:border-neutral-600"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">Trade #{t.tradeId}</div>
-                      <div className="text-xs text-neutral-500">
-                        {t.role} · {t.amountUsdc} USDC · with <HandleAddr address={t.counterparty} link={false} />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-neutral-100">Trade #{t.tradeId}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${t.role === 'buyer' ? 'bg-sky-500/15 text-sky-300' : 'bg-violet-500/15 text-violet-300'}`}>
+                          {t.role}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-neutral-500">
+                        with <HandleAddr address={t.counterparty} link={false} />
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_PILL[t.status] ?? 'bg-neutral-500/15 text-neutral-300'}`}>{t.status}</span>
                       {live && <CountdownChip unix={t.deadline} />}
-                      <span className={STATUS_COLOR[t.status] ?? 'text-neutral-200'}>{t.status}</span>
                     </div>
                   </div>
+
+                  <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+                    <span className="text-neutral-500">
+                      Amount <span className="font-medium text-neutral-200">{t.amountUsdc} USDC</span>
+                    </span>
+                    <span className="text-neutral-500">
+                      Deposit <span className="text-neutral-300">{t.depositUsdc} USDC</span>
+                    </span>
+                  </div>
+
                   {step && (
                     <div className="mt-2">
                       <StepCue step={step} compact />

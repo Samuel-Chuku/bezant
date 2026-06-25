@@ -17,6 +17,7 @@ import { BridgeWidget } from '@/components/bridge-widget';
 import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { VerificationPanel } from '@/components/verification-panel';
+import { TradeStatusTracker } from '@/components/trade-status-tracker';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
@@ -375,6 +376,10 @@ export default function TradeDetailPage() {
             </p>
           ) : (
           <>
+          <div className="mt-6 rounded-xl border border-neutral-900 bg-neutral-950/40 px-4 py-4">
+            <TradeStatusTracker status={trade.status} isPanelTrade={isPanelTrade} />
+          </div>
+
           {step && (
             <div className="mt-4">
               <StepCue step={step} />
