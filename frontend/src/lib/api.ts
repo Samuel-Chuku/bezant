@@ -1024,7 +1024,8 @@ export type VerificationState = {
   prepaid: boolean;
   panel: string[];
   document: string | null;
-  myVote?: number; // 0 none, 1 pass, 2 fail
+  myVote?: number; // 0 none, 1 confirm, 2 reject
+  decisions?: { address: string; handle: string | null; vote: number }[];
 };
 
 export async function getVerifierInfo(address?: string): Promise<VerifierInfo> {

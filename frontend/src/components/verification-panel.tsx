@@ -5,10 +5,12 @@
 // seller submits the delivery doc → the drawn panel reviews it and votes →
 // majority attests (settles or disputes, handled by the parent status block).
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
 import { CountdownChip } from '@/components/countdown';
+import { shortAddress } from '@/lib/format';
 import {
   getVerification,
   buildVerificationFundUnsigned,
@@ -27,6 +29,8 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
   const [v, setV] = useState<VerificationState | null>(null);
   const [doc, setDoc] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pendingVote, setPendingVote] = useState<boolean | null>(null); // verdict awaiting confirmation
+  const [showPanel, setShowPanel] = useState(false);
 
   const me = signer.isConnected ? signer.address.toLowerCase() : null;
   const isBuyer = me === buyer.toLowerCase();
@@ -108,7 +112,8 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
     setBusy(true);
     try {
       await send(await buildVerificationVoteUnsigned(tradeId, pass), true);
-      toast.success(`Voted ${pass ? '👍' : '👎'}`);
+      toast.success(pass ? 'Vote recorded — you confirmed delivery' : 'Vote recorded — you rejected delivery');
+      setPendingVote(null);
       await refresh();
       onChange();
     } catch (e) {
@@ -178,8 +183,14 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
         <p className="text-sm text-violet-100">Staked panel — verifying delivery</p>
         {!expired && !v.resolved && <CountdownChip unix={v.deadline} label="Voting closes" />}
       </div>
-      <div className="text-xs text-neutral-400">
-        Panel of {v.panel.length} · 👍 {v.passes} · 👎 {v.fails} · {v.cast}/{v.panel.length} voted
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+        <span>Panel of {v.panel.length}</span>
+        <span className="text-emerald-300">{v.passes} confirmed</span>
+        <span className="text-red-300">{v.fails} rejected</span>
+        <span>· {v.cast}/{v.panel.length} voted</span>
+        <button onClick={() => setShowPanel(true)} className="ml-auto rounded-md border border-violet-800/60 px-2 py-0.5 text-[11px] text-violet-200 hover:bg-violet-900/30">
+          View panel &amp; decisions
+        </button>
       </div>
 
       {v.document && (
@@ -191,12 +202,39 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
 
       {onPanel && !v.resolved && (
         v.myVote && v.myVote !== 0 ? (
-          <p className="text-xs text-emerald-300">You voted {v.myVote === 1 ? '👍 pass' : '👎 fail'}.</p>
-        ) : expired ? null : (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-neutral-300">Your verdict:</span>
-            <button onClick={() => vote(true)} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-50">👍 Pass</button>
-            <button onClick={() => vote(false)} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-red-700 hover:text-red-300 disabled:opacity-50">👎 Fail</button>
+          <p className={`text-xs ${v.myVote === 1 ? 'text-emerald-300' : 'text-red-300'}`}>
+            You {v.myVote === 1 ? 'confirmed' : 'rejected'} this delivery.
+          </p>
+        ) : expired ? null : pendingVote === null ? (
+          <div className="space-y-1.5">
+            <p className="text-sm text-neutral-300">Your verdict on this delivery:</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setPendingVote(true)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-50">
+                <CheckIcon /> Confirm delivery
+              </button>
+              <button onClick={() => setPendingVote(false)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-red-700 hover:text-red-300 disabled:opacity-50">
+                <XIcon /> Reject delivery
+              </button>
+            </div>
+          </div>
+        ) : (
+          // ── #2: are-you-sure confirmation before signing ──
+          <div className={`space-y-2 rounded-lg border p-3 ${pendingVote ? 'border-emerald-900/50 bg-emerald-950/20' : 'border-red-900/50 bg-red-950/20'}`}>
+            <p className="text-sm font-medium text-neutral-100">
+              {pendingVote ? 'Confirm this delivery?' : 'Reject this delivery?'}
+            </p>
+            <p className="text-xs text-neutral-400">
+              {pendingVote
+                ? 'You attest the goods were delivered as described — the panel can release funds to the seller.'
+                : 'You attest the delivery is missing or doesn’t match — the panel can refund the buyer.'}{' '}
+              This vote is <strong className="text-neutral-200">final and signed on-chain</strong>; if you end up in the minority, your bonded stake is slashed.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => vote(pendingVote)} disabled={busy} className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${pendingVote ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'}`}>
+                {busy ? 'Signing…' : `Yes, ${pendingVote ? 'confirm' : 'reject'}`}
+              </button>
+              <button onClick={() => setPendingVote(null)} disabled={busy} className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:text-neutral-100 disabled:opacity-50">Cancel</button>
+            </div>
           </div>
         )
       )}
@@ -206,6 +244,74 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
       {expired && !v.resolved && (
         <button onClick={resolve} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-300 hover:text-neutral-100 disabled:opacity-50">{busy ? 'Resolving…' : 'Resolve (window closed)'}</button>
       )}
+
+      {showPanel && <PanelModal v={v} me={me} onClose={() => setShowPanel(false)} />}
     </div>
+  );
+}
+
+// #6: panel transparency — who was drawn, how, each verdict, and the outcome.
+function PanelModal({ v, me, onClose }: { v: VerificationState; me: string | null; onClose: () => void }) {
+  const decisions = v.decisions ?? v.panel.map((address) => ({ address, handle: null, vote: 0 }));
+  const outcome = v.resolved ? (v.passes >= v.fails ? 'Delivery confirmed' : 'Delivery rejected') : 'Voting in progress';
+  const label = (vote: number) =>
+    vote === 1 ? { t: 'Confirmed', c: 'text-emerald-300' } : vote === 2 ? { t: 'Rejected', c: 'text-red-300' } : { t: 'Awaiting', c: 'text-neutral-500' };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div role="dialog" aria-label="Panel decision" className="relative w-full max-w-md rounded-2xl border border-violet-900/50 bg-neutral-950 p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold tracking-tight text-neutral-100">Panel decision</h3>
+            <p className={`mt-0.5 text-sm ${v.resolved ? (v.passes >= v.fails ? 'text-emerald-300' : 'text-red-300') : 'text-neutral-400'}`}>{outcome}</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="rounded-md p-1 text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200">
+            <XIcon />
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-1.5">
+          {decisions.map((d) => {
+            const l = label(d.vote);
+            const mine = !!me && d.address.toLowerCase() === me;
+            return (
+              <div key={d.address} className="flex items-center justify-between gap-3 rounded-lg border border-neutral-900 bg-neutral-950/60 px-3 py-2 text-sm">
+                <span className="truncate text-neutral-200">
+                  {d.handle ? `@${d.handle}` : shortAddress(d.address)}
+                  {mine && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-violet-400">you</span>}
+                </span>
+                <span className={`shrink-0 text-xs font-medium ${l.c}`}>{l.t}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-neutral-900 bg-neutral-950/40 p-3 text-xs leading-relaxed text-neutral-500">
+          <span className="font-medium text-neutral-400">How this panel was chosen:</span> verifiers were drawn at
+          random, weighted by each one&apos;s free stake × reputation, seeded by the block&apos;s randomness at
+          assignment. The trade&apos;s buyer and seller are always excluded, and a majority decides the outcome.
+        </div>
+
+        <button onClick={onClose} className="mt-4 w-full rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-200 hover:border-neutral-700">Close</button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
   );
 }

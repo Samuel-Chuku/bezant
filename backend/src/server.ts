@@ -3849,10 +3849,26 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     panel: panel as readonly string[],
     document: doc?.content ?? null,
   };
+  // Each panelist's decision (0 none, 1 confirm, 2 reject) + handle, for the
+  // panel-decision modal.
+  const members = panel as readonly string[];
+  if (members.length > 0) {
+    const votes = await Promise.all(
+      members.map((m) => arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'voteOf', args: [id, m as `0x${string}`] })),
+    );
+    const handleFor = db.prepare('SELECT handle FROM users WHERE wallet_address = ?');
+    out.decisions = members.map((m, i) => ({
+      address: m,
+      handle: (handleFor.get(m.toLowerCase()) as { handle: string | null } | undefined)?.handle ?? null,
+      vote: Number(votes[i]),
+    }));
+  } else {
+    out.decisions = [];
+  }
   const addr = (request.query.address ?? '').toLowerCase();
   if (/^0x[0-9a-f]{40}$/.test(addr)) {
     const myVote = await arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'voteOf', args: [id, addr as `0x${string}`] });
-    out.myVote = Number(myVote); // 0 none, 1 pass, 2 fail
+    out.myVote = Number(myVote); // 0 none, 1 confirm, 2 reject
   }
   return out;
 });
