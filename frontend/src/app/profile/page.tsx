@@ -124,14 +124,21 @@ export default function ProfilePage() {
         {/* Send USDC — passkey (Circle Modular) wallets only; renders null otherwise */}
         <SendPanel />
 
-        {/* Two columns: credit/verifier on the left, pool/activity on the right */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-6">
+        {/* Cards flow into balanced columns and only render what the wallet has,
+            so non-verifiers / non-depositors don't get an empty column slot. */}
+        <div className="lg:columns-2 [column-gap:1.5rem]">
+          <div className="mb-6 break-inside-avoid">
             <PassportPanel address={signer.address} />
-            {stats?.verifier && <VerifierBlock v={stats.verifier} />}
           </div>
-          <div className="space-y-6">
+          {stats?.verifier && (
+            <div className="mb-6 break-inside-avoid">
+              <VerifierBlock v={stats.verifier} />
+            </div>
+          )}
+          <div className="mb-6 break-inside-avoid">
             <LpPositionCard address={signer.address} />
+          </div>
+          <div className="mb-6 break-inside-avoid">
             <RecentActivity />
           </div>
         </div>
