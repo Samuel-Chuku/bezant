@@ -51,9 +51,9 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
   };
 
   return (
-    <ol className="flex items-center overflow-x-auto">
+    <ol className="flex items-center">
       {nodes.map((n, i) => (
-        <li key={`${n.label}-${i}`} className="flex min-w-0 items-center">
+        <li key={`${n.label}-${i}`} className={`flex items-center ${i < nodes.length - 1 ? 'flex-1' : ''}`}>
           <div className="flex flex-col items-center gap-1.5">
             <span className={`flex h-5 w-5 items-center justify-center rounded-full border ${dot[n.state]}`}>
               {n.state === 'done' && <Check />}
@@ -61,7 +61,7 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
             <span className={`whitespace-nowrap text-[11px] ${text[n.state]}`}>{n.label}</span>
           </div>
           {i < nodes.length - 1 && (
-            <span className={`mx-1.5 mb-5 h-px w-8 sm:w-12 ${n.state === 'done' ? 'bg-emerald-700/60' : 'bg-neutral-800'}`} />
+            <span className={`mx-2 mb-5 h-px flex-1 ${n.state === 'done' ? 'bg-emerald-700/60' : 'bg-neutral-800'}`} />
           )}
         </li>
       ))}

@@ -16,7 +16,7 @@ import { useTxFlow } from '@/components/tx-flow';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
-import { VerificationPanel } from '@/components/verification-panel';
+import { VerificationPanel, PanelModal } from '@/components/verification-panel';
 import { TradeStatusTracker } from '@/components/trade-status-tracker';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
@@ -41,6 +41,7 @@ import {
   getUserByAddress,
   getVerifierInfo,
   getVerification,
+  type VerificationState,
   type VerifierInfo,
   type TradeState,
   type TradeEvent,
@@ -111,6 +112,8 @@ export default function TradeDetailPage() {
   const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
   const [isPanelist, setIsPanelist] = useState(false);
   const [panelAssigned, setPanelAssigned] = useState(false);
+  const [verification, setVerification] = useState<VerificationState | null>(null);
+  const [showPanelModal, setShowPanelModal] = useState(false);
   const autoFundedRef = useRef(false);
 
   useEffect(() => {
@@ -302,13 +305,15 @@ export default function TradeDetailPage() {
     if (!isPanelTrade) {
       setIsPanelist(false);
       setPanelAssigned(false);
+      setVerification(null);
       return;
     }
     const load = () =>
       getVerification(id, signer.isConnected ? signer.address : undefined)
-        .then((v) => {
-          setPanelAssigned(v.assigned);
-          setIsPanelist(!!me && v.panel.some((p) => p.toLowerCase() === me));
+        .then((vs) => {
+          setVerification(vs);
+          setPanelAssigned(vs.assigned);
+          setIsPanelist(!!me && vs.panel.some((p) => p.toLowerCase() === me));
         })
         .catch(() => {});
     void load();
@@ -378,6 +383,11 @@ export default function TradeDetailPage() {
           <>
           <div className="mt-6 rounded-xl border border-neutral-900 bg-neutral-950/40 px-4 py-4">
             <TradeStatusTracker status={trade.status} isPanelTrade={isPanelTrade} />
+            {isPanelTrade && verification?.assigned && (
+              <button onClick={() => setShowPanelModal(true)} className="mt-3 text-xs text-violet-300 hover:text-violet-200">
+                View panel decision →
+              </button>
+            )}
           </div>
 
           {step && (
@@ -659,6 +669,8 @@ export default function TradeDetailPage() {
           )}
         </>
       )}
+
+      {showPanelModal && verification && <PanelModal v={verification} me={me} onClose={() => setShowPanelModal(false)} />}
 
       <BridgeProgressModal
         run={bridgeRun}

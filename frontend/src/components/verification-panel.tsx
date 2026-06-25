@@ -251,7 +251,9 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
 }
 
 // #6: panel transparency — who was drawn, how, each verdict, and the outcome.
-function PanelModal({ v, me, onClose }: { v: VerificationState; me: string | null; onClose: () => void }) {
+// Exported so the trade page can show it post-settlement too (the VerificationPanel
+// itself only renders while the trade is Funded).
+export function PanelModal({ v, me, onClose }: { v: VerificationState; me: string | null; onClose: () => void }) {
   const decisions = v.decisions ?? v.panel.map((address) => ({ address, handle: null, vote: 0 }));
   const outcome = v.resolved ? (v.passes >= v.fails ? 'Delivery confirmed' : 'Delivery rejected') : 'Voting in progress';
   const label = (vote: number) =>
