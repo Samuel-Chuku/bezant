@@ -7,8 +7,8 @@ import { ProfileSetupBanner } from '@/components/profile-setup-banner';
 import { SidebarSummary } from '@/components/sidebar-summary';
 
 export const metadata: Metadata = {
-  title: 'arc-trade',
-  description: 'Agentic commerce on Arc',
+  title: 'Bezant',
+  description: 'Trade finance for stablecoins. Escrow that releases on verified delivery.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -105,7 +105,7 @@ export default function ProfilePage() {
                     onRegister={() => registerAgent()}
                   />
                 ) : (
-                  // No backend record yet — agentId links to your user row, so a
+                  // No backend record yet - agentId links to your user row, so a
                   // profile must exist first (claim a handle via the top banner).
                   <div className="rounded-xl border border-violet-800/50 bg-violet-950/25 p-4">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-300">ERC-8004 agent</div>
@@ -122,7 +122,7 @@ export default function ProfilePage() {
         {/* At-a-glance stats */}
         <StatsStrip stats={stats} />
 
-        {/* Send USDC — passkey (Circle Modular) wallets only; renders null otherwise */}
+        {/* Send USDC - passkey (Circle Modular) wallets only; renders null otherwise */}
         <SendPanel />
 
         {/* Cards flow into balanced columns and only render what the wallet has,
@@ -151,12 +151,12 @@ export default function ProfilePage() {
 // At-a-glance identity stats: trade history, volume, success rate, reputation.
 function StatsStrip({ stats }: { stats: UserStats | null }) {
   const cards: { label: string; value: string; hint?: string }[] = [
-    { label: 'Trades', value: stats ? String(stats.tradesTotal) : '—', hint: stats ? `${stats.settled} settled · ${stats.active} active` : undefined },
-    { label: 'Volume', value: stats ? `${Number(stats.volumeUsdc).toLocaleString()} USDC` : '—', hint: 'settled' },
-    { label: 'Success rate', value: stats?.successRate != null ? `${Math.round(stats.successRate * 100)}%` : '—', hint: 'settled vs resolved' },
+    { label: 'Trades', value: stats ? String(stats.tradesTotal) : '-', hint: stats ? `${stats.settled} settled · ${stats.active} active` : undefined },
+    { label: 'Volume', value: stats ? `${Number(stats.volumeUsdc).toLocaleString()} USDC` : '-', hint: 'settled' },
+    { label: 'Success rate', value: stats?.successRate != null ? `${Math.round(stats.successRate * 100)}%` : '-', hint: 'settled vs resolved' },
     {
       label: 'Reputation',
-      value: stats?.reputation ? Number(stats.reputation.value).toFixed(2) : '—',
+      value: stats?.reputation ? Number(stats.reputation.value).toFixed(2) : '-',
       hint: stats?.reputation ? `${stats.reputation.count} ratings${stats.reputation.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked',
     },
   ];
@@ -173,7 +173,7 @@ function StatsStrip({ stats }: { stats: UserStats | null }) {
   );
 }
 
-// Verifier-role panel — only rendered when the user has staked / served.
+// Verifier-role panel - only rendered when the user has staked / served.
 function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
   const pnl = Number(v.netPnlUsdc);
   return (
@@ -187,7 +187,7 @@ function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
       <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
         <Field label="Staked">{v.stakeUsdc} USDC{v.lockedUsdc !== '0' ? <span className="text-neutral-500"> · {v.lockedUsdc} locked</span> : null}</Field>
         <Field label="Panels served">{v.panelsServed}</Field>
-        <Field label="Accuracy">{v.accuracy != null ? `${Math.round(v.accuracy * 100)}%` : '—'}</Field>
+        <Field label="Accuracy">{v.accuracy != null ? `${Math.round(v.accuracy * 100)}%` : '-'}</Field>
         <Field label="Net rewards">
           <span className={pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-red-300' : 'text-neutral-200'}>
             {pnl > 0 ? '+' : ''}{v.netPnlUsdc} USDC
@@ -208,7 +208,7 @@ function LpPositionCard({ address }: { address: string }) {
     getPoolStats(address)
       .then((s) => live && setStats(s))
       .catch(() => {
-        /* pool unreachable — leave null */
+        /* pool unreachable - leave null */
       });
     return () => {
       live = false;
@@ -265,7 +265,7 @@ function RecentActivity() {
   // Pending actions carry a deadline-based timestamp (often in the future), so
   // a naive "5 most recent" lets them crowd out genuinely-recent pool/trade
   // events. Reserve up to 2 slots for the most urgent pending actions, then
-  // fill the rest with the latest actual events — so a fresh deposit/withdrawal
+  // fill the rest with the latest actual events - so a fresh deposit/withdrawal
   // always shows here. Full history + "Needs action" filter live on /activity.
   const needsAction = (it: NotificationItem) => it.kind === 'action' || it.kind === 'deadline';
   const actions = live.filter(needsAction).slice(0, 2);

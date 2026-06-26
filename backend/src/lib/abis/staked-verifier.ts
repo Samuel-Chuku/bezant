@@ -1,4 +1,4 @@
-// StakedVerifierModule (Arm 2) — the slice the backend encodes calldata for and
+// StakedVerifierModule (Arm 2) - the slice the backend encodes calldata for and
 // reads. Write fns are encoded for /unsigned builders (client-signed) except
 // assignPanel, which the operator signs via createContractExecutionTransaction.
 export const stakedVerifierAbi = [

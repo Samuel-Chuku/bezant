@@ -1,7 +1,7 @@
 'use client';
 
 // Multi-step "Actions" transaction modal (Spark/Aave-style): one modal showing
-// amount, a before→after overview, and numbered steps — each with its OWN action
+// amount, a before→after overview, and numbered steps - each with its OWN action
 // button on the right. Steps unlock in order (later buttons stay disabled until
 // earlier ones complete); a failed step's button becomes "Try again". Callers
 // drive it via useTxFlow().start({...}); each step's `run` should send its tx
@@ -43,7 +43,7 @@ export function TxFlowProvider({ children }: { children: ReactNode }) {
 
   const running = runningIndex !== null;
   const allDone = states.length > 0 && states.every((s) => s === 'done');
-  // First step that isn't done yet — the only one whose button is live.
+  // First step that isn't done yet - the only one whose button is live.
   const currentIndex = states.findIndex((s) => s !== 'done');
 
   const close = useCallback((ok: boolean) => {

@@ -31,7 +31,7 @@ export type NotificationItem = {
   kind: NotificationKind;
   category: NotificationCategory;
   summary: string;
-  // Sort key — milliseconds. Newer = bigger.
+  // Sort key - milliseconds. Newer = bigger.
   whenMs: number;
   // Human-readable absolute or relative for display.
   whenIso: string | null;
@@ -50,7 +50,7 @@ type LoadState =
 
 const POLL_MS = 30_000;
 
-// Effective status — soft-Expired any non-terminal that's past deadline,
+// Effective status - soft-Expired any non-terminal that's past deadline,
 // matching the pact-detail page's getEffectiveStatus inline.
 function effectiveStatus(live: { status: string; expiredAt: { unix: number } }): string {
   if (
@@ -67,15 +67,15 @@ function isTerminal(status: string): boolean {
 }
 
 // Four notification kinds derive from each FeedRow:
-//   action  — connected user is the actor up next ("Fund #N", "Submit on #N").
-//   status  — connected user is involved but waiting on someone else
-//             ("#N — Waiting for the client to fund"). Same identity as
-//             action (one per pact/status/roles tuple) — kind just flips
+//   action  - connected user is the actor up next ("Fund #N", "Submit on #N").
+//   status  - connected user is involved but waiting on someone else
+//             ("#N - Waiting for the client to fund"). Same identity as
+//             action (one per pact/status/roles tuple) - kind just flips
 //             based on whose turn it is.
-//   event   — one per Submitted/Completed/Rejected/Funded/Refunded row in
+//   event   - one per Submitted/Completed/Rejected/Funded/Refunded row in
 //             pact_events (excludes user's own actions to avoid notifying
 //             yourself about your own tx).
-//   deadline— bucketed alerts as the deadline approaches: 24h / 1h / 15m
+//   deadline- bucketed alerts as the deadline approaches: 24h / 1h / 15m
 //             / expired. Each fires at most once per bucket per pact, only
 //             when the user is the action party (urgency = their problem).
 function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
@@ -120,7 +120,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
     }
 
     // Status, action, and deadline items only make sense while the pact is
-    // still in flight — once it's terminal there's nothing left to do.
+    // still in flight - once it's terminal there's nothing left to do.
     if (isTerminal(status)) continue;
 
     const livePact: PactLiveState = {
@@ -146,7 +146,7 @@ function deriveItems(rows: FeedRow[], myAddress: Address): NotificationItem[] {
     };
     const roles = row.roles as PactRole[];
 
-    // Status/action item — always emit one for any non-terminal pact the
+    // Status/action item - always emit one for any non-terminal pact the
     // user is party to so the bell isn't silent on in-flight pacts you're
     // just waiting on. Kind flips to 'action' when it's your turn so the
     // visual weight (and unread count) reflects urgency.
@@ -227,7 +227,7 @@ function formatEventSummary(ev: PactEvent, row: FeedRow, isSelf: boolean): strin
     case 'DisputeOpened':
       return `${subject} opened a dispute on pact #${row.pactId}.`;
     case 'DisputeDefended':
-      return `Dispute on pact #${row.pactId} was defended — evaluators are voting.`;
+      return `Dispute on pact #${row.pactId} was defended - evaluators are voting.`;
     case 'DisputeConceded':
       return `Dispute on pact #${row.pactId} was conceded.`;
     case 'DisputeResolved':
@@ -290,14 +290,14 @@ export function useNotifications() {
     }
     // Trade notifications are a separate source; failures here (e.g. escrow not
     // deployed) must not break the pact feed. On a transient error we KEEP the
-    // last good data rather than clearing it — otherwise a single failed poll
+    // last good data rather than clearing it - otherwise a single failed poll
     // makes already-shown items vanish until the next success (looks "stale").
     try {
       setTradeRaw(await getTradeNotifications(address));
     } catch {
       /* keep previous tradeRaw */
     }
-    // Pool LP activity is a third independent source — same isolation, and the
+    // Pool LP activity is a third independent source - same isolation, and the
     // chunked getLogs can time out on the RPC, so preserving prior data here is
     // what stops pool deposits/withdrawals from flickering out of the feed.
     try {
@@ -305,7 +305,7 @@ export function useNotifications() {
     } catch {
       /* keep previous poolRaw */
     }
-    // Verifier stake/unstake — fourth independent source (501 if not deployed).
+    // Verifier stake/unstake - fourth independent source (501 if not deployed).
     try {
       setVerifierRaw(await getVerifierActivity(address));
     } catch {
@@ -389,7 +389,7 @@ export function useNotifications() {
   const unreadCount = useMemo(() => items.filter((it) => !it.read).length, [items]);
 
   // Mark optimistically (snappy UI), then persist to the backend in the
-  // background — a failed POST just means it re-shows as unread next load.
+  // background - a failed POST just means it re-shows as unread next load.
   const markAllRead = useCallback(() => {
     if (!address) return;
     const unreadKeys = items.filter((it) => !it.read).map((it) => it.key);

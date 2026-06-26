@@ -8,7 +8,7 @@ import { useUserRecord } from '@/hooks/use-user-record';
 import { AgentLinkCard } from '@/components/agent-link-card';
 import { Skeleton } from '@/components/async-state';
 
-// Index route — sends the user to their own reputation page when their
+// Index route - sends the user to their own reputation page when their
 // address has an agentId linked. Otherwise renders the linking prompt or
 // a connect-wallet hint.
 export default function ReputationIndexPage() {

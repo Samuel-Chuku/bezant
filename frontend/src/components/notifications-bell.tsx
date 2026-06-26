@@ -40,7 +40,7 @@ export function NotificationsBell() {
     };
   }, [open]);
 
-  // Hide bell entirely when not connected — there's nothing to show.
+  // Hide bell entirely when not connected - there's nothing to show.
   if (!signer.isConnected) return null;
 
   const visible = items.slice(0, DROPDOWN_MAX);

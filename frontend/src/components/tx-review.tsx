@@ -1,6 +1,6 @@
 'use client';
 
-// Pre-sign transaction review — a single global modal that shows what the user
+// Pre-sign transaction review - a single global modal that shows what the user
 // is about to sign (action, amount, network, contract), drives the signature,
 // and reflects submission/confirmation. Every on-chain action flows through it
 // because useSigner.sendCall calls begin()/submitted()/confirmed()/failed().
@@ -21,7 +21,7 @@ type TxReviewApi = {
 const Ctx = createContext<TxReviewApi | null>(null);
 
 // Safe to call without a provider (returns no-op approvals) so useSigner never
-// crashes if the tree changes — but the provider is mounted app-wide.
+// crashes if the tree changes - but the provider is mounted app-wide.
 export function useTxReview(): TxReviewApi {
   return (
     useContext(Ctx) ?? {
@@ -57,7 +57,7 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
       begin: (m) =>
         new Promise<boolean>((resolve) => {
           // In multi-step flows (approve→deposit) the next step opens straight
-          // over the previous "confirmed" modal — settle any orphaned resolver.
+          // over the previous "confirmed" modal - settle any orphaned resolver.
           resolver.current?.(false);
           resolver.current = resolve;
           setMeta(m);
@@ -73,7 +73,7 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
         setTxUrl(url);
         setPhase('submitted');
       },
-      // No auto-close — the final modal stays until the user clicks Close. An
+      // No auto-close - the final modal stays until the user clicks Close. An
       // intermediate step's "confirmed" is replaced by the next step's begin().
       confirmed: () => setPhase('confirmed'),
       failed: (message) => {
@@ -157,7 +157,7 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
 
               <div className="mt-3 min-h-[1rem] text-center text-xs">
                 {phase === 'signing' && <span className="text-muted">Awaiting your signature…</span>}
-                {phase === 'submitted' && <span className="text-info">Submitted — confirming on Arc…</span>}
+                {phase === 'submitted' && <span className="text-info">Submitted - confirming on Arc…</span>}
                 {phase === 'confirmed' && <span className="text-primary">Confirmed ✓</span>}
                 {phase === 'failed' && <span className="text-danger">{error ?? 'Transaction failed.'}</span>}
               </div>

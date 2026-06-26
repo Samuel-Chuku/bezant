@@ -25,7 +25,7 @@ db.exec(`
   );
 `);
 
-// Idempotent ALTER for pre-M31 databases — adds agent_id to users so each
+// Idempotent ALTER for pre-M31 databases - adds agent_id to users so each
 // account can link an ERC-8004 agentId after on-chain ownership check.
 // Stored as TEXT because uint256 doesn't fit in SQLite INTEGER.
 const userCols = db
@@ -37,7 +37,7 @@ if (!userColNames.has('agent_id')) {
 }
 
 // One-shot migration: older deployments created `handle` as NOT NULL.
-// SQLite can't drop NOT NULL in place — recreate the table if needed.
+// SQLite can't drop NOT NULL in place - recreate the table if needed.
 const handleColumn = db
   .prepare("SELECT name, [notnull] FROM pragma_table_info('users') WHERE name = 'handle'")
   .get() as { name: string; notnull: number } | undefined;
@@ -191,7 +191,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pact_events_pact ON pact_events(pact_id);
 
   -- Off-chain deliverable content keyed by (pact_id, hash). Only inserted
-  -- if the supplied content actually hashes to the claimed hash — the
+  -- if the supplied content actually hashes to the claimed hash - the
   -- on-chain bytes32 is the access credential. Reads are parties-only
   -- (enforced in the route via signed-challenge auth).
   -- content_type: 'text' | 'url' | 'file'.
@@ -212,10 +212,10 @@ db.exec(`
 
   -- CCTP V2 inbound bridge arrivals on Arc. Indexed from USDC Transfer
   -- events where from = 0x0 (mints), filtered to tx hashes that also
-  -- emit MessageReceived from the MessageTransmitter — so we only record
+  -- emit MessageReceived from the MessageTransmitter - so we only record
   -- mints actually caused by a CCTP bridge (not faucets etc.).
   -- source_domain comes from the joined MessageReceived event; NULL if
-  -- the join failed (defensive — shouldn't happen for valid bridges).
+  -- the join failed (defensive - shouldn't happen for valid bridges).
   -- PK on (tx_hash, log_index) so re-indexing the same range is a no-op.
   CREATE TABLE IF NOT EXISTS bridge_inbound_events (
     recipient      TEXT NOT NULL,
@@ -277,7 +277,7 @@ db.exec(`
   );
   -- Periodic NAV snapshots (share price over time) so we can show 24h / 7d
   -- yield. The RPC prunes historical state, so we can't read past prices on
-  -- demand — we sample forward. ts is unix ms.
+  -- demand - we sample forward. ts is unix ms.
   CREATE TABLE IF NOT EXISTS pool_nav_snapshots (
     ts           INTEGER PRIMARY KEY,
     share_price  REAL NOT NULL
@@ -285,7 +285,7 @@ db.exec(`
   -- Pending auto-reveals for the auto-reveal agent. An evaluator who opts in at
   -- commit time hands us (vote, secret); the agent reveals on their behalf once
   -- the reveal window opens, via the operator wallet. One row per
-  -- (dispute, evaluator) — a re-commit replaces it. status:
+  -- (dispute, evaluator) - a re-commit replaces it. status:
   -- pending | revealed | expired | failed.
   CREATE TABLE IF NOT EXISTS auto_reveals (
     dispute_id    TEXT NOT NULL,
@@ -305,7 +305,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_auto_reveals_status ON auto_reveals(status);
 
   -- Buyer challenge window. When the Trade Officer approves a delivery doc it
-  -- does NOT settle immediately — it parks here until finalize_at. The trade
+  -- does NOT settle immediately - it parks here until finalize_at. The trade
   -- stays Funded, so the buyer can raiseDispute() during the window. A finalizer
   -- poller calls attest() (settles) once finalize_at passes if still Funded.
   CREATE TABLE IF NOT EXISTS pending_attestations (
@@ -316,7 +316,7 @@ db.exec(`
   );
 
   -- Cross-chain seller payouts via Circle Gateway. One row per trade (the
-  -- PRIMARY KEY makes the payout once-per-trade — a page refresh can't replay
+  -- PRIMARY KEY makes the payout once-per-trade - a page refresh can't replay
   -- it). Recorded only after the destination mint confirms.
   CREATE TABLE IF NOT EXISTS gateway_payouts (
     trade_id         INTEGER PRIMARY KEY,
@@ -429,7 +429,7 @@ if (colNames.has('job_id') && !colNames.has('pact_id')) {
   db.exec('ALTER TABLE deliverables RENAME COLUMN job_id TO pact_id');
 }
 
-// Idempotent migration for pre-M30 databases — adds amount_raw to pact_events
+// Idempotent migration for pre-M30 databases - adds amount_raw to pact_events
 // so Funded rows can store the locked amount (uint256 as decimal string).
 // Existing Submitted/Completed/Rejected rows keep amount_raw NULL.
 const pactEventCols = db

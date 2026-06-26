@@ -52,11 +52,11 @@ export type BridgeChain = {
   outboundComingSoon: boolean;
 };
 
-// Back-compat alias — some files still reference BridgeSource. New code
+// Back-compat alias - some files still reference BridgeSource. New code
 // should use BridgeChain.
 export type BridgeSource = BridgeChain;
 
-// Universal CCTP testnet USDC faucet — same URL across all source chains.
+// Universal CCTP testnet USDC faucet - same URL across all source chains.
 export const USDC_FAUCET_URL = 'https://faucet.circle.com';
 
 export const BRIDGE_CHAINS: BridgeChain[] = [
@@ -139,7 +139,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     key: 'solanaDevnet',
     shortName: 'Solana',
     fullName: 'Solana Devnet',
-    // No wagmi chain id — Solana is non-EVM. Code that touches wagmi must
+    // No wagmi chain id - Solana is non-EVM. Code that touches wagmi must
     // guard on this being undefined.
     wagmiChainId: undefined,
     bridgeChain: 'Solana_Devnet',
@@ -156,7 +156,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
   },
 ];
 
-// Default destination — Arc is the focal chain of arc-trade.
+// Default destination - Arc is the focal chain of arc-trade.
 export const DEFAULT_DESTINATION_KEY: BridgeChain['key'] = 'arcTestnet';
 
 // Source-chain subset used by panels that only want the actually-queryable
@@ -173,13 +173,13 @@ export function chainByKey(key: BridgeChain['key']): BridgeChain {
 }
 
 // Resolve a CCTP V2 source domain (uint32 from MessageReceived) back to the
-// chain in BRIDGE_CHAINS. Returns null when we don't model that chain — the
+// chain in BRIDGE_CHAINS. Returns null when we don't model that chain - the
 // caller should fall back to a generic "Unknown chain (domain N)" label.
 export function chainByCctpDomain(domain: number): BridgeChain | null {
   return BRIDGE_CHAINS.find((c) => c.cctpDomain === domain) ?? null;
 }
 
-// CCTP step order — used by the progress UI even before any events arrive,
+// CCTP step order - used by the progress UI even before any events arrive,
 // so users see the full sequence ahead of time.
 export const BRIDGE_STEP_ORDER = ['approve', 'burn', 'fetchAttestation', 'mint'] as const;
 export type BridgeStepName = (typeof BRIDGE_STEP_ORDER)[number];

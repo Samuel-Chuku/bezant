@@ -19,7 +19,7 @@ type Pos = { x: number; y: number };
 
 // Right-margin balances tile. On /bridge it shows Arc + the 4 source chains
 // so you can watch funds move between chains. Everywhere else it shows just
-// Arc — this is an Arc app, the rest is bridge-only context.
+// Arc - this is an Arc app, the rest is bridge-only context.
 //
 // At lg+ the widget is fixed-positioned and draggable by its handle; the
 // position is persisted to localStorage. Below lg it falls back to an
@@ -27,7 +27,7 @@ type Pos = { x: number; y: number };
 export function SidebarSummary() {
   const pathname = usePathname();
   const signer = useSigner();
-  // The /bridge page renders its own larger, static balances panel inline —
+  // The /bridge page renders its own larger, static balances panel inline -
   // suppress the floating widget there so they don't double up.
   const onBridgePage = pathname?.startsWith('/bridge') ?? false;
   const showSources = onBridgePage;
@@ -107,7 +107,7 @@ export function SidebarSummary() {
       style={inlineStyle}
     >
       <aside className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5 shadow-lg">
-        {/* Drag handle — visible only at lg+ where the widget is fixed. */}
+        {/* Drag handle - visible only at lg+ where the widget is fixed. */}
         <div
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -252,7 +252,7 @@ function defaultPosition(): Pos {
 
 function clampToViewport(p: Pos): Pos {
   if (typeof window === 'undefined') return p;
-  // Keep at least a sliver visible on every edge — never let the widget
+  // Keep at least a sliver visible on every edge - never let the widget
   // disappear off-screen.
   const maxX = Math.max(0, window.innerWidth - WIDGET_WIDTH);
   const maxY = Math.max(NAV_HEIGHT, window.innerHeight - 80);

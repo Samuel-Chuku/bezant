@@ -16,10 +16,10 @@ type LoadState =
   | { status: 'error'; message: string };
 
 // The "Browse" tab of the Pacts hub: every Open ERC-8183 pact on Arc the
-// indexer has seen, including pacts created outside arc-trade. Public — no
+// indexer has seen, including pacts created outside arc-trade. Public - no
 // wallet required. Extracted from the old standalone /market page.
 export function BrowsePacts() {
-  // Two layers of filter state — `input` is what the user is typing,
+  // Two layers of filter state - `input` is what the user is typing,
   // `applied` is what the backend was queried with. Keeps requests stable
   // until the user actually hits Apply.
   const [inputMin, setInputMin] = useState('');
@@ -124,7 +124,7 @@ export function BrowsePacts() {
         </div>
         {(appliedMin || appliedMax) && (
           <p className="mt-2 text-[11px] text-neutral-500">
-            Active filter: {appliedMin || '0'} – {appliedMax || '∞'} USDC
+            Active filter: {appliedMin || '0'} - {appliedMax || '∞'} USDC
           </p>
         )}
       </section>
@@ -194,7 +194,7 @@ export function BrowsePacts() {
           <div>
             {pageInfo && (
               <span>
-                Showing {pageInfo.from}–{pageInfo.to} of {pageInfo.total}
+                Showing {pageInfo.from}-{pageInfo.to} of {pageInfo.total}
               </span>
             )}
             <span className="ml-2 text-neutral-700">· scanned {state.data.indexScanned} recent</span>

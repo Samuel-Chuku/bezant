@@ -31,7 +31,7 @@ export function describeTradeStep(t: TradeStepInput, me: string | null): TradeSt
       const other = offerByBuyer ? 'seller' : 'buyer';
       if (!isParty) return { line: 'Negotiation in progress…', forMe: false };
       if (myOffer) return { line: `Waiting for the ${other} to accept or counter…`, forMe: false };
-      return { line: `Your turn — respond to the ${offerBy}'s offer…`, forMe: true };
+      return { line: `Your turn - respond to the ${offerBy}'s offer…`, forMe: true };
     }
     case 'Agreed':
       return isBuyer
@@ -39,11 +39,11 @@ export function describeTradeStep(t: TradeStepInput, me: string | null): TradeSt
         : { line: 'Waiting for the buyer to fund the escrow…', forMe: false };
     case 'Funded':
       if (isSeller) return { line: 'Submit your delivery document…', forMe: true };
-      if (isBuyer && now > t.deadline) return { line: 'Deadline passed — claim your refund…', forMe: true };
+      if (isBuyer && now > t.deadline) return { line: 'Deadline passed - claim your refund…', forMe: true };
       return { line: 'Waiting for the seller to submit delivery…', forMe: false };
     case 'Disputed':
-      return { line: 'Under dispute — awaiting the arbitrator…', forMe: false };
+      return { line: 'Under dispute - awaiting the arbitrator…', forMe: false };
     default:
-      return null; // Released / Cancelled / Refunded / None — terminal
+      return null; // Released / Cancelled / Refunded / None - terminal
   }
 }

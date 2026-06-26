@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
  * Returns a function that invalidates every wagmi-cached chain read.
  *
  * Call after any transaction whose effects might change something the UI
- * is currently displaying — most commonly USDC balances (post-bridge,
+ * is currently displaying - most commonly USDC balances (post-bridge,
  * post-fund, post-complete) and allowance reads (post-approve).
  *
  * The 15s polling on useBalance is a safety net; this is the snappy path
@@ -20,7 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
  *   - components/bridge-widget.tsx → after kit.bridge() settles. Bridge Kit
  *     bypasses useSigner, so it needs the explicit call.
  */
-// Window event broadcast on every refresh — listeners outside react-query
+// Window event broadcast on every refresh - listeners outside react-query
 // (e.g. the notifications feed which is plain fetch + useState) can hook in
 // without us having to migrate them. See use-notifications.ts.
 export const CHAIN_REFRESH_EVENT = 'arc-trade:chain-refresh';

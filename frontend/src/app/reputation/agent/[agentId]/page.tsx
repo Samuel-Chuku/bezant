@@ -215,7 +215,7 @@ function PaginationHeader({
       <p className="text-xs text-neutral-500">
         {total === 0
           ? '0 total'
-          : `${start}–${end} of ${total} · page ${page + 1} of ${totalPages}`}
+          : `${start}-${end} of ${total} · page ${page + 1} of ${totalPages}`}
       </p>
     </div>
   );

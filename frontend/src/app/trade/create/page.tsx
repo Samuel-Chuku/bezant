@@ -14,7 +14,7 @@ import { PassportPanel } from '@/components/passport-panel';
 import { BridgeWidget } from '@/components/bridge-widget';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 
-// Mirrors TradeEscrow's TradeProposed event — used to pull the tradeId from the receipt.
+// Mirrors TradeEscrow's TradeProposed event - used to pull the tradeId from the receipt.
 const tradeProposedEventAbi = [
   {
     type: 'event',
@@ -195,7 +195,7 @@ export default function CreateTradePage() {
                 className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'officer' ? 'border-neutral-500 bg-neutral-900 text-neutral-100' : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'}`}
               >
                 <div className="font-medium">Trade Officer</div>
-                <div className="text-xs text-neutral-500">Fast — an automated agent attests.</div>
+                <div className="text-xs text-neutral-500">Fast - an automated agent attests.</div>
               </button>
               <button
                 type="button"
@@ -203,7 +203,7 @@ export default function CreateTradePage() {
                 className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'panel' ? 'border-neutral-500 bg-neutral-900 text-neutral-100' : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'}`}
               >
                 <div className="font-medium">Staked panel</div>
-                <div className="text-xs text-neutral-500">Decentralized — a {verifier.panelSize}-verifier panel votes. +{(verifier.feeBps ?? 0) / 100}% fee.</div>
+                <div className="text-xs text-neutral-500">Decentralized - a {verifier.panelSize}-verifier panel votes. +{(verifier.feeBps ?? 0) / 100}% fee.</div>
               </button>
             </div>
           </div>
@@ -217,7 +217,7 @@ export default function CreateTradePage() {
             {showBridge && (
               <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
                 <p className="mb-2 text-xs text-neutral-500">
-                  Creating a trade locks nothing — your deposit is taken when you fund, after the seller agrees.
+                  Creating a trade locks nothing - your deposit is taken when you fund, after the seller agrees.
                   {amountUsdc && Number(amountUsdc) > 0
                     ? ` Bridge the ${amountUsdc} USDC to your Arc wallet now so it's ready the moment the trade is agreed.`
                     : ` Bridge USDC to your Arc wallet now so it's ready the moment the trade is agreed.`}

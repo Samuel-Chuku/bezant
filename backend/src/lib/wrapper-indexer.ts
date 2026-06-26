@@ -4,7 +4,7 @@ import { arcClient, WRAPPER_ADDRESS } from './arc.js';
 import { pactWrapperAbi } from './abis/pact-wrapper.js';
 import { db, getIndexerState, setIndexerState } from './db.js';
 
-// Indexes the PactWrapper contract — the source of truth for pact state going
+// Indexes the PactWrapper contract - the source of truth for pact state going
 // forward. Replaces pact-indexer.ts, which read Job* events off the ERC-8183
 // reference. The wrapper emits its own Pact* events (the reference's JobCreated
 // still fires under the hood with the wrapper as both client and evaluator, so
@@ -14,7 +14,7 @@ import { db, getIndexerState, setIndexerState } from './db.js';
 const POLL_INTERVAL_MS = Number(process.env.WRAPPER_INDEXER_POLL_MS ?? 10_000);
 
 // First-run backfill window. The wrapper deployed at block 45167600; 1M blocks
-// (~4–5 days at Arc's ~400ms blocks) comfortably covers its history.
+// (~4-5 days at Arc's ~400ms blocks) comfortably covers its history.
 const INITIAL_LOOKBACK_BLOCKS = BigInt(process.env.WRAPPER_INDEXER_LOOKBACK ?? 1_000_000);
 
 // viem caps a single getLogs call; stay well under.
@@ -44,7 +44,7 @@ const lower = (v: unknown): string => (typeof v === 'string' ? v.toLowerCase() :
 // Maps a parsed wrapper event to the generic pact_events row shape. Returns null
 // for non-pact-scoped events (evaluator pool / treasury / ownership), which have
 // no pact_id and no frontend consumer yet. Rich dispute fields (evaluator slate,
-// vote tallies, bond splits) are intentionally not stored — they're read on
+// vote tallies, bond splits) are intentionally not stored - they're read on
 // demand from the getDisputeMeta() view; the indexer only records that an event
 // happened, for the activity feed and toast triggers.
 type EventRow = {
@@ -92,7 +92,7 @@ function mapEvent(name: string, a: Record<string, unknown>): EventRow | null {
     default:
       // Non-pact-scoped: EvaluatorStaked/Unstaked/Ejected/Payout,
       // PlatformFeeUpdated, PlatformTreasuryUpdated, TreasuryWithdrawn,
-      // OwnershipTransferred. No consumer yet — index when the evaluator UI lands.
+      // OwnershipTransferred. No consumer yet - index when the evaluator UI lands.
       return null;
   }
 }

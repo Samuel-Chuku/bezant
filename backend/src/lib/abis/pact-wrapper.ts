@@ -1,4 +1,4 @@
-// PactWrapper ABI — extracted from contracts/out/PactWrapper.sol/PactWrapper.json
+// PactWrapper ABI - extracted from contracts/out/PactWrapper.sol/PactWrapper.json
 // Live deployment on Arc Testnet at WRAPPER_ADDRESS (see lib/arc.ts).
 // Regenerate after contract changes:
 //   jq ".abi" contracts/out/PactWrapper.sol/PactWrapper.json > backend/src/lib/abis/_tmp.json

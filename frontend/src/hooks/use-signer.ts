@@ -29,7 +29,7 @@ export type SendCallResult = {
   wait: () => Promise<{ txHash: Hex; status: 'success' | 'reverted' }>;
 };
 
-// EIP-712 payload for signTypedData (kept loose — viem validates at runtime).
+// EIP-712 payload for signTypedData (kept loose - viem validates at runtime).
 export type TypedDataParam = {
   domain: Record<string, unknown>;
   types: Record<string, ReadonlyArray<{ name: string; type: string }>>;
@@ -37,7 +37,7 @@ export type TypedDataParam = {
   message: Record<string, unknown>;
 };
 
-// `review: false` skips the single-tx review modal — used by multi-step flows
+// `review: false` skips the single-tx review modal - used by multi-step flows
 // that drive their own combined review/progress modal (see tx-flow.tsx).
 export type SendCallOpts = { review?: boolean };
 
@@ -62,9 +62,9 @@ type DisconnectedState = {
 };
 
 export function useSigner(): ConnectedState | DisconnectedState {
-  // External (wagmi) — RainbowKit / MetaMask / Rabby / etc.
+  // External (wagmi) - RainbowKit / MetaMask / Rabby / etc.
   const wagmi = useAccount();
-  // Always wait for receipts on Arc — the bridge widget can switch the
+  // Always wait for receipts on Arc - the bridge widget can switch the
   // wagmi chain temporarily, but every tx we hand back here was meant for
   // Arc. (Bridge txs go through Bridge Kit's own flow, not this signer.)
   const wagmiPublic = usePublicClient({ chainId: arcTestnet.id });
@@ -73,13 +73,13 @@ export function useSigner(): ConnectedState | DisconnectedState {
   const { signTypedDataAsync: wagmiSignTypedDataAsync } = useSignTypedData();
   const { disconnect: wagmiDisconnect } = useDisconnect();
 
-  // Circle Modular Wallets — passkey-backed smart account.
+  // Circle Modular Wallets - passkey-backed smart account.
   const circle = useCircleAccount();
 
-  // Snappy balance + allowance refresh after every tx — beats the 15s poll.
+  // Snappy balance + allowance refresh after every tx - beats the 15s poll.
   const refreshChainData = useRefreshChainData();
 
-  // Global pre-sign review modal — every sendCall flows through it.
+  // Global pre-sign review modal - every sendCall flows through it.
   const txReview = useTxReview();
 
   const wagmiActive = wagmi.isConnected && wagmi.address;
@@ -93,11 +93,11 @@ export function useSigner(): ConnectedState | DisconnectedState {
       address: wagmi.address!,
       sendCall: async ({ to, data, value }, opts) => {
         const useReview = opts?.review !== false;
-        // Pre-sign review — user confirms what they're signing first.
+        // Pre-sign review - user confirms what they're signing first.
         if (useReview && !(await txReview.begin(describeTx(to, data)))) throw new Error('Transaction rejected');
         let hash: Hex;
         try {
-          // Force Arc — wagmi will prompt a switch if the wallet is elsewhere
+          // Force Arc - wagmi will prompt a switch if the wallet is elsewhere
           // (e.g. user just bridged and is still on Base). Page-level guards
           // try to prevent the click, but this is belt-and-suspenders.
           hash = await sendTransactionAsync({ to, data, value: value ?? 0n, chainId: arcTestnet.id });
@@ -156,7 +156,7 @@ export function useSigner(): ConnectedState | DisconnectedState {
           if (useReview) txReview.failed(err instanceof Error ? err.message : String(err));
           throw err;
         }
-        // No tx hash until the userOp is bundled — keep the modal in-flight.
+        // No tx hash until the userOp is bundled - keep the modal in-flight.
         if (useReview) txReview.signing();
         const receiptPromise = (async () => {
           const receipt = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash });
@@ -185,9 +185,9 @@ export function useSigner(): ConnectedState | DisconnectedState {
       // (true for any address that's already a party on a pact).
       signMessage: async (message) => smartAccount.signMessage({ message }),
       // Smart-account EIP-712 sig is ERC-1271, which Gateway's burn-intent
-      // verification doesn't accept yet — gate the cross-chain payout to EOAs.
+      // verification doesn't accept yet - gate the cross-chain payout to EOAs.
       signTypedData: async () => {
-        throw new Error('Cross-chain payout from a passkey (Circle Modular) wallet isn’t supported yet — connect an external wallet to route your payout to another chain.');
+        throw new Error('Cross-chain payout from a passkey (Circle Modular) wallet isn’t supported yet - connect an external wallet to route your payout to another chain.');
       },
       disconnect: () => circle.disconnect(),
     };

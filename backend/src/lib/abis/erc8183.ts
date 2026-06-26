@@ -1,4 +1,4 @@
-// ERC-8183 (Agentic Commerce Protocol) — view + write functions in use.
+// ERC-8183 (Agentic Commerce Protocol) - view + write functions in use.
 // Full interface in EIP-8183.
 
 export const erc8183Abi = [
@@ -138,7 +138,7 @@ export const erc8183Abi = [
 // JobStatus enum order from EIP-8183: Open(0), Funded(1), Submitted(2), Completed(3), Rejected(4), Expired(5)
 export const JOB_STATUS = ['Open', 'Funded', 'Submitted', 'Completed', 'Rejected', 'Expired'] as const;
 
-// JobCreated event — parsed from tx receipts to find the actual jobId we created
+// JobCreated event - parsed from tx receipts to find the actual jobId we created
 export const jobCreatedEvent = {
   type: 'event',
   name: 'JobCreated',
@@ -152,7 +152,7 @@ export const jobCreatedEvent = {
   ],
 } as const;
 
-// JobFunded — emitted by fund(); carries the locked amount, not a hash.
+// JobFunded - emitted by fund(); carries the locked amount, not a hash.
 // Indexer treats the `amount` as the row's payload (amount_raw column);
 // hash_value stays empty for these rows.
 export const jobFundedEvent = {
@@ -165,11 +165,11 @@ export const jobFundedEvent = {
   ],
 } as const;
 
-// Refunded — emitted when claimRefund() returns the locked budget to the
+// Refunded - emitted when claimRefund() returns the locked budget to the
 // client after the deadline. `client` is the recipient (indexed); the
 // actual caller can be anyone (permissionless) so we record the recipient
 // in `actor` and rely on the label to disambiguate semantics. Same
-// payload shape as JobFunded — amount goes into amount_raw, hash empty.
+// payload shape as JobFunded - amount goes into amount_raw, hash empty.
 export const jobRefundedEvent = {
   type: 'event',
   name: 'Refunded',
@@ -180,7 +180,7 @@ export const jobRefundedEvent = {
   ],
 } as const;
 
-// Lifecycle events carrying the bytes32 commitments — indexer picks these up
+// Lifecycle events carrying the bytes32 commitments - indexer picks these up
 // so the frontend can show the on-chain hash without re-scanning logs.
 export const jobSubmittedEvent = {
   type: 'event',

@@ -62,12 +62,12 @@ export default function VerifyPage() {
 
   const doStake = async () => {
     if (!signer.isConnected || !stakeAmt || Number(stakeAmt) <= 0) return;
-    // minStake is enforced at selection, not in stake() — a sub-min stake would
+    // minStake is enforced at selection, not in stake() - a sub-min stake would
     // sit idle and never be drawn. Block it here so it can't happen by accident.
     const min = Number(info?.minStakeUsdc ?? 0);
     const current = Number(info?.myStakeUsdc ?? 0);
     if (current + Number(stakeAmt) < min) {
-      toast.error(`Minimum stake is ${info?.minStakeUsdc} USDC — add at least ${(min - current).toFixed(2)} more to qualify.`);
+      toast.error(`Minimum stake is ${info?.minStakeUsdc} USDC - add at least ${(min - current).toFixed(2)} more to qualify.`);
       return;
     }
     const { approve, stake } = await buildVerifierStakeUnsigned(stakeAmt);
@@ -107,7 +107,7 @@ export default function VerifyPage() {
     <main className="mx-auto max-w-5xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Verify</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted">
-        Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery — honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
+        Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
       </p>
 
       {signer.isConnected && info?.configured && (

@@ -3,7 +3,7 @@
 // Mirrors the existing wrapper wiring: reads go through viem (`arcClient`),
 // writes are handed to Circle Developer-Controlled Wallets in server.ts via
 // `circle.createContractExecutionTransaction(...)`. This module stays decoupled
-// from the Circle client — write helpers return an *exec spec* (contract +
+// from the Circle client - write helpers return an *exec spec* (contract +
 // function signature + params) that the route passes straight to Circle, so the
 // same shape used for PactWrapper applies here.
 //
@@ -21,7 +21,7 @@ export const TRADE_ESCROW_ADDRESS = (process.env.TRADE_ESCROW_ADDRESS ?? ZERO) a
 export const TRADE_PASSPORT_ADDRESS = (process.env.TRADE_PASSPORT_ADDRESS ?? ZERO) as `0x${string}`;
 export const FINANCING_POOL_ADDRESS = (process.env.FINANCING_POOL_ADDRESS ?? ZERO) as `0x${string}`;
 
-// Trade lifecycle status — index matches TradeEscrow.Status.
+// Trade lifecycle status - index matches TradeEscrow.Status.
 export const TRADE_STATUS = [
   'None',
   'Proposing',
@@ -81,7 +81,7 @@ export async function depositOf(id: bigint | number): Promise<bigint> {
   })) as bigint;
 }
 
-/// Deposit the buyer would lock if funding now (passport-priced) — the actual
+/// Deposit the buyer would lock if funding now (passport-priced) - the actual
 /// deposit is only set inside fund(), so use this to size the pre-fund approval.
 export async function estimatedDepositOf(id: bigint | number): Promise<bigint> {
   return (await arcClient.readContract({

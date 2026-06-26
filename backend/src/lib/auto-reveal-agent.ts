@@ -5,7 +5,7 @@ import { db } from './db.js';
 // opted in, so they don't lose their pool share by going offline during the 2h
 // reveal window. revealVote() is permissionless (evaluator is a param, the
 // commit hash is verified, msg.sender is ignored), so the operator wallet can
-// reveal for anyone — no smart accounts / session keys needed.
+// reveal for anyone - no smart accounts / session keys needed.
 //
 // Trust model: the evaluator handed us (vote, secret) at commit time. Same
 // trust boundary as the rest of the backend. v1, per the M41 design.
@@ -49,7 +49,7 @@ async function tick(log: FastifyBaseLogger, reveal: RevealFn): Promise<void> {
   const due = selectDue.all() as AutoRevealRow[];
 
   for (const row of due) {
-    // Window closed before we got to it — the evaluator missed out.
+    // Window closed before we got to it - the evaluator missed out.
     if (now >= row.reveal_before) {
       markExpired.run(row.dispute_id, row.evaluator);
       log.warn({ disputeId: row.dispute_id, evaluator: row.evaluator }, 'auto-reveal window closed before reveal');
@@ -64,7 +64,7 @@ async function tick(log: FastifyBaseLogger, reveal: RevealFn): Promise<void> {
       log.info({ disputeId: row.dispute_id, evaluator: row.evaluator, txHash }, 'auto-revealed vote');
     } catch (err) {
       // Reverts here are almost always terminal (already revealed, window
-      // closed, dispute resolved) — not transient — so we don't retry and burn
+      // closed, dispute resolved) - not transient - so we don't retry and burn
       // gas. The evaluator can still reveal manually (their secret is local).
       const message = err instanceof Error ? err.message : String(err);
       markFailed.run(message, row.dispute_id, row.evaluator);

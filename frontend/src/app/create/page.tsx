@@ -127,7 +127,7 @@ export default function CreatePactPage() {
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a pact</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Post a pact to the escrow on Arc. You're the <strong>client</strong>: you set the provider,
+          Post a pact to the escrow on Arc. You&apos;re the <strong>client</strong>: you set the provider,
           the deadline, and the challenge window. The provider quotes the price next (
           <code className="text-neutral-500">setBudget</code>), and you fund to accept.
         </p>
@@ -205,7 +205,7 @@ export default function CreatePactPage() {
 
           <Field
             label="Challenge window"
-            hint="After the provider submits, how long the client can dispute before payout auto-releases. The provider can adjust this when quoting. 1h–14d."
+            hint="After the provider submits, how long the client can dispute before payout auto-releases. The provider can adjust this when quoting. 1h-14d."
           >
             <div className="flex items-center gap-3">
               <input

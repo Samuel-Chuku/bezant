@@ -25,7 +25,7 @@ type EnrichedPact = PactIndexEntry & {
 // On-chain status only transitions to "Expired" when someone calls claimRefund
 // (or "Rejected" via reject). A pact past its deadline that nobody has acted on
 // stays in its prior status (Open / Funded / Submitted). For users that's
-// confusing — they want "past deadline" to read as Expired. We compute an
+// confusing - they want "past deadline" to read as Expired. We compute an
 // effective status here for display + filtering. Terminal statuses are passed
 // through unchanged.
 function effectiveStatus(pact: EnrichedPact, nowMs: number): string {
@@ -70,7 +70,7 @@ const STATUS_TINT: Record<string, string> = {
 };
 
 // Waiting-cue color matches the status badge so card + cue read as one.
-// Only non-terminal statuses have entries — terminal states don't pulse.
+// Only non-terminal statuses have entries - terminal states don't pulse.
 const WAITING_TINT: Record<'Open' | 'Funded' | 'Submitted' | 'Disputed', {
   ping: string;
   solid: string;
@@ -173,7 +173,7 @@ export default function MyPactsPage() {
           <p className="mt-2 text-sm text-neutral-400">
             {tab === 'mine'
               ? "Every pact on Arc where you're a client, provider, or evaluator."
-              : 'Every open pact on Arc the indexer has seen — including ones created outside arc-trade.'}
+              : 'Every open pact on Arc the indexer has seen - including ones created outside arc-trade.'}
           </p>
         </div>
         {tab === 'mine' && (
@@ -188,7 +188,7 @@ export default function MyPactsPage() {
         )}
       </header>
 
-      {/* Tabs — Mine (your pacts) | Browse (all open pacts; absorbed /market). */}
+      {/* Tabs - Mine (your pacts) | Browse (all open pacts; absorbed /market). */}
       <nav className="mb-6 flex gap-1 border-b border-neutral-800 text-sm">
         <TabButton active={tab === 'mine'} onClick={() => selectTab('mine')}>
           Mine
@@ -279,7 +279,7 @@ export default function MyPactsPage() {
 }
 
 // Non-terminal pacts get a one-line "Waiting on X..." cue with a pulsing
-// dot + text. Completed/Rejected/Expired return null — terminal states
+// dot + text. Completed/Rejected/Expired return null - terminal states
 // have nothing to wait on. The detail page's lifecycle timeline tells the
 // full story; this list-card cue is the at-a-glance preview.
 function pactWaitingLine(live: PactLiveState | null, effectiveStatus: string): string | null {
@@ -305,7 +305,7 @@ function pactWaitingLine(live: PactLiveState | null, effectiveStatus: string): s
     return 'Waiting for the client to accept or the challenge window to close…';
   }
   if (live.status === 'Disputed') {
-    return 'A dispute is open — awaiting resolution…';
+    return 'A dispute is open - awaiting resolution…';
   }
   return null;
 }
@@ -343,7 +343,7 @@ function PactCard({ pact }: { pact: EnrichedPact }) {
             >
               {status}
             </span>
-            {/* Countdown chip — at-a-glance urgency for non-terminal pacts.
+            {/* Countdown chip - at-a-glance urgency for non-terminal pacts.
                 Terminal states (Completed/Rejected) don't have a meaningful
                 deadline anymore. */}
             {status !== 'Completed' && status !== 'Rejected' && pact.live?.status !== 'Expired' && (

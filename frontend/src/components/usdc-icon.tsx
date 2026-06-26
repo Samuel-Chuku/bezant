@@ -1,4 +1,4 @@
-// USDC coin mark — Circle blue disc with a white dollar glyph. Inline so it
+// USDC coin mark - Circle blue disc with a white dollar glyph. Inline so it
 // matches the chain logos (no asset pipeline).
 export function UsdcIcon({ className = 'h-6 w-6' }: { className?: string }) {
   return (

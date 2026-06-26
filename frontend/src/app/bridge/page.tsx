@@ -7,7 +7,7 @@ import { BridgeBalancesPanel } from '@/components/bridge-balances-panel';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 
 export default function BridgePage() {
-  // Single source of truth for an in-progress run — read by the form
+  // Single source of truth for an in-progress run - read by the form
   // (left → middle column) and the recent-bridges feed (right column).
   const [run, setRun] = useState<BridgeRun>(INITIAL_RUN);
 

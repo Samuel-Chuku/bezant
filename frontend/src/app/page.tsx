@@ -17,9 +17,9 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
       <header className="mb-12">
-        <h1 className="text-4xl font-semibold tracking-tight">arc-trade</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">Bezant</h1>
         <p className="mt-2 text-neutral-400">
-          Agentic commerce on Arc. Escrow-backed trades between humans and agents.
+          Trade finance for stablecoins. Escrow that releases on verified delivery.
         </p>
       </header>
 
@@ -79,7 +79,7 @@ export default function Home() {
           </div>
 
           {/* Address + USDC balance now live in the top-nav wallet pill /
-              modal — keeping them here would be redundant. Home shows just
+              modal - keeping them here would be redundant. Home shows just
               the handle (if any) and the linked Agent ID. */}
           <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
             {displayName && (
@@ -165,13 +165,13 @@ function AgentIdTooltip() {
       tabIndex={0}
       role="button"
       aria-label="What is an Agent ID?"
-      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets arc-trade surface your reputation badge next to your name on every pact."
+      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets Bezant surface your reputation badge next to your name on every trade."
     >
       <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-700 text-[10px] text-neutral-500 group-hover:text-neutral-300">
         ?
       </span>
       <span className="invisible absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-xs font-sans normal-case text-neutral-300 shadow-xl group-hover:visible group-focus:visible">
-        <span className="block font-medium text-neutral-100">What's an Agent ID?</span>
+        <span className="block font-medium text-neutral-100">What&apos;s an Agent ID?</span>
         <span className="mt-1 block">
           An ERC-8004 <span className="font-mono">agentId</span> is your portable,
           ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so
@@ -179,7 +179,7 @@ function AgentIdTooltip() {
         </span>
         <span className="mt-2 block text-neutral-400">
           Linking it surfaces your <span className="text-amber-300">★ score</span>{' '}
-          next to your name on every pact in arc-trade.
+          next to your name on every trade in Bezant.
         </span>
       </span>
     </span>

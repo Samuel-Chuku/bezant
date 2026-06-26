@@ -45,7 +45,7 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
         </ol>
 
         <div className="px-5 pb-2 text-center text-xs">
-          {running && <span className="text-neutral-400">This can take a couple of minutes — keep this open.</span>}
+          {running && <span className="text-neutral-400">This can take a couple of minutes - keep this open.</span>}
           {run.status === 'success' && (tail ?? <span className="text-emerald-400">Bridged ✓</span>)}
           {run.status === 'error' && <span className="text-red-400">{run.errorMessage ?? 'Bridge failed.'}</span>}
         </div>

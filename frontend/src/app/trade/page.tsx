@@ -99,7 +99,7 @@ export default function TradesPage() {
             </div>
           )}
 
-          {trades && trades.length === 0 && <p className="text-sm text-neutral-400">No trades yet — create one.</p>}
+          {trades && trades.length === 0 && <p className="text-sm text-neutral-400">No trades yet - create one.</p>}
           {trades && trades.length > 0 && shown.length === 0 && (
             <p className="rounded-xl border border-neutral-900 bg-neutral-950/40 px-3 py-8 text-center text-sm text-neutral-500">No {filter} trades.</p>
           )}

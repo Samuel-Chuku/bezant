@@ -12,7 +12,7 @@ import { db, getIndexerState, setIndexerState } from './db.js';
 // How often to poll Arc for new bridge events.
 const POLL_INTERVAL_MS = Number(process.env.BRIDGE_INDEXER_POLL_MS ?? 10_000);
 
-// How far back to scan on first run (same default as job indexer — covers
+// How far back to scan on first run (same default as job indexer - covers
 // the smoke test trail). Re-indexing is safe: (tx_hash, log_index) PK.
 const INITIAL_LOOKBACK_BLOCKS = BigInt(
   process.env.BRIDGE_INDEXER_LOOKBACK ?? 1_000_000,
@@ -48,7 +48,7 @@ async function pollOnce(log: FastifyBaseLogger): Promise<void> {
 
     // Two parallel getLogs: USDC mints (Transfer with from=0x0) and CCTP
     // MessageReceived. Join by tx hash so we only record mints actually
-    // caused by a CCTP bridge — eliminates faucets and other non-CCTP
+    // caused by a CCTP bridge - eliminates faucets and other non-CCTP
     // mint paths from the bridge history.
     const [mints, received] = await Promise.all([
       arcClient.getLogs({

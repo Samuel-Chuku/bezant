@@ -1,4 +1,4 @@
-// TradeEscrow ABI — extracted from contracts/out/TradeEscrow.sol/TradeEscrow.json
+// TradeEscrow ABI - extracted from contracts/out/TradeEscrow.sol/TradeEscrow.json
 // Regenerate from contracts/:  forge inspect TradeEscrow abi --json
 export const tradeEscrowAbi = [
   {

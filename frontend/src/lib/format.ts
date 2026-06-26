@@ -1,5 +1,5 @@
 // String-level truncation (not rounding) so we never inflate the displayed
-// balance — wagmi gives us the formatted value as a string already. Lifted
+// balance - wagmi gives us the formatted value as a string already. Lifted
 // from the home page wallet card; three components consume it now.
 export function truncateBalance(formatted: string, decimals = 3): string {
   const [intPart, decimalPart] = formatted.split('.');

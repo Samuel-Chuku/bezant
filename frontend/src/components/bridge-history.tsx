@@ -19,10 +19,10 @@ import { CHAIN_REFRESH_EVENT } from '@/hooks/use-refresh-chain-data';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 
 // Right-column transaction feed. Three layered sources:
-//   1. Live run state — what the user is doing right now (lifted from page).
-//   2. Backend GET /bridge/history/:address — authoritative for inbound
+//   1. Live run state - what the user is doing right now (lifted from page).
+//   2. Backend GET /bridge/history/:address - authoritative for inbound
 //      CCTP arrivals; survives browser clears, syncs across devices.
-//   3. localStorage history — outbound bridges (backend doesn't watch off-Arc
+//   3. localStorage history - outbound bridges (backend doesn't watch off-Arc
 //      mints) and very recent inbound that the indexer hasn't caught yet.
 // Backend + localStorage merge by tx hash; backend wins on amount + timestamp,
 // localStorage contributes source/destination metadata when present.
@@ -85,7 +85,7 @@ export function BridgeHistory({
       const data = await getBridgeHistory(signer.address, { limit: 20 });
       setBackend(data.history);
     } catch {
-      // Silently swallow — the localStorage fallback keeps the panel useful.
+      // Silently swallow - the localStorage fallback keeps the panel useful.
     }
   }, [signer.isConnected, signer.isConnected ? signer.address : null]);
 
@@ -96,7 +96,7 @@ export function BridgeHistory({
     const onChainRefresh = () => {
       void fetchBackend();
       // Indexer hasn't necessarily seen the new block when the wallet receipt
-      // arrives — try again at +3s and +8s.
+      // arrives - try again at +3s and +8s.
       const t1 = setTimeout(() => void fetchBackend(), 3_000);
       const t2 = setTimeout(() => void fetchBackend(), 8_000);
       return () => {
@@ -144,7 +144,7 @@ export function BridgeHistory({
 function mergeRows(local: BridgeHistoryEntry[], backend: BackendRow[]): MergedRow[] {
   const byTx = new Map<string, MergedRow>();
 
-  // Seed from backend — authoritative for inbound, but lacks source-chain
+  // Seed from backend - authoritative for inbound, but lacks source-chain
   // metadata when sourceDomain doesn't resolve to a chain we model.
   for (const r of backend) {
     const tx = r.txHash.toLowerCase();
@@ -167,14 +167,14 @@ function mergeRows(local: BridgeHistoryEntry[], backend: BackendRow[]): MergedRo
     });
   }
 
-  // Layer localStorage on top — both as a fallback when backend hasn't yet
+  // Layer localStorage on top - both as a fallback when backend hasn't yet
   // seen a fresh inbound, and as the sole source for outbound bridges +
   // failed runs (which never produced a mint event).
   for (const r of local) {
     const tx = (r.mintTxHash ?? `local:${r.id}`).toLowerCase();
     const existing = byTx.get(tx);
     if (existing) {
-      // Backend already has it — enrich with localStorage's source/dest
+      // Backend already has it - enrich with localStorage's source/dest
       // metadata since the user knows which chains they picked.
       existing.sourceKey = r.sourceKey;
       existing.sourceLabel = r.sourceFullName;

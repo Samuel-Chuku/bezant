@@ -1,4 +1,4 @@
-// CCTP V2 MessageTransmitter MessageReceived event — emitted on the
+// CCTP V2 MessageTransmitter MessageReceived event - emitted on the
 // destination chain when a cross-chain message is delivered. Pairs with a
 // USDC mint Transfer event in the same tx; the indexer joins the two by
 // tx hash to attach sourceDomain to bridge-inbound history rows.

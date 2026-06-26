@@ -83,7 +83,7 @@ const EVENT_HINT: Record<string, string> = {
   TradeCountered: 'A new amount was proposed.',
   TradeAgreed: 'Both sides agreed the terms.',
   TradeFunded: 'Buyer locked the deposit in escrow.',
-  FinancingAdvanced: 'Seller drew an early payout from the financing pool while goods ship — repaid automatically at settlement.',
+  FinancingAdvanced: 'Seller drew an early payout from the financing pool while goods ship - repaid automatically at settlement.',
   Attested: 'The Trade Officer confirmed delivery.',
   Disputed: 'Flagged for the arbitrator to resolve.',
   Resolved: 'The arbitrator decided the outcome.',
@@ -232,7 +232,7 @@ export default function TradeDetailPage() {
   };
   const doFinance = () => run('finance', async () => signAndWait(await buildRequestFinancingUnsigned(id)), 'Financing advanced');
   const doRaiseDispute = () => run('dispute', async () => signAndWait(await buildRaiseDisputeUnsigned(id)), 'Dispute raised');
-  // Reputation write — rate the counterparty's agentId after settlement.
+  // Reputation write - rate the counterparty's agentId after settlement.
   const rateCounterparty = async (agentId: string, positive: boolean) => {
     await signAndWait(await buildFeedbackUnsigned(agentId, positive));
   };
@@ -246,7 +246,7 @@ export default function TradeDetailPage() {
   const doSubmitDelivery = async () => {
     setError(null);
     if (doc.trim().length < 20) {
-      setError('Paste the full delivery document — name the document type and include a real reference number.');
+      setError('Paste the full delivery document - name the document type and include a real reference number.');
       return;
     }
     if (!signer.isConnected) {
@@ -263,16 +263,16 @@ export default function TradeDetailPage() {
       if (r.decision === 'pass') {
         // Officer approved → buyer challenge window opens; the finalizer settles after it elapses.
         setOfficerNote(null);
-        toast.success('Delivery accepted — the buyer has a short window to dispute, then it settles automatically');
+        toast.success('Delivery accepted - the buyer has a short window to dispute, then it settles automatically');
         await refresh();
       } else {
-        // Not verified. The seller can correct the document and resubmit — an
+        // Not verified. The seller can correct the document and resubmit - an
         // honest typo never goes straight to a human/refund (only high-value does).
         setOfficerNote({ reasons: r.reasons, highValue: r.category === 'high_value' });
         toast.info(
           r.category === 'high_value'
-            ? 'High-value trade — routed to a human reviewer'
-            : 'Document not verified — please correct it and resubmit',
+            ? 'High-value trade - routed to a human reviewer'
+            : 'Document not verified - please correct it and resubmit',
         );
       }
     } catch (err) {
@@ -295,7 +295,7 @@ export default function TradeDetailPage() {
   const isTerminal = !!trade && ['Released', 'Cancelled', 'Refunded'].includes(trade.status);
   // Only the trade's parties (+ the arbitrator, who may need to resolve a
   // dispute) see the details; everyone else sees just the deadline. NOTE: this
-  // is a UI courtesy — the data is public on-chain and via the API.
+  // is a UI courtesy - the data is public on-chain and via the API.
   // Panel-mode trades set the staked-verifier module as their attester at
   // creation; they verify delivery via the panel instead of the Trade Officer.
   const isPanelTrade =
@@ -426,7 +426,7 @@ export default function TradeDetailPage() {
             <Field label={trade.status === 'Funded' || trade.status === 'Released' ? 'Deposit (locked)' : 'Deposit if funded now'}>
               {(trade.status === 'Funded' || trade.status === 'Released' ? trade.depositUsdc : trade.estimatedDepositUsdc)} USDC
             </Field>
-            <Field label="Financing">{trade.financingAdvanced ? `advanced (${trade.financedRepayUsdc} USDC)` : '—'}</Field>
+            <Field label="Financing">{trade.financingAdvanced ? `advanced (${trade.financedRepayUsdc} USDC)` : '-'}</Field>
             <Field label="Buyer"><HandleAddr address={trade.buyer} withAddress /></Field>
             <Field label="Seller"><HandleAddr address={trade.seller} withAddress /></Field>
             <Field label={`Attester (${isPanelTrade ? 'Staked panel' : 'Trade Officer'})`}><HandleAddr address={trade.attester} withAddress /></Field>
@@ -443,7 +443,7 @@ export default function TradeDetailPage() {
           )}
 
           <div className="mt-8 space-y-4">
-            {/* PROPOSING — negotiation */}
+            {/* PROPOSING - negotiation */}
             {trade.status === 'Proposing' && (
               <div className="space-y-3">
                 <p className="text-sm text-neutral-300">
@@ -480,7 +480,7 @@ export default function TradeDetailPage() {
               </div>
             )}
 
-            {/* AGREED — buyer funds */}
+            {/* AGREED - buyer funds */}
             {trade.status === 'Agreed' && isBuyer && (
               <div className="space-y-3">
                 <Action onClick={doFund} busy={busy === 'fund'} disabled={!signer.isConnected}>
@@ -493,7 +493,7 @@ export default function TradeDetailPage() {
                   {showBridge && (
                     <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
                       <p className="mb-2 text-xs text-neutral-500">
-                        Bridge the {trade.estimatedDepositUsdc} USDC you need straight to your Arc wallet via CCTP, then fund — pick a source chain and go.
+                        Bridge the {trade.estimatedDepositUsdc} USDC you need straight to your Arc wallet via CCTP, then fund - pick a source chain and go.
                       </p>
                       <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} lockedAmount={trade.estimatedDepositUsdc} lockToArc />
                     </div>
@@ -505,37 +505,37 @@ export default function TradeDetailPage() {
               <Waiting>Agreed at {trade.amountUsdc} USDC. Waiting for the buyer to fund.</Waiting>
             )}
 
-            {/* FUNDED + panel mode — staked-panel verification (fee → submit → vote) */}
+            {/* FUNDED + panel mode - staked-panel verification (fee → submit → vote) */}
             {trade.status === 'Funded' && isPanelTrade && (
               <VerificationPanel tradeId={id} buyer={trade.buyer} seller={trade.seller} amountUsdc={trade.amountUsdc} onChange={refresh} />
             )}
 
-            {/* FUNDED — buyer challenge window open (officer approved, not yet settled) */}
+            {/* FUNDED - buyer challenge window open (officer approved, not yet settled) */}
             {trade.status === 'Funded' && !isPanelTrade && windowActive && trade.challengeWindowUntil != null && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/40 bg-amber-950/20 p-4">
                 <p className="text-sm text-amber-100">
                   {isBuyer
-                    ? 'Delivery submitted. Review it now — it settles to the seller automatically unless you dispute.'
+                    ? 'Delivery submitted. Review it now - it settles to the seller automatically unless you dispute.'
                     : isSeller
                       ? 'Delivery submitted. It settles to you automatically unless the buyer disputes in time.'
-                      : 'Delivery submitted — in the buyer review window.'}
+                      : 'Delivery submitted - in the buyer review window.'}
                 </p>
                 <CountdownChip unix={trade.challengeWindowUntil} label="Settles in" />
               </div>
             )}
 
-            {/* FUNDED — seller delivers (officer attests, auto-settles) */}
+            {/* FUNDED - seller delivers (officer attests, auto-settles) */}
             {trade.status === 'Funded' && !isPanelTrade && isSeller && !windowActive && (
               <div className="space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm text-neutral-300">
-                    Submit your delivery document — the Trade Officer reviews it and, on a pass, the trade settles to you automatically.
+                    Submit your delivery document - the Trade Officer reviews it and, on a pass, the trade settles to you automatically.
                   </p>
                   <textarea
                     value={doc}
                     onChange={(e) => setDoc(e.target.value)}
                     rows={3}
-                    placeholder="Paste your bill of lading / tracking / customs document — must name the document type and include a real reference number, e.g. 'Bill of Lading MAEU123456789 — 2000kg textiles, Jebel Ali → Lagos, carrier Maersk'."
+                    placeholder="Paste your bill of lading / tracking / customs document - must name the document type and include a real reference number, e.g. 'Bill of Lading MAEU123456789 - 2000kg textiles, Jebel Ali → Lagos, carrier Maersk'."
                     className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
                   />
                   <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
@@ -543,8 +543,8 @@ export default function TradeDetailPage() {
                     <div className={`rounded-lg border p-3 text-sm ${officerNote.highValue ? 'border-sky-900/50 bg-sky-950/20 text-sky-200' : 'border-amber-900/50 bg-amber-950/20 text-amber-100'}`}>
                       <p className="font-medium">
                         {officerNote.highValue
-                          ? 'High-value trade — routed to a human reviewer.'
-                          : 'Couldn’t verify this document — please correct it and resubmit.'}
+                          ? 'High-value trade - routed to a human reviewer.'
+                          : 'Couldn’t verify this document - please correct it and resubmit.'}
                       </p>
                       {officerNote.reasons.length > 0 && (
                         <ul className="mt-1 list-disc pl-5 text-xs opacity-90">
@@ -554,7 +554,7 @@ export default function TradeDetailPage() {
                         </ul>
                       )}
                       {!officerNote.highValue && (
-                        <p className="mt-1 text-xs opacity-80">Your funds aren’t at risk — nothing is refunded; just fix the document above and submit again.</p>
+                        <p className="mt-1 text-xs opacity-80">Your funds aren’t at risk - nothing is refunded; just fix the document above and submit again.</p>
                       )}
                     </div>
                   )}
@@ -564,7 +564,7 @@ export default function TradeDetailPage() {
                     {financingQuote ? (
                       <div className="space-y-2">
                         <p className="text-xs text-neutral-400">
-                          Trade Officer underwriting — buyer is{' '}
+                          Trade Officer underwriting - buyer is{' '}
                           <strong className="text-neutral-200">tier {financingQuote.buyerTier}</strong>, so you qualify for an advance now (repaid at settlement):
                         </p>
                         <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-sm">
@@ -593,13 +593,13 @@ export default function TradeDetailPage() {
               <Waiting>Funded. Awaiting delivery documents from the seller; settlement is automatic once the officer attests.</Waiting>
             )}
 
-            {/* FUNDED — buyer can reclaim after the deadline; either party can
+            {/* FUNDED - buyer can reclaim after the deadline; either party can
                 dispute once delivery is in (nothing to contest before that). */}
             {trade.status === 'Funded' && (isBuyer || isSeller) && (deliverySubmitted || (isBuyer && deadlinePassed)) && (
               <div className="space-y-2 border-t border-neutral-900 pt-3">
                 {isBuyer && deadlinePassed && (
                   <div>
-                    <p className="mb-2 text-xs text-neutral-500">The deadline passed with no attestation — reclaim your deposit.</p>
+                    <p className="mb-2 text-xs text-neutral-500">The deadline passed with no attestation - reclaim your deposit.</p>
                     <Action onClick={doRefund} busy={busy === 'refund'} variant="ghost">Claim refund</Action>
                   </div>
                 )}
@@ -634,13 +634,13 @@ export default function TradeDetailPage() {
             )}
             {trade.status === 'Refunded' && (
               <OutcomeCard tone="amber" title="Refunded" tx={events.find((e) => e.kind === 'Refunded')?.txHash} txLabel="View refund">
-                <strong className="text-amber-100">{trade.depositUsdc} USDC</strong> deposit returned to the buyer — no delivery was attested by the deadline.
+                <strong className="text-amber-100">{trade.depositUsdc} USDC</strong> deposit returned to the buyer - no delivery was attested by the deadline.
               </OutcomeCard>
             )}
             {trade.status === 'Disputed' && isArbitrator && (
               <div className="space-y-3 rounded-lg border border-red-900/40 bg-red-950/20 p-4">
                 <p className="text-sm text-red-200">
-                  You are the arbitrator for this disputed trade. Decide the outcome — the escrowed funds go to whichever party you choose.
+                  You are the arbitrator for this disputed trade. Decide the outcome - the escrowed funds go to whichever party you choose.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Action onClick={() => doResolve(true)} busy={busy === 'resolve-seller'}>Release to seller</Action>
@@ -650,7 +650,7 @@ export default function TradeDetailPage() {
             )}
             {trade.status === 'Disputed' && !isArbitrator && (
               <OutcomeCard tone="red" title="Under dispute" tx={events.find((e) => e.kind === 'Disputed')?.txHash}>
-                An arbitrator is reviewing this trade and will decide the outcome — funds stay locked until then.
+                An arbitrator is reviewing this trade and will decide the outcome - funds stay locked until then.
               </OutcomeCard>
             )}
 
@@ -664,7 +664,7 @@ export default function TradeDetailPage() {
               <ol className="mt-3 space-y-2">
                 {(() => {
                   // If the seller drew financing, the Settled amount is only the
-                  // remaining balance — explain that so it doesn't read as the
+                  // remaining balance - explain that so it doesn't read as the
                   // whole trade being settled for a fraction of its value.
                   const financed = events.find((e) => e.kind === 'FinancingAdvanced')?.amountUsdc;
                   // Newest first (events arrive oldest-first from the indexer).
@@ -674,7 +674,7 @@ export default function TradeDetailPage() {
                     const hint =
                       e.kind === 'Released'
                         ? financed
-                          ? `Final ${e.amountUsdc} USDC to the seller — the other ${financed} USDC was paid early from the financing pool, so the full amount was delivered.`
+                          ? `Final ${e.amountUsdc} USDC to the seller - the other ${financed} USDC was paid early from the financing pool, so the full amount was delivered.`
                           : 'Full amount released to the seller.'
                         : EVENT_HINT[e.kind];
                     return (
@@ -713,7 +713,7 @@ export default function TradeDetailPage() {
       <BridgeProgressModal
         run={bridgeRun}
         onClose={() => setBridgeRun(INITIAL_RUN)}
-        tail={busy === 'fund' ? <span className="text-sky-300">Bridged ✓ — funding your trade…</span> : undefined}
+        tail={busy === 'fund' ? <span className="text-sky-300">Bridged ✓ - funding your trade…</span> : undefined}
       />
     </main>
   );
@@ -764,7 +764,7 @@ function Waiting({ children }: { children: React.ReactNode }) {
 }
 
 // Terminal / in-flight outcome summary card (Settled / Refunded / Cancelled /
-// Disputed) — icon badge + headline + body + an optional "view tx" button.
+// Disputed) - icon badge + headline + body + an optional "view tx" button.
 const OUTCOME_TONES = {
   emerald: { border: 'border-emerald-900/40', from: 'from-emerald-950/40', badge: 'bg-emerald-500/15 text-emerald-300', title: 'text-emerald-100', btn: 'bg-emerald-600 hover:bg-emerald-500', icon: <path d="M20 6 9 17l-5-5" /> },
   amber: { border: 'border-amber-900/40', from: 'from-amber-950/40', badge: 'bg-amber-500/15 text-amber-300', title: 'text-amber-100', btn: 'bg-amber-600 hover:bg-amber-500', icon: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></> },
@@ -835,7 +835,7 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
     );
   }
   if (rated !== null) {
-    return <p className="text-xs text-emerald-300">Thanks — you left {rated ? '👍' : '👎'} feedback.</p>;
+    return <p className="text-xs text-emerald-300">Thanks - you left {rated ? '👍' : '👎'} feedback.</p>;
   }
 
   const rate = async (positive: boolean) => {

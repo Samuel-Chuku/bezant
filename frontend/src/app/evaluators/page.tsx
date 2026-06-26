@@ -69,7 +69,7 @@ export default function EvaluatorsPage() {
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     }
-    // amount intentionally excluded — we only seed it once.
+    // amount intentionally excluded - we only seed it once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signer.isConnected, signer.address]);
 
@@ -126,7 +126,7 @@ export default function EvaluatorsPage() {
       setAction({ status: 'busy', label: 'Unstaking…' });
       await send('Unstaking…', () => buildUnstakeEvaluatorUnsigned());
       setAction({ status: 'success' });
-      toast.success('Unstaked — funds returned');
+      toast.success('Unstaked - funds returned');
       await load();
     } catch (err) {
       setAction({ status: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -142,7 +142,7 @@ export default function EvaluatorsPage() {
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Evaluate</h1>
         <p className="mt-2 text-sm text-neutral-400">
           Stake USDC to join the evaluator pool. When a dispute is defended, three evaluators are
-          picked at random to vote — winners share the loser&apos;s forfeited bond.
+          picked at random to vote - winners share the loser&apos;s forfeited bond.
         </p>
       </header>
 
@@ -170,7 +170,7 @@ export default function EvaluatorsPage() {
             <Stat label="Per dispute" value={String(info.pool.evaluatorsPerDispute)} />
           </section>
 
-          {/* Reputation — dispute alignment (on-chain counters) + ERC-8004 agent rep. */}
+          {/* Reputation - dispute alignment (on-chain counters) + ERC-8004 agent rep. */}
           <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
             <h2 className="text-sm font-medium text-neutral-100">Your reputation</h2>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -179,7 +179,7 @@ export default function EvaluatorsPage() {
                 value={
                   info.totalVotes > 0
                     ? `${Math.round((info.majorityVotes / info.totalVotes) * 100)}%`
-                    : '—'
+                    : '-'
                 }
               />
               <Row label="Disputes judged" value={String(info.totalVotes)} />
@@ -191,7 +191,7 @@ export default function EvaluatorsPage() {
                     value={
                       rep.summary.count > 0
                         ? formatReputationValue(rep.summary.value, rep.summary.valueDecimals)
-                        : '—'
+                        : '-'
                     }
                   />
                 </>
@@ -199,7 +199,7 @@ export default function EvaluatorsPage() {
                 <div className="col-span-2 text-xs text-neutral-500">
                   {hasAgentId
                     ? 'No ERC-8004 feedback yet.'
-                    : 'Not a registered ERC-8004 agent — register an identity to build portable reputation.'}
+                    : 'Not a registered ERC-8004 agent - register an identity to build portable reputation.'}
                 </div>
               )}
             </dl>

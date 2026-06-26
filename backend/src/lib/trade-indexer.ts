@@ -209,7 +209,7 @@ async function tickPool(head: bigint): Promise<number> {
 
 export function startTradeIndexer(log: FastifyBaseLogger): void {
   if (!ESCROW) {
-    log.warn('TRADE_ESCROW_ADDRESS unset — trade indexer disabled');
+    log.warn('TRADE_ESCROW_ADDRESS unset - trade indexer disabled');
     return;
   }
   const loop = () =>

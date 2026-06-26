@@ -1,9 +1,9 @@
 'use client';
 
 // Optional cross-chain seller payout via Circle Gateway. Two modes:
-//   • "prefer"  — shown while the trade is still active (Funded): the seller
+//   • "prefer"  - shown while the trade is still active (Funded): the seller
 //     picks where they want to be paid; the choice is saved locally.
-//   • "settle"  — shown once Released: if a chain was pre-chosen it offers a
+//   • "settle"  - shown once Released: if a chain was pre-chosen it offers a
 //     one-click route there; otherwise the closed trade stays clean.
 // The actual transfer can only run after settlement (the funds sit in escrow
 // until then), so this is "choose early, route at settlement". External (EOA)
@@ -93,7 +93,7 @@ export function GatewayPayoutPanel({
   const run = useCallback(async () => {
     if (!signer.isConnected) return;
     if (signer.mode !== 'external') {
-      toast.error('Connect an external wallet (MetaMask, Rabby, etc.) to route your payout — passkey wallets aren’t supported for this yet.');
+      toast.error('Connect an external wallet (MetaMask, Rabby, etc.) to route your payout - passkey wallets aren’t supported for this yet.');
       return;
     }
     if (!destKey) { toast.error('Pick a destination chain.'); return; }
@@ -126,7 +126,7 @@ export function GatewayPayoutPanel({
               await sleep(3_000);
               credited = Number(await getGatewayBalance(sellerAddress));
             }
-            if (credited < required) throw new Error('Gateway hasn’t credited the deposit yet — try again in a moment.');
+            if (credited < required) throw new Error('Gateway hasn’t credited the deposit yet - try again in a moment.');
           },
         });
       }
@@ -309,7 +309,7 @@ function RouteFootnote({ signerMode }: { signerMode: 'external' | 'circle' | nul
   return (
     <>
       {signerMode !== null && signerMode !== 'external' && (
-        <p className="text-xs text-amber-300">Passkey wallets can’t route cross-chain yet — connect an external wallet.</p>
+        <p className="text-xs text-amber-300">Passkey wallets can’t route cross-chain yet - connect an external wallet.</p>
       )}
       <p className="text-[11px] text-neutral-600">A small Gateway fee (≈0.02 USDC) is taken on top of the amount.</p>
     </>

@@ -73,7 +73,7 @@ export function BaseLogo({ className }: Props) {
 }
 
 export function AvalancheLogo({ className }: Props) {
-  // Avalanche "A" — a large right triangle and a smaller left one, white on red.
+  // Avalanche "A" - a large right triangle and a smaller left one, white on red.
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
       <circle cx="16" cy="16" r="16" fill="#E84142" />

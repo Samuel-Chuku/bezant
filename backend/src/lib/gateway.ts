@@ -1,4 +1,4 @@
-// Circle Gateway settlement — the optional cross-chain seller payout.
+// Circle Gateway settlement - the optional cross-chain seller payout.
 //
 // The escrow always pays the seller on Arc (unchanged). When a seller chooses a
 // different chain, they route their just-received USDC there via Gateway. The
@@ -28,7 +28,7 @@ import { sepolia, optimismSepolia, arbitrumSepolia, baseSepolia, avalancheFuji }
 import { arcClient, USDC_ADDRESS as ARC_USDC } from './arc.js';
 
 export const GATEWAY_API = process.env.GATEWAY_API_BASE_URL ?? 'https://gateway-api-testnet.circle.com/v1';
-// Deterministic Gateway contract addresses — same on every supported chain.
+// Deterministic Gateway contract addresses - same on every supported chain.
 export const GATEWAY_WALLET = getAddress('0x0077777d7EBA4688BDeF3E311b846F25870A19B9');
 export const GATEWAY_MINTER = getAddress('0x0022222ABE238Cc2C7Bb1f21003F0a260052475B');
 export const ARC_DOMAIN = 26;
@@ -38,7 +38,7 @@ export const ARC_DOMAIN = 26;
 // must cover `amount + maxFee`, so we deposit that and cap the fee here.
 const MAX_FEE = parseUnits('0.1', 6); // generous ceiling; actual fee far smaller
 
-// Destination registry — chains we can service (USDC address + RPC via the viem
+// Destination registry - chains we can service (USDC address + RPC via the viem
 // chain + a relayer with gas). Mirrors the EVM testnets in the frontend bridge
 // config. Add a row (and fund the relayer there) to offer more.
 export type GatewayDestination = { key: string; name: string; domain: number; chainId: number; usdc: Address; chain: Chain };
@@ -67,7 +67,7 @@ const destByKey = (key: string) => {
 };
 const destByDomain = (domain: number) => GATEWAY_DESTINATIONS.find((x) => x.domain === domain);
 
-// EIP-712 type set for burn intents (viem/client shape — EIP712Domain omitted;
+// EIP-712 type set for burn intents (viem/client shape - EIP712Domain omitted;
 // viem derives it from `domain`). Circle's signTypedData wants EIP712Domain
 // included, so the dev-controlled helper adds it inline below.
 const BURN_INTENT_TYPES = {
@@ -103,7 +103,7 @@ type BurnIntentMessage = ReturnType<typeof buildBurnIntentMessage>;
 
 export function getRelayerAccount() {
   const key = (process.env.GATEWAY_RELAYER_PRIVATE_KEY ?? process.env.GATEWAY_POC_PRIVATE_KEY) as Hex | undefined;
-  if (!key) throw new Error('No GATEWAY_RELAYER_PRIVATE_KEY (or GATEWAY_POC_PRIVATE_KEY) set — needed to relay the destination mint.');
+  if (!key) throw new Error('No GATEWAY_RELAYER_PRIVATE_KEY (or GATEWAY_POC_PRIVATE_KEY) set - needed to relay the destination mint.');
   return privateKeyToAccount(key);
 }
 

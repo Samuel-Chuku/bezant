@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { getPoolYield, type PoolYield } from '@/lib/api';
 
 // Compact yield strip: cumulative (since inception) + 24h / 7d windows.
-// Windows read "—" until the backend has sampled enough NAV history.
+// Windows read "-" until the backend has sampled enough NAV history.
 export function PoolYieldStrip({ className = '' }: { className?: string }) {
   const [y, setY] = useState<PoolYield | null>(null);
 
@@ -13,7 +13,7 @@ export function PoolYieldStrip({ className = '' }: { className?: string }) {
     getPoolYield()
       .then((d) => live && setY(d))
       .catch(() => {
-        /* unreachable — render nothing */
+        /* unreachable - render nothing */
       });
     return () => {
       live = false;
@@ -37,7 +37,7 @@ function YieldStat({ label, pct }: { label: string; pct: number | null }) {
     <div className="rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2">
       <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
       <div className={`mt-0.5 text-sm font-medium ${color}`} title={pct == null ? 'Not enough history yet' : undefined}>
-        {pct == null ? '—' : `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}
+        {pct == null ? '-' : `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}
       </div>
     </div>
   );

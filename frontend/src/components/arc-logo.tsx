@@ -1,6 +1,6 @@
-// Small brand mark for the nav. A half-circle arc in our emerald accent —
-// references the "arc" in arc-trade without leaning on Arc Network's
-// (separate) corporate identity.
+// Small brand mark for the nav, in our emerald accent. Placeholder mark until
+// the Bezant brand gets a proper logo in the design pass (a bezant is a
+// Byzantine gold coin - a roundel could fit later).
 export function ArcLogo({ size = 22 }: { size?: number }) {
   return (
     <svg
@@ -8,7 +8,7 @@ export function ArcLogo({ size = 22 }: { size?: number }) {
       height={size}
       viewBox="0 0 24 24"
       role="img"
-      aria-label="arc-trade"
+      aria-label="Bezant"
       className="text-emerald-400"
     >
       <path

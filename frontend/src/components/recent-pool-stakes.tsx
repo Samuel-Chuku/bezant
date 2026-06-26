@@ -18,14 +18,14 @@ export function RecentPoolStakes() {
       .catch(() => setItems([]));
   }, []);
 
-  if (items === null) return null; // first load — stay quiet rather than flash empty
+  if (items === null) return null; // first load - stay quiet rather than flash empty
 
   return (
     <section className="mt-8">
       <h2 className="text-xs uppercase tracking-wide text-neutral-500">Recent deposits</h2>
       {items.length === 0 ? (
         <p className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 px-3 py-8 text-center text-sm text-neutral-500">
-          No deposits yet — be the first to provide liquidity.
+          No deposits yet - be the first to provide liquidity.
         </p>
       ) : (
         <ul className="mt-3 divide-y divide-neutral-900 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/40">

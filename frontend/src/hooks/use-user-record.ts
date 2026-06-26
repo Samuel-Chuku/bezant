@@ -30,7 +30,7 @@ export function useUserRecord() {
 
   // On connect: probe the backend to see if this address already has a row.
   // We do NOT auto-create. Registration only happens when the user claims a
-  // handle (atomic — same call creates the row).
+  // handle (atomic - same call creates the row).
   useEffect(() => {
     if (!signer.isConnected) {
       setState({ status: 'idle' });

@@ -1,15 +1,15 @@
-// Trade Officer — LLM documentary examiner (plugs into the evaluateDelivery seam).
+// Trade Officer - LLM documentary examiner (plugs into the evaluateDelivery seam).
 //
 // Sends the submitted delivery document + the trade context to an OpenRouter
 // model and asks for a structured PASS / ESCALATE verdict, like a letter-of-
 // credit document examiner. Still *documentary* verification (is this a coherent,
-// authentic-looking shipping/customs document?), not physical proof — but far
+// authentic-looking shipping/customs document?), not physical proof - but far
 // better than a regex: it catches gibberish, typos, internal inconsistencies,
 // and docs that don't read like a real shipment.
 //
 // Configure with OPENROUTER_API_KEY (+ optional OFFICER_LLM_MODEL). When the key
 // is absent or the call fails, returns null so the caller falls back to the
-// deterministic check — the officer never hard-depends on the LLM.
+// deterministic check - the officer never hard-depends on the LLM.
 
 import type { DeliveryDoc, OfficerDecision } from './trade-officer.js';
 import { proofHashOf } from './trade-officer.js';
@@ -28,9 +28,9 @@ PASS only if ALL hold:
 - nothing looks like gibberish, a placeholder, or a typo in the reference.
 
 ESCALATE otherwise. Use category:
-- "documentary" for a fixable document problem (missing/short, no real reference, doesn't read like a shipping doc, likely typo) — the seller can correct and resubmit;
-- "mismatch" if it looks like a real document but for a different/unrelated shipment — the seller can submit the correct one.
-Set resubmittable=true for both. Never approve when uncertain — escalate with short, specific reasons.
+- "documentary" for a fixable document problem (missing/short, no real reference, doesn't read like a shipping doc, likely typo) - the seller can correct and resubmit;
+- "mismatch" if it looks like a real document but for a different/unrelated shipment - the seller can submit the correct one.
+Set resubmittable=true for both. Never approve when uncertain - escalate with short, specific reasons.
 
 Respond with ONLY a JSON object, no prose, no code fences:
 {"decision":"pass"|"escalate","category":"documentary"|"mismatch"|"ok","confidence":0..1,"reasons":["..."],"resubmittable":true|false}`;

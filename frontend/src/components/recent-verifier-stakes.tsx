@@ -18,7 +18,7 @@ export function RecentVerifierStakes() {
   const [tab, setTab] = useState<'mine' | 'global'>('mine');
   const [rows, setRows] = useState<Row[] | null>(null);
 
-  // No "mine" to show when disconnected — fall back to global.
+  // No "mine" to show when disconnected - fall back to global.
   useEffect(() => {
     if (!signer.isConnected) setTab('global');
   }, [signer.isConnected]);

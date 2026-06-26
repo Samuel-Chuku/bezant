@@ -1,4 +1,4 @@
-// TradePassport ABI — extracted from contracts/out/TradePassport.sol/TradePassport.json
+// TradePassport ABI - extracted from contracts/out/TradePassport.sol/TradePassport.json
 // Regenerate from contracts/:  forge inspect TradePassport abi --json
 export const tradePassportAbi = [
   {

@@ -1,6 +1,6 @@
 'use client';
 
-// Pending verifications for the connected verifier — trades where they were
+// Pending verifications for the connected verifier - trades where they were
 // drawn onto a panel and still owe a vote. Powers the /verify list and the
 // subtle nav badge. Light poll (30s) + refetch on focus.
 import { useCallback, useEffect, useState } from 'react';

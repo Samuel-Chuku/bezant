@@ -1,5 +1,5 @@
 // Role-aware "what should happen next" for a pact. Single source of truth
-// for both the pact-detail page's waiting cue and the notifications feed —
+// for both the pact-detail page's waiting cue and the notifications feed -
 // derives the directive sentence and whether the *connected user* is the
 // one being asked to act.
 import type { PactLiveState, PactRole } from './api';
@@ -23,7 +23,7 @@ export function describeCurrentStep(
   if (pact.status === 'Expired' || pact.status === 'Refunded') return null;
 
   if (status === 'Disputed') {
-    return 'A dispute is open — open the pact to respond or follow the evaluator vote.';
+    return 'A dispute is open - open the pact to respond or follow the evaluator vote.';
   }
 
   // Soft-Expired: past the pact deadline but not yet acted on.
@@ -58,7 +58,7 @@ export function describeCurrentStep(
     // Wrapper model: the client accepts (instant release) or disputes during the
     // challenge window; either party can dispute; after it closes anyone finalizes.
     if (isClient)
-      return 'Review the deliverable — accept to release the funds, or open a dispute before the challenge window closes.';
+      return 'Review the deliverable - accept to release the funds, or open a dispute before the challenge window closes.';
     if (isProvider)
       return 'Delivered. Waiting for the client to accept, or for the challenge window to close so the payout can finalize.';
     return 'Waiting for the client to accept or the challenge window to close.';
@@ -68,13 +68,13 @@ export function describeCurrentStep(
 }
 
 // True when the directive in describeCurrentStep is *for the connected user*
-// — i.e., they're the one being asked to act, not just observing someone
+// - i.e., they're the one being asked to act, not just observing someone
 // else's turn. Used by the notifications feed to flag "action required" rows
 // and by other surfaces (e.g., countdown urgency label) to swap "waiting"
 // vs "act now" language.
 //
 // We branch by the same (status, role) tuples as describeCurrentStep rather
-// than scraping the returned sentence — keeps the two in lock-step without
+// than scraping the returned sentence - keeps the two in lock-step without
 // fragile string matching.
 export function isActionRequiredByMe(
   pact: PactLiveState,

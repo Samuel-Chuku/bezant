@@ -21,10 +21,10 @@ import { shortAddress, truncateBalance } from '@/lib/format';
 import type { BridgeRun, StepState } from '@/lib/bridge-run';
 
 // Any-to-any bridging across the chains in BRIDGE_CHAINS. Default destination
-// is Arc — that's the focal chain. Source defaults to the wallet's current
+// is Arc - that's the focal chain. Source defaults to the wallet's current
 // chain (or Ethereum Sepolia if it's not a supported source).
 //
-// Source = Arc is gated on Circle passkey wallet — injected wallets struggle
+// Source = Arc is gated on Circle passkey wallet - injected wallets struggle
 // with Arc's USDC-as-native gas model right now.
 export function BridgeWidget({
   run,

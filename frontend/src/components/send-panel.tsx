@@ -1,6 +1,6 @@
 'use client';
 
-// Send USDC — available ONLY to Circle Modular (passkey) wallet users. External
+// Send USDC - available ONLY to Circle Modular (passkey) wallet users. External
 // wallets already have their own wallet UI to move funds; passkey accounts don't,
 // so without this they can hold a balance but can't spend it. Renders nothing for
 // external/disconnected users. USDC on Arc is the native token but we move it via
@@ -39,7 +39,7 @@ export function SendPanel() {
 
   const available = balance ? Number(balance.formatted) : 0;
 
-  // Step 1 — resolve the recipient and show who the funds will actually go to.
+  // Step 1 - resolve the recipient and show who the funds will actually go to.
   const review = async () => {
     setError(null);
     try {
@@ -64,7 +64,7 @@ export function SendPanel() {
     }
   };
 
-  // Step 2 — confirmed recipient; sign + send (global review modal handles signing).
+  // Step 2 - confirmed recipient; sign + send (global review modal handles signing).
   const confirmSend = async () => {
     if (!pending || !signer.isConnected) return;
     const dest = pending.address;
@@ -143,10 +143,10 @@ export function SendPanel() {
         </button>
 
         {error && <p className="text-xs text-red-300">{error}</p>}
-        <p className="text-[11px] text-neutral-600">Gas is sponsored — you only spend the amount you send.</p>
+        <p className="text-[11px] text-neutral-600">Gas is sponsored - you only spend the amount you send.</p>
       </div>
 
-      {/* Recipient confirmation — shows exactly who the funds go to before signing. */}
+      {/* Recipient confirmation - shows exactly who the funds go to before signing. */}
       {pending && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !busy && setPending(null)} />
@@ -165,7 +165,7 @@ export function SendPanel() {
             ) : (
               <div className="mt-1">
                 <p className="break-all font-mono text-base font-bold text-neutral-100">{pending.address}</p>
-                <p className="mt-1 text-xs text-amber-300">No handle linked to this address — double-check it&apos;s correct.</p>
+                <p className="mt-1 text-xs text-amber-300">No handle linked to this address - double-check it&apos;s correct.</p>
               </div>
             )}
 

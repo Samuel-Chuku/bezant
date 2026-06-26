@@ -1,4 +1,4 @@
-// Standard ERC-20 Transfer event — used by the bridge-event indexer to spot
+// Standard ERC-20 Transfer event - used by the bridge-event indexer to spot
 // USDC mints (from = 0x0) on Arc, which is how CCTP V2 inbound bridges land.
 export const erc20TransferEvent = {
   type: 'event',

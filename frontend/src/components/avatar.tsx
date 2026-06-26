@@ -3,7 +3,7 @@
 import { useId } from 'react';
 
 // Deterministic gradient avatar generated from an address. Distinct from
-// karwan-style illustrated characters — three HSL hues picked from address
+// karwan-style illustrated characters - three HSL hues picked from address
 // bytes, rendered as a circle with a smooth two-stop gradient.
 export function Avatar({ address, size = 32 }: { address: string; size?: number }) {
   const id = useId();

@@ -42,7 +42,7 @@ const BANNER_COLOR: Record<Urgency, { bg: string; text: string; dot: string }> =
   },
 };
 
-// Coarse formatter for chips — "1h 23m", "4m", "expired". No seconds.
+// Coarse formatter for chips - "1h 23m", "4m", "expired". No seconds.
 export function formatCoarse(secondsRemaining: number): string {
   if (secondsRemaining <= 0) return 'expired';
   const hours = Math.floor(secondsRemaining / 3600);
@@ -57,7 +57,7 @@ export function formatCoarse(secondsRemaining: number): string {
   return `${secondsRemaining}s`;
 }
 
-// Fine formatter for the live banner — shows seconds once we're under an hour.
+// Fine formatter for the live banner - shows seconds once we're under an hour.
 function formatFine(secondsRemaining: number): string {
   if (secondsRemaining <= 0) return 'expired';
   const hours = Math.floor(secondsRemaining / 3600);
@@ -95,7 +95,7 @@ export function CountdownChip({ unix, label }: { unix: number; label?: string })
   );
 }
 
-// Live-ticking banner — updates every second. For the pact-detail page where
+// Live-ticking banner - updates every second. For the pact-detail page where
 // urgency matters and the user is actively deciding.
 export function CountdownBanner({
   unix,

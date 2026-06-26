@@ -31,7 +31,7 @@ export function PoolPanel() {
     try {
       setStats(await getPoolStats(signer.isConnected ? signer.address : undefined));
     } catch {
-      /* pool not deployed / unreachable — leave stats null */
+      /* pool not deployed / unreachable - leave stats null */
     }
   }, [signer.isConnected, signer.address]);
 

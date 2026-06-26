@@ -2,7 +2,7 @@
 
 // Transparency view for the officer (automated Trade Officer) route. Mirrors the
 // staked-panel decision modal, but is explicit that this is a document-validity
-// check — the delivery *information* was validated, not independently verified.
+// check - the delivery *information* was validated, not independently verified.
 import { createPortal } from 'react-dom';
 import type { OfficerReview } from '@/lib/api';
 
@@ -23,10 +23,10 @@ export function OfficerReviewModal({ review, onClose }: { review: OfficerReview;
           </button>
         </div>
 
-        {/* The honest framing — validated info, not full verification. */}
+        {/* The honest framing - validated info, not full verification. */}
         <div className="mt-4 rounded-lg border border-amber-900/40 bg-amber-950/15 p-3 text-xs leading-relaxed text-amber-100/90">
           The Trade Officer is an <strong>automated agent</strong>. It checks the delivery document is well-formed and
-          plausible — the right document type with a real reference. This validates the delivery <strong>information</strong>;
+          plausible - the right document type with a real reference. This validates the delivery <strong>information</strong>;
           it is <strong>not</strong> an independent, multi-party verification of the goods. For that, the buyer can choose
           the <strong>Staked panel</strong> at trade creation.
         </div>

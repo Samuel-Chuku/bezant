@@ -1,4 +1,4 @@
-// ERC-8004 (Trustless Agents — Identity, Reputation, Validation registries).
+// ERC-8004 (Trustless Agents - Identity, Reputation, Validation registries).
 // Only the bits we consume here: read-side ReputationRegistry surface +
 // minimal IdentityRegistry methods to verify ownership when a user claims
 // an agentId. Writing feedback (giveFeedback / revokeFeedback) is done
@@ -33,7 +33,7 @@ export const reputationRegistryAbi = [
   },
   // Every (client, feedbackIndex) tuple for the agent, with optional tag
   // filter and a flag for whether to include revoked entries. Returns 7
-  // parallel arrays — viem packs them into a tuple of arrays in the same
+  // parallel arrays - viem packs them into a tuple of arrays in the same
   // declaration order as the outputs.
   {
     type: 'function',
@@ -94,7 +94,7 @@ export const reputationRegistryAbi = [
   },
 ] as const;
 
-// IdentityRegistry — ownership accessors for the link verification path
+// IdentityRegistry - ownership accessors for the link verification path
 // plus the no-arg `register()` overload for M32 self-registration. The
 // registry is itself an ERC-721, so ownerOf works alongside the
 // agent-specific helpers, and registration mints a new token that emits
@@ -117,7 +117,7 @@ export const identityRegistryAbi = [
     inputs: [{ name: 'agentId', type: 'uint256' }],
     outputs: [{ type: 'address' }],
   },
-  // The no-arg register() overload — simplest entrypoint. Caller becomes
+  // The no-arg register() overload - simplest entrypoint. Caller becomes
   // the owner of the newly-minted ERC-721 token; the agentId is assigned
   // incrementally by the registry. We can't read the return value off a
   // sent tx, so we parse the Transfer event from the receipt instead.
@@ -130,7 +130,7 @@ export const identityRegistryAbi = [
   },
 ] as const;
 
-// Standard ERC-721 Transfer event — used to extract the agentId from a
+// Standard ERC-721 Transfer event - used to extract the agentId from a
 // register() tx receipt. On mint, `from` is address(0) and `tokenId` is
 // the freshly-assigned agentId.
 export const erc721TransferEvent = {

@@ -65,11 +65,11 @@ import { shortAddress } from '@/lib/format';
 const ACTION_TOAST: Record<string, string> = {
   'Funding pact…': 'Pact funded',
   'Releasing…': 'Funds released to the provider',
-  'Rejecting…': 'Pact rejected — refund issued',
+  'Rejecting…': 'Pact rejected - refund issued',
   'Cancelling…': 'Pact cancelled',
   'Setting budget…': 'Quote updated',
   'Opening dispute…': 'Dispute opened',
-  'Defending…': 'Dispute defended — evaluators selected',
+  'Defending…': 'Dispute defended - evaluators selected',
   'Conceding…': 'Conceded',
   'Force-settling…': 'Dispute force-settled',
   'Committing vote…': 'Vote committed',
@@ -80,7 +80,7 @@ const ACTION_TOAST: Record<string, string> = {
   'Approving USDC…': 'USDC approved',
 };
 
-// Minimal ABI fragment to read USDC allowance — saves a backend roundtrip.
+// Minimal ABI fragment to read USDC allowance - saves a backend roundtrip.
 const erc20AllowanceAbi = [
   {
     type: 'function',
@@ -145,7 +145,7 @@ function timeAgo(iso: string): string {
 
 type LifecycleRow = {
   label: string;
-  // Optional — derived rows for actions with no indexed event (e.g. refund
+  // Optional - derived rows for actions with no indexed event (e.g. refund
   // closed terminal state via claimRefund, which is permissionless and
   // doesn't tell us the caller) can omit the actor entirely. Render skips
   // the by-line for those rows.
@@ -195,7 +195,7 @@ function buildLifecycle(
 
   // Funded: prefer the indexed JobFunded event (timestamp + tx link).
   // Fall back to the derived row from on-chain status when the indexer
-  // hasn't caught up — drops the timestamp but keeps the timeline coherent.
+  // hasn't caught up - drops the timestamp but keeps the timeline coherent.
   const fundedEvent = events.find((e) => e.eventType === 'Funded');
   // A cancelled-from-Open pact hits status Rejected without ever being
   // Funded, so exclude that case from the fallback. Detect it by checking
@@ -257,7 +257,7 @@ function buildLifecycle(
   // Refund-claimed closes the story for pacts where the deadline lapsed and
   // someone (anyone) called claimRefund. Prefer the indexed Refunded event
   // (timestamp + tx link); fall back to a derived row when the indexer
-  // hasn't caught up. The event's `client` field is the recipient — caller
+  // hasn't caught up. The event's `client` field is the recipient - caller
   // identity isn't recoverable from the log, so the row label leans on
   // "returned to client" rather than a misleading "by @client".
   const refundedEvent = events.find((e) => e.eventType === 'Refunded');
@@ -354,7 +354,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
   const [pendingUpload, setPendingUpload] = useState<PendingTextUrl | PendingFile | null>(null);
 
   const [dispute, setDispute] = useState<DisputeState | null>(null);
-  // Auto-reveal opt-in (default on) — when committing, also hand the agent the
+  // Auto-reveal opt-in (default on) - when committing, also hand the agent the
   // secret so it reveals on the evaluator's behalf if they go offline.
   const [autoReveal, setAutoReveal] = useState(true);
   // Per-selected-evaluator dispute alignment, as a trust signal on the panel.
@@ -388,7 +388,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
 
   // Resolve handles + agentIds for client/provider/evaluator when the pact
   // loads. Deduped + parallel; absent users cache as null so we don't
-  // re-query. Pulls handle + agentId from the same UserRecord — one lookup
+  // re-query. Pulls handle + agentId from the same UserRecord - one lookup
   // covers both displays (handle chip + reputation badge).
   useEffect(() => {
     if (!pact) return;
@@ -424,7 +424,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
   }, [pact]);
 
   // Pull each selected evaluator's lifetime alignment once a dispute is in the
-  // voting phase — shown on the panel so parties can gauge the jurors.
+  // voting phase - shown on the panel so parties can gauge the jurors.
   useEffect(() => {
     if (!dispute || dispute.status !== 'Defended' || dispute.evaluators.length === 0) {
       setEvaluatorRep({});
@@ -457,7 +457,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
     [pact, signer],
   );
 
-  // Always-on lifecycle context — what's happening, what's next. Independent
+  // Always-on lifecycle context - what's happening, what's next. Independent
   // of whether an action card renders for this user.
   const currentStep = useMemo(
     () => (pact && status ? describeCurrentStep(pact, status, roles) : null),
@@ -547,7 +547,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
         );
         if (!approvedOk) return;
       }
-      // Atomic acceptance — pass the current quote so the wrapper can reject a
+      // Atomic acceptance - pass the current quote so the wrapper can reject a
       // mid-flight re-quote rather than silently funding stale terms.
       await runAction('Funding pact…', () =>
         sendUnsigned('Funding pact…', () =>
@@ -578,7 +578,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
     );
   };
 
-  // Open a dispute (client or provider). Pulls a 5% bond — approve first.
+  // Open a dispute (client or provider). Pulls a 5% bond - approve first.
   const openDispute = async () => {
     if (!pact) return;
     const bondRaw = (BigInt(pact.budget.raw) * DISPUTE_BOND_BPS) / 10000n;
@@ -625,7 +625,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
       try {
         await registerAutoReveal(pactId, { disputeId, evaluator, vote, secret });
       } catch {
-        // Non-fatal — the commit landed and the secret is saved locally, so the
+        // Non-fatal - the commit landed and the secret is saved locally, so the
         // evaluator can still reveal manually. Don't surface over the success.
       }
     }
@@ -638,7 +638,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
     if (!stored) {
       setActionState({
         status: 'error',
-        message: 'No saved vote found on this device — the secret was lost. Reveal must happen from the device that committed.',
+        message: 'No saved vote found on this device - the secret was lost. Reveal must happen from the device that committed.',
       });
       return;
     }
@@ -678,7 +678,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
 
       {pact && status && (
         <>
-          {/* Live countdown banner — sits above Details so the time-pressure
+          {/* Live countdown banner - sits above Details so the time-pressure
               is the first thing the user sees. Hidden on terminal states
               where no deadline matters. Label adapts to the connected user's
               role: "Time to fund / submit / review / cancel" when it's their
@@ -794,7 +794,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
               <div
                 className={`mt-4 space-y-4 ${isOffArc ? 'pointer-events-none opacity-50' : ''}`}
               >
-                {/* setBudget — provider only, while Open */}
+                {/* setBudget - provider only, while Open */}
                 {roles.includes('provider') && status === 'Open' && (
                   <ActionCard
                     title="Set or update your quote"
@@ -836,7 +836,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* fund — client only, while Open + budget set + deadline not yet passed */}
+                {/* fund - client only, while Open + budget set + deadline not yet passed */}
                 {roles.includes('client') && status === 'Open' && (
                   <ActionCard
                     title="Fund the pact"
@@ -857,7 +857,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* cancel — client withdraws an Open (unfunded) pact via the
+                {/* cancel - client withdraws an Open (unfunded) pact via the
                     wrapper's cancel(). reject() is the Funded/Submitted refund
                     path and reverts on Open, so these are deliberately distinct. */}
                 {roles.includes('client') && pact.status === 'Open' && (
@@ -884,7 +884,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* submit — provider only, while Funded.
+                {/* submit - provider only, while Funded.
                     Two-phase: commit hash on-chain, then upload content
                     off-chain (parties-only read). Upload-only retry surface
                     appears if the off-chain step fails after the chain step
@@ -1013,6 +1013,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                                   'Submitting on-chain…',
                                   () => buildSubmitUnsigned(pactId, hash),
                                 );
+                                // eslint-disable-next-line prefer-const -- must stay `let`: declared in the outer scope so it's readable in the catch block below
                                 onchainTxHash = onchain.txHash;
 
                                 setActionState({ status: 'busy', label: 'Uploading content…' });
@@ -1055,7 +1056,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* Retry-upload surface — chain submit landed, off-chain
+                {/* Retry-upload surface - chain submit landed, off-chain
                     upload didn't. Provider can re-run the upload step
                     without re-signing on-chain. */}
                 {roles.includes('provider') && pendingUpload && pendingUpload.pactId === pactId && (
@@ -1108,22 +1109,22 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* Submitted — challenge-window status banner. */}
+                {/* Submitted - challenge-window status banner. */}
                 {pact.status === 'Submitted' && (
                   <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-400">
                     {Math.floor(Date.now() / 1000) < pact.submittedAt + pact.challengeWindow ? (
                       <span className="inline-flex flex-wrap items-center gap-1.5">
                         Challenge window closes
                         <CountdownChip unix={pact.submittedAt + pact.challengeWindow} />
-                        — either party can dispute until then; the client can accept early.
+                        - either party can dispute until then; the client can accept early.
                       </span>
                     ) : (
-                      <>Challenge window closed — anyone can finalize to release the budget to the provider.</>
+                      <>Challenge window closed - anyone can finalize to release the budget to the provider.</>
                     )}
                   </div>
                 )}
 
-                {/* Accept & release — client only, while Submitted (instant payout). */}
+                {/* Accept & release - client only, while Submitted (instant payout). */}
                 {roles.includes('client') && pact.status === 'Submitted' && (
                   <ActionCard
                     title="Accept & release"
@@ -1144,7 +1145,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   </ActionCard>
                 )}
 
-                {/* Reject & refund — client only, while Funded or Submitted. */}
+                {/* Reject & refund - client only, while Funded or Submitted. */}
                 {roles.includes('client') &&
                   (pact.status === 'Funded' || pact.status === 'Submitted') && (
                     <ActionCard
@@ -1166,7 +1167,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                     </ActionCard>
                   )}
 
-                {/* Dispute — client or provider, while Submitted + within window. */}
+                {/* Dispute - client or provider, while Submitted + within window. */}
                 {(roles.includes('client') || roles.includes('provider')) &&
                   pact.status === 'Submitted' &&
                   Math.floor(Date.now() / 1000) < pact.submittedAt + pact.challengeWindow && (
@@ -1185,12 +1186,12 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                     </ActionCard>
                   )}
 
-                {/* Finalize — anyone, while Submitted + challenge window closed. */}
+                {/* Finalize - anyone, while Submitted + challenge window closed. */}
                 {pact.status === 'Submitted' &&
                   Math.floor(Date.now() / 1000) >= pact.submittedAt + pact.challengeWindow && (
                     <ActionCard
                       title="Finalize (challenge window closed)"
-                      hint="No dispute was raised — release the budget to the provider. Anyone can trigger."
+                      hint="No dispute was raised - release the budget to the provider. Anyone can trigger."
                     >
                       <button
                         type="button"
@@ -1207,7 +1208,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                     </ActionCard>
                   )}
 
-                {/* Disputed — the full dispute panel. */}
+                {/* Disputed - the full dispute panel. */}
                 {pact.status === 'Disputed' && dispute && (
                   <DisputePanel
                     dispute={dispute}
@@ -1242,7 +1243,7 @@ export default function PactDetailPage({ params }: { params: Promise<{ id: strin
                   />
                 )}
 
-                {/* claimRefund — anyone, when deadline passed + pact is Funded/Submitted
+                {/* claimRefund - anyone, when deadline passed + pact is Funded/Submitted
                     + no open dispute (the wrapper reverts claimRefund mid-dispute). */}
                 {status === 'Expired' &&
                   (pact.status === 'Funded' || pact.status === 'Submitted') &&
@@ -1509,7 +1510,7 @@ function DeliverableContent({
   const [needsUnlock, setNeedsUnlock] = useState(false);
 
   // File downloads need their own state: the metadata alone can't be hashed
-  // against the on-chain commitment — we only know the commitment matches
+  // against the on-chain commitment - we only know the commitment matches
   // after fetching the bytes and recomputing client-side.
   type FileState =
     | { status: 'idle' }
@@ -1901,7 +1902,7 @@ function DisputePanel({
         </div>
       </dl>
 
-      {/* Phase: Open — opponent concedes/defends; anyone force-settles after the deadline. */}
+      {/* Phase: Open - opponent concedes/defends; anyone force-settles after the deadline. */}
       {dispute.status === 'Open' && (
         <div className="mt-4 space-y-3">
           <p className="text-xs text-neutral-400">
@@ -1911,7 +1912,7 @@ function DisputePanel({
                 <CountdownChip unix={dispute.concedeDeadline} />
               </span>
             ) : (
-              'Response deadline passed — anyone can settle this in the disputer’s favour.'
+              'Response deadline passed - anyone can settle this in the disputer’s favour.'
             )}
           </p>
           {isOpponent && nowSec < dispute.concedeDeadline && (
@@ -1947,7 +1948,7 @@ function DisputePanel({
         </div>
       )}
 
-      {/* Phase: Defended — commit/reveal voting. */}
+      {/* Phase: Defended - commit/reveal voting. */}
       {dispute.status === 'Defended' && (
         <div className="mt-4 space-y-3">
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
@@ -1956,7 +1957,7 @@ function DisputePanel({
             <Pill label="Revealed" value={`${dispute.revealCount}/${dispute.evaluators.length}`} />
           </div>
 
-          {/* Juror trust signal — each selected evaluator's lifetime alignment. */}
+          {/* Juror trust signal - each selected evaluator's lifetime alignment. */}
           <ul className="space-y-1 text-xs">
             {dispute.evaluators.map((addr) => {
               const r = evaluatorRep[addr.toLowerCase()];
@@ -1977,7 +1978,7 @@ function DisputePanel({
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3">
               <p className="text-xs text-neutral-400">
                 You&apos;re a selected evaluator. Commit your vote before
-                <CountdownChip unix={dispute.graceDeadline} /> — you can re-commit until then.
+                <CountdownChip unix={dispute.graceDeadline} /> - you can re-commit until then.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {([1, 2] as VoteChoice[]).map((v) => (
@@ -2004,7 +2005,7 @@ function DisputePanel({
                   onChange={(e) => onToggleAutoReveal(e.target.checked)}
                   className="h-3.5 w-3.5 rounded border-neutral-700 bg-neutral-950"
                 />
-                Auto-reveal — let arc-trade reveal this vote for me when the window opens
+                Auto-reveal - let arc-trade reveal this vote for me when the window opens
               </label>
               <button
                 type="button"
@@ -2020,7 +2021,7 @@ function DisputePanel({
           {isEvaluator && nowSec > dispute.graceDeadline && nowSec <= dispute.revealDeadline && (
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3">
               <p className="text-xs text-neutral-400">
-                Reveal phase — closes <CountdownChip unix={dispute.revealDeadline} />.
+                Reveal phase - closes <CountdownChip unix={dispute.revealDeadline} />.
               </p>
               <button
                 type="button"
@@ -2032,7 +2033,7 @@ function DisputePanel({
               </button>
               {!hasStoredVote && (
                 <p className="mt-2 text-[11px] text-amber-400">
-                  No saved vote on this device — reveal must happen where you committed.
+                  No saved vote on this device - reveal must happen where you committed.
                 </p>
               )}
             </div>

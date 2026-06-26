@@ -1,5 +1,5 @@
 // localStorage-backed bridge history. Keyed per address so switching wallets
-// shows that wallet's own runs. Cap at 3 entries (FIFO) — the /bridge page
+// shows that wallet's own runs. Cap at 3 entries (FIFO) - the /bridge page
 // displays the most recent first.
 import type { Address } from 'viem';
 import type { BridgeSource } from './bridge';
@@ -9,7 +9,7 @@ export type BridgeHistoryEntry = {
   timestamp: number;
   sourceKey: BridgeSource['key'];
   sourceFullName: string;
-  // Destination metadata — older entries (pre-any-to-any) may lack these;
+  // Destination metadata - older entries (pre-any-to-any) may lack these;
   // readers should default to Arc when reading legacy rows.
   destinationKey?: BridgeSource['key'];
   destinationFullName?: string;
@@ -47,7 +47,7 @@ export function appendBridgeHistory(address: Address, entry: BridgeHistoryEntry)
   try {
     window.localStorage.setItem(keyFor(address), JSON.stringify(next));
   } catch {
-    // Quota or disabled storage — silently drop the write rather than
+    // Quota or disabled storage - silently drop the write rather than
     // crashing the bridge success path.
   }
 }

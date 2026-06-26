@@ -70,9 +70,9 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
       title: `Verification fee · ${feeUsdc} USDC`,
       amountUsdc: feeUsdc,
       overview: [
-        { label: 'Verification fee', before: '—', after: `${feeUsdc} USDC` },
-        { label: 'Fee rate', before: '—', after: `${pct}% of ${amountUsdc} USDC` },
-        { label: 'Verified by', before: '—', after: 'Staked panel' },
+        { label: 'Verification fee', before: '-', after: `${feeUsdc} USDC` },
+        { label: 'Fee rate', before: '-', after: `${pct}% of ${amountUsdc} USDC` },
+        { label: 'Verified by', before: '-', after: 'Staked panel' },
       ],
       steps: [
         { key: 'approve', label: 'Approve USDC', action: 'Approve', run: async () => send(approve, false) },
@@ -97,7 +97,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
       const ts = Date.now();
       const signature = await signer.signMessage(verifyAssignAuthMessage(tradeId, ts));
       await assignVerification(tradeId, doc, { signature, ts });
-      toast.success('Submitted — the panel has been drawn and is voting');
+      toast.success('Submitted - the panel has been drawn and is voting');
       setDoc('');
       await refresh();
       onChange();
@@ -112,7 +112,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
     setBusy(true);
     try {
       await send(await buildVerificationVoteUnsigned(tradeId, pass), true);
-      toast.success(pass ? 'Vote recorded — you confirmed delivery' : 'Vote recorded — you rejected delivery');
+      toast.success(pass ? 'Vote recorded - you confirmed delivery' : 'Vote recorded - you rejected delivery');
       setPendingVote(null);
       await refresh();
       onChange();
@@ -151,7 +151,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
           <p className="text-sm text-violet-100">Decentralized verification (staked panel)</p>
           {isBuyer ? (
             <>
-              <p className="text-xs text-neutral-400">Pay the verification fee to start — a staked panel will review delivery instead of the Trade Officer.</p>
+              <p className="text-xs text-neutral-400">Pay the verification fee to start - a staked panel will review delivery instead of the Trade Officer.</p>
               <button onClick={payFee} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500">Pay verification fee</button>
             </>
           ) : (
@@ -165,7 +165,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
         <p className="text-sm text-violet-100">Decentralized verification (staked panel)</p>
         {isSeller ? (
           <div className="space-y-2">
-            <p className="text-xs text-neutral-400">Submit your delivery document — a staked panel will review it and vote.</p>
+            <p className="text-xs text-neutral-400">Submit your delivery document - a staked panel will review it and vote.</p>
             <textarea value={doc} onChange={(e) => setDoc(e.target.value)} rows={3} placeholder="Paste your bill of lading / tracking / customs document…" className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm" />
             <button onClick={submitToPanel} disabled={busy} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Submitting…' : 'Submit to the panel'}</button>
           </div>
@@ -180,7 +180,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
   return (
     <div className={card}>
       <div className="flex items-center justify-between">
-        <p className="text-sm text-violet-100">Staked panel — verifying delivery</p>
+        <p className="text-sm text-violet-100">Staked panel - verifying delivery</p>
         {!expired && !v.resolved && <CountdownChip unix={v.deadline} label="Voting closes" />}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
@@ -231,8 +231,8 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
             </p>
             <p className="text-xs text-neutral-400">
               {pendingVote
-                ? 'You attest the goods were delivered as described — the panel can release funds to the seller.'
-                : 'You attest the delivery is missing or doesn’t match — the panel can refund the buyer.'}{' '}
+                ? 'You attest the goods were delivered as described - the panel can release funds to the seller.'
+                : 'You attest the delivery is missing or doesn’t match - the panel can refund the buyer.'}{' '}
               This vote is <strong className="text-neutral-200">final and signed on-chain</strong>; if you end up in the minority, your bonded stake is slashed.
             </p>
             <div className="flex gap-2">
@@ -256,7 +256,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
   );
 }
 
-// #6: panel transparency — who was drawn, how, each verdict, and the outcome.
+// #6: panel transparency - who was drawn, how, each verdict, and the outcome.
 // Exported so the trade page can show it post-settlement too (the VerificationPanel
 // itself only renders while the trade is Funded).
 export function PanelModal({ v, me, onClose }: { v: VerificationState; me: string | null; onClose: () => void }) {
@@ -290,7 +290,7 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
 
         {!v.resolved && (
           <p className="mt-3 rounded-md border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-[11px] text-neutral-500">
-            Individual verdicts are hidden until voting closes — so panelists can&apos;t copy each other.
+            Individual verdicts are hidden until voting closes - so panelists can&apos;t copy each other.
           </p>
         )}
 

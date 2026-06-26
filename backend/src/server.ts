@@ -150,7 +150,7 @@ async function waitForCircleTx(id: string, timeoutMs = 90_000) {
 
 // The wrapper's pacts(pactId) auto-getter returns a positional array (viem does
 // not key multi-output getters by name, unlike the reference's single-struct
-// getJob). Decode by index — order matches the PactRecord struct in
+// getJob). Decode by index - order matches the PactRecord struct in
 // PactWrapper.sol. description is NOT in the struct; source it from pacts_index.
 type WrapperPact = {
   underlyingJobId: bigint;
@@ -273,7 +273,7 @@ const app = Fastify({
   },
 });
 
-// CORS — let the frontend dev server (and any explicit allow-listed origins)
+// CORS - let the frontend dev server (and any explicit allow-listed origins)
 // hit the backend. Override with CORS_ORIGINS as a comma-separated list.
 const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
   .split(',')
@@ -352,10 +352,10 @@ function requireSigner(
   }
 
   // External / Circle-Modular users sign client-side via wagmi or their own bundler.
-  // The backend can't sign on their behalf — they should use the /unsigned routes instead.
+  // The backend can't sign on their behalf - they should use the /unsigned routes instead.
   if (row.signing_mode !== 'dev-controlled' || !row.circle_wallet_id) {
     reply.code(409).send({
-      error: `${identifier} has signing_mode='${row.signing_mode}' — backend cannot sign for this user. Use the /unsigned variant of this route and have the wallet sign client-side.`,
+      error: `${identifier} has signing_mode='${row.signing_mode}' - backend cannot sign for this user. Use the /unsigned variant of this route and have the wallet sign client-side.`,
     });
     return null;
   }
@@ -366,7 +366,7 @@ function requireSigner(
 // ── Auth ──────────────────────────────────────────────────────────────────
 // Admin guard for operator/treasury ops (e.g. seeding the pool). When
 // ADMIN_API_KEY is set, callers must send a matching `x-admin-key` header;
-// when it's unset the routes stay open (dev) — a startup warning nags to set it.
+// when it's unset the routes stay open (dev) - a startup warning nags to set it.
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? '';
 function requireAdmin(request: { headers: Record<string, unknown> }, reply: FastifyReply): boolean {
   if (!ADMIN_API_KEY) return true; // not configured → open in dev
@@ -380,7 +380,7 @@ function requireAdmin(request: { headers: Record<string, unknown> }, reply: Fast
 // Per-request wallet-signature auth for user-behalf actions the backend takes
 // without an on-chain tx. The caller signs `arc-trade:<action>:<id>:<ts>`; we
 // verify it recovers to `expected` (works for EOAs and ERC-1271 smart accounts
-// via the public client) and reject stale signatures. Stateless — no sessions.
+// via the public client) and reject stale signatures. Stateless - no sessions.
 const ACTION_SIG_TTL_MS = 5 * 60_000;
 async function verifyActionSig(
   reply: FastifyReply,
@@ -393,7 +393,7 @@ async function verifyActionSig(
   }
   const age = Date.now() - Number(ts);
   if (!(age >= -60_000 && age <= ACTION_SIG_TTL_MS)) {
-    reply.code(401).send({ error: 'signature expired — retry' });
+    reply.code(401).send({ error: 'signature expired - retry' });
     return false;
   }
   const message = `arc-trade:${action}:${id}:${ts}`;
@@ -543,7 +543,7 @@ app.post<{ Body: { handle?: string } }>('/users', async (request, reply) => {
   const created = await circle.createWallets({
     walletSetId: CIRCLE_WALLET_SET_ID,
     // 'ARC-TESTNET' isn't in Circle's developer-controlled-wallets Blockchain
-    // enum yet (verified 2026-05-26), but the API accepts it at runtime —
+    // enum yet (verified 2026-05-26), but the API accepts it at runtime -
     // cast through unknown until the SDK catches up.
     blockchains: ['ARC-TESTNET' as unknown as Blockchain],
     count: 1,
@@ -563,7 +563,7 @@ app.post<{ Body: { handle?: string } }>('/users', async (request, reply) => {
   return reply.code(201).send(rowToUser(row));
 });
 
-// Register a wallet the backend does NOT custody — used by the frontend after
+// Register a wallet the backend does NOT custody - used by the frontend after
 // a user connects MetaMask/Rabby (wagmi) or signs in with Circle Modular passkey.
 // circle_wallet_id stays NULL; the signer must use the /unsigned routes to act.
 app.post<{
@@ -580,7 +580,7 @@ app.post<{
       .send({ error: "signingMode must be 'external' or 'circle-modular'" });
   }
 
-  // Address is unique — idempotent: if this address is already registered, return the existing row.
+  // Address is unique - idempotent: if this address is already registered, return the existing row.
   const existing = db
     .prepare('SELECT * FROM users WHERE wallet_address = ?')
     .get(walletAddress) as UserRow | undefined;
@@ -617,7 +617,7 @@ app.get<{ Params: { id: string } }>('/users/:id', async (request, reply) => {
   return rowToUser(row);
 });
 
-// PATCH /users/:id — first-time handle assignment only.
+// PATCH /users/:id - first-time handle assignment only.
 // Handles are immutable once set: a user with a non-null handle cannot rename
 // it or clear it. This prevents squatting attacks where a third party grabs
 // a recognizable handle the moment its original owner changes it.
@@ -671,7 +671,7 @@ app.patch<{ Params: { id: string }; Body: { handle?: string | null } }>(
 // ─── ERC-8004 agent linking + reputation reads ─────────────────────────────
 // Users opt-in to surface their ERC-8004 reputation by linking an agentId
 // they own (verified on-chain via IdentityRegistry.ownerOf / getAgentWallet).
-// Reputation itself is fetched live — no indexing yet, view calls are cheap
+// Reputation itself is fetched live - no indexing yet, view calls are cheap
 // enough on a single pactId-keyed page that caching can come later if needed.
 
 let cachedIdentityRegistry: `0x${string}` | null = null;
@@ -701,7 +701,7 @@ app.patch<{ Params: { id: string }; Body: { agentId?: string | null } }>(
     const body = request.body ?? {};
     if (!('agentId' in body)) return rowToUser(existing);
 
-    // null clears the link. Allowed any time — there's no squatting risk on
+    // null clears the link. Allowed any time - there's no squatting risk on
     // unlink, and re-linking still requires the on-chain ownership check.
     if (body.agentId === null) {
       db.prepare('UPDATE users SET agent_id = NULL WHERE id = ?').run(id);
@@ -764,7 +764,7 @@ app.patch<{ Params: { id: string }; Body: { agentId?: string | null } }>(
       });
     }
 
-    // Prevent two distinct users from claiming the same agentId — first claim wins.
+    // Prevent two distinct users from claiming the same agentId - first claim wins.
     const conflict = db
       .prepare('SELECT id FROM users WHERE agent_id = ? AND id != ?')
       .get(body.agentId, id);
@@ -847,7 +847,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/usdc-balance', async (reque
 
 // Wrapper diagnostics. The wrapper has no standing evaluator fee (evaluators
 // are paid out of dispute bonds, not the job budget), so there's no
-// evaluatorFeeBP — only the single platform fee, its cap, the treasury, and the
+// evaluatorFeeBP - only the single platform fee, its cap, the treasury, and the
 // escrowed treasury balance.
 app.get('/arc/escrow/info', async () => {
   const [pactCount, paymentToken, platformFeeBps, maxPlatformFeeBps, platformTreasury, treasuryBalance] =
@@ -989,7 +989,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; exp
     }
     const expectedBudget = parseUnits(expectedBudgetUsdc, 6);
 
-    // Atomic acceptance — funding signs off on exactly the current live quote;
+    // Atomic acceptance - funding signs off on exactly the current live quote;
     // the wrapper reverts WrongTerms if budget or window drifted.
     const exec = await circle.createContractExecutionTransaction({
       walletId: signer.circle_wallet_id,
@@ -1046,7 +1046,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; del
   }
 );
 
-// complete now maps to clientAccept — the client's instant-payout button
+// complete now maps to clientAccept - the client's instant-payout button
 // during the challenge window. (The permissionless post-challenge complete()
 // path has no signed route; it's exposed via /finalize/unsigned.)
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
@@ -1135,14 +1135,14 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// Unsigned tx-data routes — for external wallets (MetaMask via wagmi) that
+// Unsigned tx-data routes - for external wallets (MetaMask via wagmi) that
 // sign client-side. Each route returns { to, data, value, chainId } ready to
 // pass into wagmi's useSendTransaction. The backend does NOT call Circle and
-// does NOT look up any user — the signer is whatever wallet the frontend has
+// does NOT look up any user - the signer is whatever wallet the frontend has
 // connected.
 // ────────────────────────────────────────────────────────────────────────────
 
-// createPact — wrapper is the protocol-level evaluator, so no evaluator arg.
+// createPact - wrapper is the protocol-level evaluator, so no evaluator arg.
 // challengeWindow (seconds) is optional; 0 lets the contract apply its default
 // (CHALLENGE_DEFAULT = 24h). hook is unused at this layer → ZERO_ADDRESS.
 app.post<{
@@ -1173,7 +1173,7 @@ app.post<{
   ]);
 });
 
-// setBudget — provider's quote. challengeWindow (seconds) optional; 0 keeps the
+// setBudget - provider's quote. challengeWindow (seconds) optional; 0 keeps the
 // current window. The provider's setBudget supersedes any client proposeTerms.
 app.post<{ Params: { id: string }; Body: { budgetUsdc: string; challengeWindowSeconds?: number } }>(
   '/arc/escrow/pacts/:id/budget/unsigned',
@@ -1201,12 +1201,12 @@ app.post<{ Body: { amountUsdc: string } }>('/arc/usdc/approve/unsigned', async (
     return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
   }
   const amountRaw = parseUnits(amountUsdc, 6);
-  // Spender is the wrapper — it pulls (budget + fee) on fund(), bonds on
+  // Spender is the wrapper - it pulls (budget + fee) on fund(), bonds on
   // dispute()/defend(), and stake on stakeEvaluator().
   return buildUnsignedTx(USDC_ADDRESS, erc20Abi as Abi, 'approve', [WRAPPER_ADDRESS, amountRaw]);
 });
 
-// fund — atomic acceptance. The client signs off on exactly the current live
+// fund - atomic acceptance. The client signs off on exactly the current live
 // quote; the wrapper reverts WrongTerms if either field drifted. The frontend
 // must read the pact's current budget + challengeWindow and pass them here.
 app.post<{ Params: { id: string }; Body: { expectedBudgetUsdc: string; expectedChallengeWindowSeconds: number } }>(
@@ -1246,7 +1246,7 @@ app.post<{ Params: { id: string }; Body: { deliverableHash: string } }>(
   },
 );
 
-// complete/unsigned now maps to clientAccept — the client's instant-payout
+// complete/unsigned now maps to clientAccept - the client's instant-payout
 // button during the challenge window. (The wrapper's complete() is the separate
 // permissionless post-challenge auto-finalize path; see /finalize/unsigned.)
 app.post<{ Params: { id: string } }>(
@@ -1276,7 +1276,7 @@ app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/refund/unsigned', as
   return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'claimRefund', [pactId]);
 });
 
-// cancel — client withdraws an Open (unfunded) pact. Distinct from reject(),
+// cancel - client withdraws an Open (unfunded) pact. Distinct from reject(),
 // which is the Funded/Submitted refund path. Lands the pact in Status.Expired.
 app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/cancel/unsigned', async (request) => {
   const pactId = BigInt(request.params.id);
@@ -1291,7 +1291,7 @@ app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/cancel/unsigned', as
 // the caller has already approved the wrapper via /arc/usdc/approve/unsigned.
 // ────────────────────────────────────────────────────────────────────────────
 
-// proposeTerms — client's quote-and-accept counter. challengeWindow is required
+// proposeTerms - client's quote-and-accept counter. challengeWindow is required
 // here (unlike setBudget, proposeTerms has no 0-default) and must sit within the
 // contract's CHALLENGE_FLOOR..CHALLENGE_CEILING band.
 app.post<{ Params: { id: string }; Body: { budgetUsdc: string; challengeWindowSeconds: number } }>(
@@ -1314,7 +1314,7 @@ app.post<{ Params: { id: string }; Body: { budgetUsdc: string; challengeWindowSe
   },
 );
 
-// extendDeadline — Rule 1. newExpiredAt is an absolute unix timestamp. In
+// extendDeadline - Rule 1. newExpiredAt is an absolute unix timestamp. In
 // Submitted state the contract only accepts exactly current+1h (max 3 times);
 // in Open/Funded/Disputed any strictly-forward value is allowed. The frontend
 // computes the target and the contract enforces the bounds.
@@ -1330,7 +1330,7 @@ app.post<{ Params: { id: string }; Body: { newExpiredAt: number } }>(
   },
 );
 
-// finalize — permissionless post-challenge auto-completion. Pays the provider
+// finalize - permissionless post-challenge auto-completion. Pays the provider
 // once the challenge window has closed with no dispute. (Client early-accept is
 // the separate /complete/unsigned → clientAccept path.)
 app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
@@ -1349,7 +1349,7 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
 
 // ── Dispute system ──────────────────────────────────────────────────────────
 
-// dispute — client or provider opens a dispute during the challenge window.
+// dispute - client or provider opens a dispute during the challenge window.
 // Pulls a 5% bond (approve the wrapper first).
 app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
   '/arc/escrow/pacts/:id/dispute/unsigned',
@@ -1365,27 +1365,27 @@ app.post<{ Params: { id: string }; Body: { reasonHash?: string } }>(
   },
 );
 
-// concede — the opponent gives up within the concede window (opponent wins).
+// concede - the opponent gives up within the concede window (opponent wins).
 app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/concede/unsigned', async (request) => {
   const pactId = BigInt(request.params.id);
   return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'concede', [pactId]);
 });
 
-// forceConcede — permissionless; anyone can settle a dispute the opponent
+// forceConcede - permissionless; anyone can settle a dispute the opponent
 // ignored once the concede deadline has passed (treated as a concede).
 app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/force-concede/unsigned', async (request) => {
   const pactId = BigInt(request.params.id);
   return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'forceConcede', [pactId]);
 });
 
-// defend — opponent posts a matching bond, triggering evaluator selection and
+// defend - opponent posts a matching bond, triggering evaluator selection and
 // the commit-reveal vote (approve the wrapper first).
 app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/defend/unsigned', async (request) => {
   const pactId = BigInt(request.params.id);
   return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'defend', [pactId]);
 });
 
-// commitVote — selected evaluator commits keccak256(abi.encode(vote, secret,
+// commitVote - selected evaluator commits keccak256(abi.encode(vote, secret,
 // evaluator)). The frontend computes the hash; the secret stays client-side
 // until reveal.
 app.post<{ Params: { id: string }; Body: { commitHash: string } }>(
@@ -1405,7 +1405,7 @@ app.post<{ Params: { id: string }; Body: { commitHash: string } }>(
   },
 );
 
-// revealVote — permissionless (anyone with the secret, incl. the auto-reveal
+// revealVote - permissionless (anyone with the secret, incl. the auto-reveal
 // agent). vote: 1 = ForDisputer, 2 = ForOpponent (0/None is rejected).
 app.post<{ Params: { id: string }; Body: { evaluator: string; vote: number; secret: string } }>(
   '/arc/escrow/pacts/:id/reveal/unsigned',
@@ -1433,7 +1433,7 @@ app.post<{ Params: { id: string }; Body: { evaluator: string; vote: number; secr
   },
 );
 
-// resolve — permissionless tally once the reveal window closes (or all N have
+// resolve - permissionless tally once the reveal window closes (or all N have
 // revealed). Settles the pact in the winning side's favour.
 app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/resolve/unsigned', async (request) => {
   const pactId = BigInt(request.params.id);
@@ -1442,7 +1442,7 @@ app.post<{ Params: { id: string } }>('/arc/escrow/pacts/:id/resolve/unsigned', a
 
 // ── Evaluator pool ──────────────────────────────────────────────────────────
 
-// stakeEvaluator — join the evaluator pool (approve the wrapper for `amount`
+// stakeEvaluator - join the evaluator pool (approve the wrapper for `amount`
 // first). Must be >= EVALUATOR_MIN_STAKE.
 app.post<{ Body: { amountUsdc: string } }>('/arc/escrow/evaluators/stake/unsigned', async (request, reply) => {
   const { amountUsdc } = request.body;
@@ -1453,7 +1453,7 @@ app.post<{ Body: { amountUsdc: string } }>('/arc/escrow/evaluators/stake/unsigne
   return buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'stakeEvaluator', [amountRaw]);
 });
 
-// unstakeEvaluator — withdraw the full stake (reverts if the evaluator still
+// unstakeEvaluator - withdraw the full stake (reverts if the evaluator still
 // has pending dispute references).
 app.post('/arc/escrow/evaluators/unstake/unsigned', async () =>
   buildUnsignedTx(WRAPPER_ADDRESS, pactWrapperAbi as Abi, 'unstakeEvaluator', []),
@@ -1504,7 +1504,7 @@ app.get<{ Params: { address: string } }>(
   },
 );
 
-// Notifications feed for a given address — bundles, per pact, the immutable
+// Notifications feed for a given address - bundles, per pact, the immutable
 // index row + live on-chain state + this pact's events. Saves the frontend
 // from doing N×2 round-trips to render the bell. Paginated by recency.
 const FEED_PAGE_DEFAULT = 30;
@@ -1543,7 +1543,7 @@ app.get<{
   const limit = clampInt(request.query.limit, FEED_PAGE_DEFAULT, 1, FEED_PAGE_MAX);
   const offset = clampInt(request.query.offset, 0, 0, 100_000);
 
-  // Newest pacts first — matches the bell's "what changed recently" framing.
+  // Newest pacts first - matches the bell's "what changed recently" framing.
   const indexRows = db
     .prepare(
       `SELECT * FROM pacts_index
@@ -1556,7 +1556,7 @@ app.get<{
   const pageRows = indexRows.slice(offset, offset + limit);
 
   // Live read + events fetched per pact in parallel. Tolerates per-call
-  // failures — a single dead RPC shouldn't take the whole bell down.
+  // failures - a single dead RPC shouldn't take the whole bell down.
   const live = await Promise.allSettled(pageRows.map((row) => readWrapperPact(BigInt(row.pact_id))));
 
   const eventsByPact = new Map<string, ReturnType<typeof rowToPactEvent>[]>();
@@ -1624,7 +1624,7 @@ app.get<{
 // CCTP V2 inbound bridge history for an address. Backed by bridge_inbound_events
 // which the bridge-indexer populates from USDC mints on Arc joined to
 // MessageTransmitter MessageReceived (so we only return mints actually caused
-// by a CCTP bridge). Replaces the localStorage cap-of-3 — surviving browser
+// by a CCTP bridge). Replaces the localStorage cap-of-3 - surviving browser
 // clears and visible across devices for the same wallet.
 type BridgeHistoryRow = {
   recipient: string;
@@ -1731,7 +1731,7 @@ app.get<{
   }
 
   // Pull the most-recent N from the index. Older pacts (most likely terminal
-  // by now) are dropped — keeps the live-read fan-out bounded.
+  // by now) are dropped - keeps the live-read fan-out bounded.
   const indexRows = db
     .prepare(
       `SELECT * FROM pacts_index
@@ -1741,7 +1741,7 @@ app.get<{
     .all(MARKET_INDEX_CAP) as PactIndexRow[];
 
   // Live-read budget + status for every candidate in parallel. ERC-8183
-  // doesn't emit a BudgetSet event, so we can't index this — see M30 note.
+  // doesn't emit a BudgetSet event, so we can't index this - see M30 note.
   const liveStates = await Promise.allSettled(indexRows.map((row) => readWrapperPact(BigInt(row.pact_id))));
 
   const nowUnix = Math.floor(Date.now() / 1000);
@@ -1757,7 +1757,7 @@ app.get<{
     if (Number(pact.expiredAt) <= nowUnix) continue;
     if (minBudgetRaw !== null && pact.budget < minBudgetRaw) continue;
     if (maxBudgetRaw !== null && pact.budget > maxBudgetRaw) continue;
-    // evaluator/hook/description aren't in the wrapper's pacts() struct — they
+    // evaluator/hook/description aren't in the wrapper's pacts() struct - they
     // come from the local index (PactCreated). evaluator is always the wrapper.
     open.push({
       pactId: row.pact_id,
@@ -1804,7 +1804,7 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, repl
 
   // Bolt on creation metadata from the local index so the frontend can render a
   // lifecycle timeline without a second roundtrip. evaluator/hook/description
-  // aren't in the wrapper's pacts() struct — they live in the index (from
+  // aren't in the wrapper's pacts() struct - they live in the index (from
   // PactCreated). null if the indexer hasn't caught up (~10s after creation).
   const createdRow = db
     .prepare('SELECT evaluator, hook, description, block_number, tx_hash, indexed_at FROM pacts_index WHERE pact_id = ?')
@@ -1864,7 +1864,7 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id', async (request, repl
 
 // Live dispute state for a pact. Reads the pact's disputeId, then getDisputeMeta.
 // Returns { dispute: null } when no dispute is or was open. Rich fields the
-// dispute panel needs (deadlines, selected evaluators, vote tallies) — kept as a
+// dispute panel needs (deadlines, selected evaluators, vote tallies) - kept as a
 // live read rather than indexed.
 app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id/dispute', async (request) => {
   const pact = await readWrapperPact(BigInt(request.params.id));
@@ -1898,7 +1898,7 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id/dispute', async (reque
 
 // Opt in to auto-reveal: hand the agent (vote, secret) at commit time and it
 // reveals on your behalf once the reveal window opens. Validated against live
-// dispute state; one row per (dispute, evaluator) — a re-commit replaces it.
+// dispute state; one row per (dispute, evaluator) - a re-commit replaces it.
 const upsertAutoReveal = db.prepare(
   `INSERT OR REPLACE INTO auto_reveals
    (dispute_id, evaluator, pact_id, vote, secret, reveal_after, reveal_before, status, attempts, last_error, tx_hash)
@@ -1993,7 +1993,7 @@ app.get<{ Params: { address: string } }>('/arc/escrow/evaluators/:address', asyn
 });
 
 // ─── ERC-8004 reputation reads ─────────────────────────────────────────────
-// Live view-calls to the ReputationRegistry. No indexing yet — view reads
+// Live view-calls to the ReputationRegistry. No indexing yet - view reads
 // are cheap on a per-agent basis. Two routes:
 //   - /summary: just getClients + getSummary. Used by the inline badge so
 //     multi-party pact-detail views don't shred bandwidth.
@@ -2193,7 +2193,7 @@ app.get<{
       limit,
       offset,
       // `truncated` is now "are there entries we didn't return on this
-      // page" — true whenever total exceeds what fits before+within the
+      // page" - true whenever total exceeds what fits before+within the
       // current page. Frontend uses it to decide whether to show pager.
       truncated: total > slicedFeedback.length,
     };
@@ -2222,7 +2222,7 @@ app.post<{ Body: { agentId?: string; positive?: boolean } }>('/arc/reputation/fe
 // Fires only when BOTH are positive: the trade settled (Released) AND the rater
 // left a positive on-chain feedback for the counterparty's agent. The operator
 // adds its own `operator-verified` feedback entry; the read layer then applies a
-// 1.2× composite. One endorsement per (trade, agent) — replay-safe.
+// 1.2× composite. One endorsement per (trade, agent) - replay-safe.
 app.post<{ Params: { id: string }; Body: { agentId?: string; rater?: string } }>(
   '/arc/trade/:id/feedback/boost',
   async (request, reply) => {
@@ -2388,7 +2388,7 @@ app.get<{ Params: { id: string } }>('/arc/escrow/pact/:id/events', async (reques
 
 // ─── Deliverable content (Layers 2 + 3) ────────────────────────────────────
 // Off-chain content (text, URL, or file) attached to a Submitted event.
-// Stored keyed by (pactId, hash). Upload is gated by hash verification — the
+// Stored keyed by (pactId, hash). Upload is gated by hash verification - the
 // supplied content must keccak256 to the claimed hash, which means only
 // whoever already knew the preimage (i.e. the provider) can store content
 // for that slot. Read is gated by wallet-signature auth, parties-only.
@@ -2460,7 +2460,7 @@ async function verifyDeliverableReadAuth(
     .prepare('SELECT client, provider, evaluator FROM pacts_index WHERE pact_id = ?')
     .get(pactId) as { client: string; provider: string; evaluator: string } | undefined;
   if (!pactRow) {
-    reply.code(404).send({ error: 'pact not indexed yet — try again in a few seconds' });
+    reply.code(404).send({ error: 'pact not indexed yet - try again in a few seconds' });
     return null;
   }
   const v = viewer.toLowerCase();
@@ -2668,7 +2668,7 @@ app.get<{
 
 
 // --------------------------------------------------------------------------
-// Standalone trade-finance escrow (TradeEscrow) — no ERC-8183 dependency.
+// Standalone trade-finance escrow (TradeEscrow) - no ERC-8183 dependency.
 // Lifecycle: create -> fund (approve+lock, passport-priced) -> attest (the
 // Trade Officer agent / operator wallet) -> release (yield split + passport
 // write); optional requestFinancing advances the seller at attestation.
@@ -2676,7 +2676,7 @@ app.get<{
 
 function escrowReady(reply: FastifyReply): boolean {
   if (TRADE_ESCROW_ADDRESS === ZERO_ADDRESS) {
-    reply.code(503).send({ error: 'escrow not deployed — set TRADE_ESCROW_ADDRESS in backend/.env after forge deploy' });
+    reply.code(503).send({ error: 'escrow not deployed - set TRADE_ESCROW_ADDRESS in backend/.env after forge deploy' });
     return false;
   }
   return true;
@@ -2893,9 +2893,9 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rel
   },
 );
 
-// Trade Officer — skill 2: financing underwriting. Reads the buyer's passport
+// Trade Officer - skill 2: financing underwriting. Reads the buyer's passport
 // tier and the on-chain advance + fee schedule, and quotes the seller's advance
-// terms BEFORE they draw — surfacing the passport→terms link. Reads only; the
+// terms BEFORE they draw - surfacing the passport→terms link. Reads only; the
 // seller still signs requestFinancing (via /finance) to actually draw.
 app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (request, reply) => {
   if (!escrowReady(reply)) return;
@@ -2947,7 +2947,7 @@ app.get('/arc/gateway/destinations', async (_request, reply) => {
   }
 });
 
-// Seller's Arc Gateway unified balance — polled by the frontend after a deposit
+// Seller's Arc Gateway unified balance - polled by the frontend after a deposit
 // to know when Gateway has credited it (before signing the burn intent).
 app.get<{ Querystring: { address?: string } }>('/arc/gateway/balance', async (request, reply) => {
   const address = request.query.address;
@@ -2959,7 +2959,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/gateway/balance', async (re
   }
 });
 
-// Optional cross-chain payout — PRIMARY (external-wallet, client-signed) flow.
+// Optional cross-chain payout - PRIMARY (external-wallet, client-signed) flow.
 // The escrow already paid the seller on Arc; this moves funds they hold. The
 // seller's own wallet does approve + deposit + the EIP-712 burn-intent signature
 // client-side; the backend only builds the plan and relays the destination mint.
@@ -2974,7 +2974,7 @@ app.get<{ Params: { id: string }; Querystring: { destinationKey?: string; amount
     if (recipient && !/^0x[0-9a-fA-F]{40}$/.test(recipient)) return reply.code(400).send({ error: 'recipient must be a 0x address' });
 
     const t = await getTrade(BigInt(request.params.id));
-    if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released' — nothing settled to route yet` });
+    if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released' - nothing settled to route yet` });
     const amount = amountUsdc ?? formatUnits(t.amount, 6);
 
     try {
@@ -3003,7 +3003,7 @@ app.post<{ Params: { id: string }; Body: { message?: any; signature?: string } }
     const id = Number(request.params.id);
     const t = await getTrade(BigInt(request.params.id));
     if (t.status !== 'Released') return reply.code(409).send({ error: `trade is '${t.status}', not 'Released'` });
-    // Once per trade — a refresh can't replay the payout.
+    // Once per trade - a refresh can't replay the payout.
     const existing = db.prepare('SELECT * FROM gateway_payouts WHERE trade_id = ?').get(id) as GatewayPayoutRow | undefined;
     if (existing) return reply.code(409).send({ error: `trade ${id} was already routed to ${existing.destination_name}`, payout: rowToPayout(existing) });
     // Only relay the seller's own intent (sourceDepositor must be the seller).
@@ -3025,7 +3025,7 @@ app.post<{ Params: { id: string }; Body: { message?: any; signature?: string } }
   },
 );
 
-// Seller's chosen payout chain — set during the active trade, read at settlement.
+// Seller's chosen payout chain - set during the active trade, read at settlement.
 // Server-side so it syncs across the seller's devices (was localStorage-only).
 app.get<{ Params: { id: string }; Querystring: { seller?: string } }>('/arc/trade/:id/payout/pref', async (request, reply) => {
   const seller = request.query.seller;
@@ -3057,10 +3057,10 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/payout', async (request) => 
   return { payout: row ? rowToPayout(row) : null };
 });
 
-// Seed the pool from the operator (treasury) wallet — operator becomes an LP.
+// Seed the pool from the operator (treasury) wallet - operator becomes an LP.
 app.post<{ Body: { amountUsdc: string } }>('/arc/trade/pool/fund', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  if (!requireAdmin(request, reply)) return; // operator/treasury seed — admin only
+  if (!requireAdmin(request, reply)) return; // operator/treasury seed - admin only
   const { amountUsdc } = request.body;
   if (!amountUsdc || Number(amountUsdc) <= 0) {
     return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
@@ -3093,7 +3093,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/trade/pool', async (request
   return out;
 });
 
-// ---- LP deposit / withdraw — signed (Circle wallet) + unsigned (own wallet) ----
+// ---- LP deposit / withdraw - signed (Circle wallet) + unsigned (own wallet) ----
 
 app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/arc/trade/pool/deposit', async (request, reply) => {
   if (!escrowReady(reply)) return;
@@ -3146,10 +3146,10 @@ app.post<{ Body: { amountUsdc?: string; shares?: string } }>('/arc/trade/pool/wi
   return buildUnsignedTx(FINANCING_POOL_ADDRESS, financingPoolAbi as Abi, 'redeem', [shares]);
 });
 
-// LP activity feed — this address's pool deposits/withdrawals, read straight
+// LP activity feed - this address's pool deposits/withdrawals, read straight
 // from the chain (Deposit/Withdraw both index `lp`). No DB table; an LP has
 // few of these, so an on-the-fly getLogs + block-timestamp lookup is cheap.
-// Served from the pool_events table (indexed incrementally) — no per-request
+// Served from the pool_events table (indexed incrementally) - no per-request
 // chain scan, so the feed stays fresh without timing out under polling.
 app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async (request, reply) => {
   if (!escrowReady(reply)) return;
@@ -3212,7 +3212,7 @@ app.get('/arc/trade/pool/recent', async (_request, reply) => {
   return { items };
 });
 
-// Yield tracking — cumulative (since inception, = sharePrice − 1) plus 24h / 7d
+// Yield tracking - cumulative (since inception, = sharePrice − 1) plus 24h / 7d
 // windows from the NAV snapshots. Windows are null until enough history exists.
 app.get('/arc/trade/pool/yield', async (_request, reply) => {
   if (!escrowReady(reply)) return;
@@ -3241,7 +3241,7 @@ app.get('/arc/trade/pool/yield', async (_request, reply) => {
   };
 });
 
-// Trade Officer agent — skill 1: ingest a delivery document, run the documentary
+// Trade Officer agent - skill 1: ingest a delivery document, run the documentary
 // check, and either auto-attest from the operator (agent) wallet or escalate to a
 // staked human verifier. No signer in the body: the agent acts autonomously as
 // the trade's assigned attester (the operator wallet set at deploy).
@@ -3278,12 +3278,12 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
         reasons: decision.reasons,
         note:
           decision.category === 'high_value'
-            ? 'withheld — high-value trade routed to a human reviewer'
-            : 'not verified — the seller can correct the document and resubmit',
+            ? 'withheld - high-value trade routed to a human reviewer'
+            : 'not verified - the seller can correct the document and resubmit',
       };
     }
 
-    // PASS — don't settle yet. Open a buyer challenge window: park the approved
+    // PASS - don't settle yet. Open a buyer challenge window: park the approved
     // attestation; the trade stays Funded so the buyer can raiseDispute() until
     // it elapses, then the finalizer attests & settles (see startAttestationFinalizer).
     const finalizeAt = Math.floor(Date.now() / 1000) + CHALLENGE_WINDOW_SECONDS;
@@ -3362,7 +3362,7 @@ app.post<{ Params: { id: string } }>('/arc/trade/:id/finance/unsigned', async (r
 });
 
 // Either party flags a problem on a Funded trade (e.g. goods never arrived,
-// or the officer rejected delivery) — parks it in Disputed for the arbitrator.
+// or the officer rejected delivery) - parks it in Disputed for the arbitrator.
 app.post<{ Params: { id: string } }>('/arc/trade/:id/dispute/unsigned', async (request, reply) => {
   if (!escrowReady(reply)) return;
   return buildUnsignedTx(TRADE_ESCROW_ADDRESS, tradeEscrowAbi as Abi, 'raiseDispute', [BigInt(request.params.id)]);
@@ -3421,7 +3421,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, re
 
 // Notification feed across a user's trades: recent activity + pending actions
 // (what they need to do next). Feeds the global bell.
-// Notification read-state, keyed by address — shared across the user's devices.
+// Notification read-state, keyed by address - shared across the user's devices.
 app.get<{ Querystring: { address?: string } }>('/arc/notifications/read', async (request, reply) => {
   const address = (request.query.address ?? '').toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
@@ -3449,7 +3449,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
   const EVENT_LABEL: Record<string, string> = {
     TradeProposed: 'proposed', TradeCountered: 'counter-offer', TradeAgreed: 'agreed', TradeCancelled: 'cancelled',
     TradeFunded: 'funded', FinancingAdvanced: 'financing advanced', Attested: 'delivery attested',
-    Released: 'settled — paid to seller', Disputed: 'disputed', Resolved: 'dispute resolved', Refunded: 'refunded',
+    Released: 'settled - paid to seller', Disputed: 'disputed', Resolved: 'dispute resolved', Refunded: 'refunded',
   };
 
   const items: { tradeId: string; key: string; kind: 'action' | 'event'; summary: string; whenMs: number }[] = [];
@@ -3464,13 +3464,13 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
     let action: string | null = null;
     if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer) {
       const offerBy = t.lastProposer.toLowerCase() === t.buyer.toLowerCase() ? 'buyer' : 'seller';
-      action = `Trade #${id} — respond to the ${offerBy}'s offer of ${formatUnits(t.amount, 6)} USDC`;
+      action = `Trade #${id} - respond to the ${offerBy}'s offer of ${formatUnits(t.amount, 6)} USDC`;
     } else if (t.status === 'Agreed' && isBuyer) {
-      action = `Trade #${id} — fund the escrow`;
+      action = `Trade #${id} - fund the escrow`;
     } else if (t.status === 'Funded' && isSeller) {
-      action = `Trade #${id} — submit your delivery document`;
+      action = `Trade #${id} - submit your delivery document`;
     } else if (t.status === 'Funded' && isBuyer && Date.now() / 1000 > t.deadline) {
-      action = `Trade #${id} — deadline passed, claim your refund`;
+      action = `Trade #${id} - deadline passed, claim your refund`;
     }
     if (action) items.push({ tradeId: String(id), key: `trade:${id}:action:${t.status}`, kind: 'action', summary: action, whenMs: Date.now() });
 
@@ -3482,7 +3482,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
       items.push({
         tradeId: String(id),
         // One tx can emit several events (e.g. Attested + Released share a
-        // txHash) — include kind + log_index so the key stays unique.
+        // txHash) - include kind + log_index so the key stays unique.
         key: `trade:${id}:event:${e.tx_hash}:${e.kind}:${e.log_index}`,
         kind: 'event',
         summary: `Trade #${id} ${EVENT_LABEL[e.kind] ?? e.kind}`,
@@ -3499,7 +3499,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
         tradeId: String(id),
         key: `trade:${id}:payout`,
         kind: 'event',
-        summary: `Trade #${id} — routed ${payout.amount_usdc} USDC to ${payout.destination_name}`,
+        summary: `Trade #${id} - routed ${payout.amount_usdc} USDC to ${payout.destination_name}`,
         whenMs: new Date(payout.created_at + 'Z').getTime() || Date.now(),
       });
     }
@@ -3511,7 +3511,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
       tradeId: p.tradeId,
       key: `verify:${p.tradeId}:pending`,
       kind: 'action',
-      summary: `Trade #${p.tradeId} — cast your verifier verdict on delivery`,
+      summary: `Trade #${p.tradeId} - cast your verifier verdict on delivery`,
       whenMs: Date.now(),
     });
   }
@@ -3545,7 +3545,7 @@ app.get<{ Params: { id: string } }>('/arc/trades/:id/events', async (request, re
 // Credit passport snapshot for the UI panel.
 app.get<{ Params: { address: string } }>('/arc/passport/:address', async (request, reply) => {
   if (TRADE_PASSPORT_ADDRESS === ZERO_ADDRESS) {
-    return reply.code(503).send({ error: 'passport not deployed — set TRADE_PASSPORT_ADDRESS' });
+    return reply.code(503).send({ error: 'passport not deployed - set TRADE_PASSPORT_ADDRESS' });
   }
   const address = request.params.address;
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return reply.code(400).send({ error: 'address must be 0x…' });
@@ -3554,7 +3554,7 @@ app.get<{ Params: { address: string } }>('/arc/passport/:address', async (reques
 
 
 // Challenge-window finalizer: every 5s, settle approved deliveries whose buyer
-// window has elapsed (officer attests via the operator wallet) — but only if the
+// window has elapsed (officer attests via the operator wallet) - but only if the
 // trade is still Funded. If the buyer disputed (status → Disputed) or it moved on
 // for any reason, the pending row is dropped without settling.
 type MiniLog = { info: (obj: unknown, msg?: string) => void; error: (obj: unknown, msg?: string) => void };
@@ -3569,12 +3569,12 @@ function startAttestationFinalizer(log: MiniLog): void {
         const t = await getTrade(BigInt(row.trade_id));
         if (t.status !== 'Funded') {
           db.prepare('DELETE FROM pending_attestations WHERE trade_id = ?').run(row.trade_id);
-          log.info({ tradeId: row.trade_id, status: t.status }, 'challenge window mooted — not settling');
+          log.info({ tradeId: row.trade_id, status: t.status }, 'challenge window mooted - not settling');
           continue;
         }
         await runExec(CIRCLE_OPERATOR_WALLET_ID, attestSpec(BigInt(row.trade_id), row.proof_hash as `0x${string}`, true));
         db.prepare('DELETE FROM pending_attestations WHERE trade_id = ?').run(row.trade_id);
-        log.info({ tradeId: row.trade_id }, 'challenge window elapsed — officer attested & settled');
+        log.info({ tradeId: row.trade_id }, 'challenge window elapsed - officer attested & settled');
       } catch (err) {
         // Leave the row for a retry next tick.
         log.error(err, `finalize attest failed for trade ${row.trade_id}`);
@@ -3630,7 +3630,7 @@ async function verifierAssignmentsFor(
   return out;
 }
 
-// Just the still-actionable (pending) subset — powers the nav badge + notifications.
+// Just the still-actionable (pending) subset - powers the nav badge + notifications.
 async function pendingVerificationsFor(address: string): Promise<{ tradeId: string; deadline: number }[]> {
   return (await verifierAssignmentsFor(address))
     .filter((a) => a.status === 'pending')
@@ -3653,7 +3653,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/verifier/assignments', asyn
   return { items: await verifierAssignmentsFor(address) };
 });
 
-// Global recent stake/unstake on the current module — for the /verify feed.
+// Global recent stake/unstake on the current module - for the /verify feed.
 app.get('/arc/verifier/recent', async (_request, reply) => {
   const v = verifierReady(reply);
   if (!v) return;
@@ -3678,7 +3678,7 @@ app.get('/arc/verifier/recent', async (_request, reply) => {
   };
 });
 
-// A verifier's own stake/unstake history — merged into activity + notifications.
+// A verifier's own stake/unstake history - merged into activity + notifications.
 app.get<{ Querystring: { address?: string } }>('/arc/verifier/activity', async (request, reply) => {
   const v = verifierReady(reply);
   if (!v) return;
@@ -3801,7 +3801,7 @@ app.post<{ Params: { id: string }; Body: { content?: string; signature?: string;
         arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'verificationOf', args: [id] }),
       ]);
       const deadline = Number((vstate as readonly unknown[])[2]); // V.deadline
-      // Replace the whole membership for this trade — on a retry the panel is
+      // Replace the whole membership for this trade - on a retry the panel is
       // redrawn, so old rows (incl. excluded no-shows) must not linger.
       db.prepare('DELETE FROM verification_assignments WHERE trade_id = ?').run(Number(request.params.id));
       const ins = db.prepare('INSERT OR REPLACE INTO verification_assignments (trade_id, verifier, module, deadline) VALUES (?, ?, ?, ?)');
@@ -3846,7 +3846,7 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
   // App-layer secret ballot: while voting is open, hide the running split + each
   // panelist's verdict from everyone but the voter themselves (so panelists
   // can't copy each other). Turnout (cast) stays visible. Revealed on resolve.
-  // NB: on-chain voteOf is still public — this is a UI mitigation, not crypto.
+  // NB: on-chain voteOf is still public - this is a UI mitigation, not crypto.
   const liveVoting = assigned && !resolved;
   const out: Record<string, unknown> = {
     assigned,
@@ -3981,7 +3981,7 @@ const port = Number(process.env.PORT ?? 3001);
 app
   .listen({ port, host: '0.0.0.0' })
   .then(() => {
-    if (!ADMIN_API_KEY) app.log.warn('ADMIN_API_KEY not set — operator/treasury routes (e.g. pool/fund) are unauthenticated. Set it in .env to lock them down.');
+    if (!ADMIN_API_KEY) app.log.warn('ADMIN_API_KEY not set - operator/treasury routes (e.g. pool/fund) are unauthenticated. Set it in .env to lock them down.');
     startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
     startTradeIndexer(app.log);

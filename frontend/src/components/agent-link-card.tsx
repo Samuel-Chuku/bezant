@@ -6,7 +6,7 @@ import Link from 'next/link';
 // Lets the connected user link an ERC-8004 agentId to their arc-trade
 // profile. Two paths:
 //   - link an agentId they already own (verified on-chain by the backend)
-//   - register a brand-new agent in one click (M32 — backend builds the
+//   - register a brand-new agent in one click (M32 - backend builds the
 //     calldata, the wallet signs, then the new agentId is auto-linked)
 // `variant='compact'` renders a tight, violet-tinted panel that tucks into the
 // identity card's spare space; 'full' is the original standalone card.
@@ -99,7 +99,7 @@ export function AgentLinkCard({
     return (
       <div className="rounded-xl border border-violet-800/50 bg-violet-950/25 p-4">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-300">ERC-8004 agent</div>
-        <p className="mt-1 text-[11px] leading-snug text-violet-300/70">Optional — link or mint an agent to carry your reputation across arc-trade.</p>
+        <p className="mt-1 text-[11px] leading-snug text-violet-300/70">Optional - link or mint an agent to carry your reputation across Bezant.</p>
         <div className="mt-2 flex gap-1.5">
           <input
             type="text"
@@ -165,7 +165,7 @@ export function AgentLinkCard({
     <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
       <h2 className="text-sm font-medium text-neutral-300">Link your ERC-8004 agent</h2>
       <p className="mt-1 text-xs text-neutral-500">
-        Optional. If you own an agent on the IdentityRegistry, link its agentId here to surface your reputation across arc-trade.
+        Optional. If you own an agent on the IdentityRegistry, link its agentId here to surface your reputation across Bezant.
       </p>
       <div className="mt-3 flex gap-2">
         <input

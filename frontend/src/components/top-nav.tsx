@@ -28,12 +28,12 @@ const PRIMARY_AFTER: NavItem[] = [
   { href: '/profile', label: 'Profile' },
 ];
 
-// Mobile drawer is a flat list — expand the Trades group inline.
+// Mobile drawer is a flat list - expand the Trades group inline.
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
   ...TRADE_LINKS,
   ...PRIMARY_AFTER,
-  // Parked (pact/wrapper era) — pages still live in the repo, just unlinked from
+  // Parked (pact/wrapper era) - pages still live in the repo, just unlinked from
   // nav while the standalone trade flow is the active product. Restore as needed.
   // { href: '/create', label: 'Create' },
   // { href: '/pacts', label: 'Pacts' },
@@ -52,7 +52,7 @@ function NavLink({ href, label, active, badge = 0 }: { href: string; label: stri
     >
       {label}
       {badge > 0 && (
-        // Subtle pending-verifications counter — muted emerald, not the bell's red.
+        // Subtle pending-verifications counter - muted emerald, not the bell's red.
         <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/15 px-1 text-[10px] font-medium text-emerald-300" aria-label={`${badge} pending`}>
           {badge > 9 ? '9+' : badge}
         </span>
@@ -135,7 +135,7 @@ export function TopNav() {
               className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight text-neutral-100"
             >
               <ArcLogo size={22} />
-              <span>arc-trade</span>
+              <span>Bezant</span>
             </Link>
           </div>
 

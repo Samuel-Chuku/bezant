@@ -1,6 +1,6 @@
 import { defineChain } from 'viem';
 
-// Arc Testnet — Circle's USDC-native L1.
+// Arc Testnet - Circle's USDC-native L1.
 // Note: USDC is the native gas token (6 decimals, not 18).
 export const arcTestnet = defineChain({
   id: 5042002,
@@ -15,9 +15,9 @@ export const arcTestnet = defineChain({
   testnet: true,
 });
 
-// Contract addresses on Arc Testnet — mirrored from backend's lib/arc.ts.
+// Contract addresses on Arc Testnet - mirrored from backend's lib/arc.ts.
 export const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as const;
-// PactWrapper — our own-rails escrow. All client-facing writes/approvals target
+// PactWrapper - our own-rails escrow. All client-facing writes/approvals target
 // this; the ERC-8183 reference below is proxied behind it and kept only for
 // reference/diagnostics.
 export const WRAPPER_ADDRESS = '0x4183b1429eE2467772b4612a94Ef253210312F02' as const;

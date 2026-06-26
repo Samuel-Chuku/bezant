@@ -1,4 +1,4 @@
-// FinancingPool ABI — extracted from contracts/out/FinancingPool.sol/FinancingPool.json
+// FinancingPool ABI - extracted from contracts/out/FinancingPool.sol/FinancingPool.json
 // Regenerate from contracts/:  forge inspect FinancingPool abi --json
 export const financingPoolAbi = [
   {

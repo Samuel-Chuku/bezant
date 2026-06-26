@@ -15,7 +15,7 @@ export default function PoolPage() {
         <p className="mt-3 text-sm leading-relaxed text-neutral-400">
           The pool fronts sellers their payment the moment a buyer funds escrow, instead of making
           them wait out the challenge window. You deposit USDC, receive shares, and earn the
-          financing fees as yield. Anyone with an arc-trade account can deposit — no whitelist, no
+          financing fees as yield. Anyone with a Bezant account can deposit - no whitelist, no
           minimum.
         </p>
       </header>
@@ -24,7 +24,7 @@ export default function PoolPage() {
         <span className="font-medium text-amber-200">Risk:</span> you bear credit risk. If a financed
         trade is refunded or the buyer wins a dispute, the advance is written off and the loss is
         shared across all LPs (share price can fall below 1.0). Withdrawals are capped at idle
-        liquidity — capital in live advances is locked until those trades settle.
+        liquidity - capital in live advances is locked until those trades settle.
       </div>
 
       <div className="mt-8">

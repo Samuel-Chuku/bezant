@@ -9,7 +9,7 @@ import { HandlePrompt } from './handle-prompt';
 const DISMISS_KEY = 'arc-trade:profile-banner-dismissed';
 
 // Global, dismissible nudge to claim a handle. Replaces the inline handle
-// prompt that used to persist on the home and profile pages — claiming a
+// prompt that used to persist on the home and profile pages - claiming a
 // handle is optional, so it lives in an out-of-the-way banner + modal.
 export function ProfileSetupBanner() {
   const signer = useSigner();
@@ -45,7 +45,7 @@ export function ProfileSetupBanner() {
           </span>
           <p className="flex-1 text-xs text-neutral-400">
             <span className="font-medium text-neutral-200">Set up a profile</span> to get a display name
-            and build reputation faster. It stays optional — you can secure deals without one.
+            and build reputation faster. It stays optional - you can secure deals without one.
           </p>
           <button
             type="button"

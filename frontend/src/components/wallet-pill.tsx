@@ -44,7 +44,7 @@ export function WalletPill() {
     setLoginOpen(false);
   }, [pathname]);
 
-  // Passkey popover only needs outside-click closing — it's anchored to
+  // Passkey popover only needs outside-click closing - it's anchored to
   // the pill in the same DOM subtree. Login modal is portal'd outside the
   // wrapper, so it manages its own dismissal via the backdrop click.
   useEffect(() => {
@@ -98,7 +98,7 @@ export function WalletPill() {
   };
 
   const copyHandleOwner = async (e: React.MouseEvent) => {
-    // Stop the click from bubbling to the pill button — clicking the
+    // Stop the click from bubbling to the pill button - clicking the
     // handle is a shortcut to copy the address it resolves to, not a
     // gesture to open the wallet menu.
     e.stopPropagation();
@@ -108,7 +108,7 @@ export function WalletPill() {
       setHandleCopied(true);
       setTimeout(() => setHandleCopied(false), 1500);
     } catch {
-      // Clipboard blocked — silently no-op rather than alarming the user.
+      // Clipboard blocked - silently no-op rather than alarming the user.
     }
   };
 
@@ -136,7 +136,7 @@ export function WalletPill() {
             >
               {handleCopied ? 'Copied!' : `@${handle}`}
             </span>
-            {/* Address row hides below md when a handle is present — the
+            {/* Address row hides below md when a handle is present - the
                 handle becomes the primary identifier. Always visible at md+
                 or when no handle is set. */}
             <span className="hidden text-neutral-700 md:inline" aria-hidden>
@@ -183,7 +183,7 @@ function LoginPopover({ onClose }: { onClose: () => void }) {
   const [mounted, setMounted] = useState(false);
 
   // Portal both backdrop and dialog at <body> level so they share a clean
-  // stacking context — otherwise the sticky header's backdrop-blur paints
+  // stacking context - otherwise the sticky header's backdrop-blur paints
   // over the dialog and the whole thing reads as "everything is blurred".
   useEffect(() => {
     setMounted(true);
@@ -247,7 +247,7 @@ function LoginPopover({ onClose }: { onClose: () => void }) {
               // RainbowKit's openConnectModal opens the SAME native connect
               // modal that the home page's <ConnectButton /> uses
               // (Installed / Popular wallet list + Learn More). It is briefly
-              // undefined while RainbowKit is initializing — guard so the
+              // undefined while RainbowKit is initializing - guard so the
               // click doesn't silently no-op in that window.
               if (!openConnectModal) return;
               openConnectModal();
@@ -273,7 +273,7 @@ function LoginPopover({ onClose }: { onClose: () => void }) {
           </button>
           <h3 className="text-base font-medium text-neutral-100">Email + passkey</h3>
           <p className="mt-1 text-xs text-neutral-500">
-            New here? Create one. Already have a passkey for arc-trade? Sign in.
+            New here? Create one. Already have a passkey for Bezant? Sign in.
           </p>
           <div className="mt-4">
             <EmailSignIn />
@@ -353,7 +353,7 @@ function PasskeyPopover({
   );
 }
 
-// Small chain-style badge for the left of the pill — communicates "this
+// Small chain-style badge for the left of the pill - communicates "this
 // address is on Arc". Cyan accent to match the network identity used by
 // most Arc surfaces; deliberately distinct from our emerald brand color
 // so it reads as a *network* indicator rather than as the app logo.

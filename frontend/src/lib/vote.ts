@@ -2,7 +2,7 @@ import { encodeAbiParameters, keccak256, type Hex } from 'viem';
 
 // Commit-reveal voting for evaluators. The commit hash must exactly match the
 // contract's: keccak256(abi.encode(Vote vote, bytes32 secret, address evaluator)).
-// The secret stays client-side (localStorage) between commit and reveal — this
+// The secret stays client-side (localStorage) between commit and reveal - this
 // is the manual path; the auto-reveal agent (M41 design) is a later addition.
 
 export type VoteChoice = 1 | 2; // 1 = ForDisputer, 2 = ForOpponent
@@ -32,7 +32,7 @@ export function saveVote(pactId: string, disputeId: string, evaluator: string, v
   try {
     localStorage.setItem(key(pactId, disputeId, evaluator), JSON.stringify(v));
   } catch {
-    // localStorage unavailable (private mode etc.) — the evaluator can still
+    // localStorage unavailable (private mode etc.) - the evaluator can still
     // reveal by re-entering the secret manually if we ever surface that path.
   }
 }

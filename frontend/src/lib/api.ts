@@ -6,7 +6,7 @@ export type UserRecord = {
   walletAddress: string;
   signingMode: 'dev-controlled' | 'external' | 'circle-modular';
   // ERC-8004 IdentityRegistry agentId (uint256 as string). null until the
-  // user links an agentId they own — verified on-chain at link time.
+  // user links an agentId they own - verified on-chain at link time.
   agentId: string | null;
   createdAt: string;
 };
@@ -64,7 +64,7 @@ export type GatewayDestination = {
   supported: boolean;
 };
 
-// Burn-intent message — numeric fields arrive as strings over JSON. uint32
+// Burn-intent message - numeric fields arrive as strings over JSON. uint32
 // fields (version/domains) arrive as numbers. The wallet signs a bigint copy;
 // this exact object is submitted back unchanged.
 export type GatewayBurnMessage = {
@@ -149,7 +149,7 @@ export async function getGatewayPayout(tradeId: string): Promise<GatewayPayoutRe
   return res.payout;
 }
 
-// Seller's chosen payout chain — persisted server-side so it syncs across devices.
+// Seller's chosen payout chain - persisted server-side so it syncs across devices.
 export async function getPayoutPref(tradeId: string, seller: string): Promise<string | null> {
   const res = await jsonFetch<{ destinationKey: string | null }>('GET', `/arc/trade/${encodeURIComponent(tradeId)}/payout/pref?seller=${encodeURIComponent(seller)}`);
   return res.destinationKey;
@@ -211,7 +211,7 @@ export async function linkAgentId(
   );
 }
 
-// Self-registration flow (M32). Step 1 — get unsigned calldata for the
+// Self-registration flow (M32). Step 1 - get unsigned calldata for the
 // IdentityRegistry's no-arg `register()`. Frontend signs via useSigner.
 export async function buildRegisterAgentUnsigned(): Promise<UnsignedTx & {
   identityRegistry: string;
@@ -219,7 +219,7 @@ export async function buildRegisterAgentUnsigned(): Promise<UnsignedTx & {
   return jsonFetch('POST', '/arc/identity/register-unsigned');
 }
 
-// Step 2 — after the tx confirms, ask the backend to parse the receipt
+// Step 2 - after the tx confirms, ask the backend to parse the receipt
 // and pull the freshly-minted agentId out of the ERC-721 Transfer event.
 // Centralizes log parsing so we don't have to handle the wagmi-vs-Circle
 // receipt-shape difference on the client.
@@ -233,7 +233,7 @@ export async function parseRegistration(txHash: string): Promise<{
   return jsonFetch('POST', '/arc/identity/parse-registration', { txHash });
 }
 
-// Reputation reads — live view-call against the ReputationRegistry. Two
+// Reputation reads - live view-call against the ReputationRegistry. Two
 // shapes: a cheap summary (used by the inline badge) and a full read that
 // adds a truncated feedback list (used by the reputation page).
 export type ReputationFeedback = {
@@ -335,7 +335,7 @@ export type UnsignedTx = {
   chainId: number;
 };
 
-// No evaluator — the wrapper is the protocol-level evaluator. challengeWindow
+// No evaluator - the wrapper is the protocol-level evaluator. challengeWindow
 // (seconds) is optional; omit/0 lets the contract apply its 24h default.
 export async function buildCreatePactUnsigned(input: {
   provider: `0x${string}`;
@@ -385,10 +385,10 @@ export type PactLiveState = {
   expiredAt: { unix: number; iso: string };
   status: 'Open' | 'Funded' | 'Submitted' | 'Disputed' | 'Completed' | 'Rejected' | 'Expired' | string;
   hook: string;
-  // Wrapper challenge window (seconds). Required when funding — the wrapper's
+  // Wrapper challenge window (seconds). Required when funding - the wrapper's
   // atomic acceptance reverts if the funder's expected value drifts from this.
   challengeWindow: number;
-  // Unix seconds the deliverable was submitted (0 until Submitted) — drives the
+  // Unix seconds the deliverable was submitted (0 until Submitted) - drives the
   // challenge-window countdown. disputeId is 0 when no dispute is open.
   submittedAt: number;
   disputeId: string;
@@ -406,7 +406,7 @@ export async function getPactState(pactId: string): Promise<PactLiveState> {
   return jsonFetch<PactLiveState>('GET', `/arc/escrow/pact/${encodeURIComponent(pactId)}`);
 }
 
-// Marketplace — all Open ERC-8183 pacts across the public reference contract
+// Marketplace - all Open ERC-8183 pacts across the public reference contract
 // on Arc (not just arc-trade-created pacts). Paginated server-side; budget
 // filter is optional. Each row is PactIndexEntry-like + live status/budget
 // merged so the card can render without a second fetch.
@@ -553,7 +553,7 @@ export type PactEvent = {
   // null for hash-bearing rows.
   amountRaw: string | null;
   // For Funded: the funder (client). For Refunded: the recipient (also
-  // client) — caller of claimRefund isn't recoverable from the event.
+  // client) - caller of claimRefund isn't recoverable from the event.
   actor: string;
   blockNumber: number;
   txHash: string;
@@ -571,7 +571,7 @@ export async function getPactEvents(pactId: string): Promise<PactEvent[]> {
 
 // ─── Deliverable content (Layer 2) ─────────────────────────────────────────
 // Off-chain content attached to a Submitted event. Upload is gated by hash
-// verification (only the preimage holder — the provider — can store). Read
+// verification (only the preimage holder - the provider - can store). Read
 // is gated by wallet-signature auth, parties-only.
 
 export type DeliverableContentType = 'text' | 'url' | 'file';
@@ -662,7 +662,7 @@ export async function getDeliverableFile(
       const j = (await res.json()) as { error?: string };
       if (j.error) message = j.error;
     } catch {
-      // ignore — keep HTTP fallback
+      // ignore - keep HTTP fallback
     }
     const err = new Error(message) as Error & { status?: number };
     err.status = res.status;
@@ -699,7 +699,7 @@ export async function getOrCreateReadAuth(
           return { viewer, sig: cached.sig, ts: cached.ts };
         }
       } catch {
-        // Bad JSON in cache — fall through to fresh sign.
+        // Bad JSON in cache - fall through to fresh sign.
       }
     }
   }
@@ -763,7 +763,7 @@ export async function buildApproveUnsigned(amountUsdc: string): Promise<Unsigned
   return jsonFetch<UnsignedTx>('POST', '/arc/usdc/approve/unsigned', { amountUsdc });
 }
 
-// Atomic acceptance — the caller signs off on exactly the current live quote.
+// Atomic acceptance - the caller signs off on exactly the current live quote.
 // Pass the pact's current budget + challengeWindow; the wrapper reverts
 // WrongTerms if either drifted (e.g. the provider re-quoted mid-flight).
 export async function buildFundUnsigned(
@@ -802,7 +802,7 @@ export async function buildRefundUnsigned(pactId: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/refund/unsigned`);
 }
 
-// cancel() — client withdraws an Open (unfunded) pact. The wrapper's reject()
+// cancel() - client withdraws an Open (unfunded) pact. The wrapper's reject()
 // only works on Funded/Submitted, so Open uses this separate path.
 export async function buildCancelUnsigned(pactId: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/cancel/unsigned`);
@@ -810,7 +810,7 @@ export async function buildCancelUnsigned(pactId: string): Promise<UnsignedTx> {
 
 // ─── Dispute system ──────────────────────────────────────────────────────────
 
-// Permissionless post-challenge finalize — pays the provider once the challenge
+// Permissionless post-challenge finalize - pays the provider once the challenge
 // window closes with no dispute. (Client early-accept is buildCompleteUnsigned.)
 export async function buildFinalizeUnsigned(pactId: string, reasonHash?: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/finalize/unsigned`, {
@@ -819,7 +819,7 @@ export async function buildFinalizeUnsigned(pactId: string, reasonHash?: string)
 }
 
 // Open a dispute (client or provider, within the challenge window). Pulls a 5%
-// bond — approve the wrapper for the bond first.
+// bond - approve the wrapper for the bond first.
 export async function buildDisputeUnsigned(pactId: string, reasonHash?: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/dispute/unsigned`, {
     reasonHash,
@@ -835,7 +835,7 @@ export async function buildForceConcedeUnsigned(pactId: string): Promise<Unsigne
 }
 
 // Defend (opponent, within concede window). Posts a matching bond and triggers
-// evaluator selection — approve the wrapper for the bond first.
+// evaluator selection - approve the wrapper for the bond first.
 export async function buildDefendUnsigned(pactId: string): Promise<UnsignedTx> {
   return jsonFetch<UnsignedTx>('POST', `/arc/escrow/pacts/${encodeURIComponent(pactId)}/defend/unsigned`);
 }
@@ -968,7 +968,7 @@ export type TradeState = {
   financingAdvanced: boolean;
   status: TradeStatus;
   // Set while a buyer challenge window is open (officer approved, not yet
-  // settled) — unix seconds when it auto-settles. null otherwise.
+  // settled) - unix seconds when it auto-settles. null otherwise.
   challengeWindowUntil: number | null;
 };
 
@@ -1141,7 +1141,7 @@ export async function buildRequestFinancingUnsigned(tradeId: string): Promise<Un
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/finance/unsigned`);
 }
 
-// Trade Officer skill 2 — financing underwriting quote (priced off the buyer's
+// Trade Officer skill 2 - financing underwriting quote (priced off the buyer's
 // passport tier). Read-only; the seller still signs requestFinancing to draw.
 export type FinancingQuote = {
   buyerTier: number;
@@ -1204,7 +1204,7 @@ export async function getPoolActivity(address: string): Promise<PoolActivity[]> 
 
 export type RecentPoolStake = { key: string; lp: string; amountUsdc: string; txHash: string; whenMs: number };
 
-// Global 10 most-recent pool deposits (any LP) — for the pool page activity list.
+// Global 10 most-recent pool deposits (any LP) - for the pool page activity list.
 export async function getRecentPoolStakes(): Promise<RecentPoolStake[]> {
   const r = await jsonFetch<{ items: RecentPoolStake[] }>('GET', '/arc/trade/pool/recent');
   return r.items;
@@ -1243,7 +1243,7 @@ export async function buildRefundTradeUnsigned(tradeId: string): Promise<Unsigne
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/refund/unsigned`);
 }
 
-// Arbitrator settles a Disputed trade — release to seller or refund the buyer.
+// Arbitrator settles a Disputed trade - release to seller or refund the buyer.
 export async function buildResolveDisputeUnsigned(tradeId: string, releaseToSeller: boolean): Promise<UnsignedTx> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/resolve/unsigned`, { releaseToSeller });
 }

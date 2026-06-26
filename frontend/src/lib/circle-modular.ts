@@ -75,7 +75,7 @@ export async function buildSmartAccountFromCredential(credential: P256Credential
 export type CircleSmartAccount = SmartAccount;
 export type { P256Credential };
 
-// Credential persistence — keep only the metadata we need to re-derive the
+// Credential persistence - keep only the metadata we need to re-derive the
 // WebAuthn account on next visit. The private key never leaves the authenticator.
 const STORAGE_KEY = 'arc-trade:circle-credential';
 

@@ -10,7 +10,7 @@ export function timeAgo(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
-// SQLite datetime strings are UTC without a zone marker — parse them as UTC.
+// SQLite datetime strings are UTC without a zone marker - parse them as UTC.
 export function sqlTimeAgo(at: string | null | undefined): string {
   if (!at) return '';
   const ms = new Date(at.includes('Z') || at.includes('T') ? at : at + 'Z').getTime();
