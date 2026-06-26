@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { BezantWordmark } from './bezant-logo';
 
 export type NavItem = { href: string; label: string };
 
@@ -47,7 +48,7 @@ export function MobileDrawer({
       />
       <aside className="absolute left-0 top-0 flex h-full w-72 flex-col border-r border-neutral-800 bg-neutral-950 p-6 shadow-2xl">
         <div className="flex items-center justify-between">
-          <span className="text-base font-semibold tracking-tight text-neutral-100">Bezant</span>
+          <BezantWordmark markSize={20} textClassName="text-base" />
           <button
             type="button"
             onClick={onClose}

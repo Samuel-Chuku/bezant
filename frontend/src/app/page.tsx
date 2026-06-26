@@ -5,6 +5,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { EmailSignIn } from '@/components/email-sign-in';
+import { BezantWordmark } from '@/components/bezant-logo';
 import { shortAddress } from '@/lib/format';
 
 export default function Home() {
@@ -17,8 +18,10 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
       <header className="mb-12">
-        <h1 className="text-4xl font-semibold tracking-tight">Bezant</h1>
-        <p className="mt-2 text-neutral-400">
+        <h1>
+          <BezantWordmark markSize={44} textClassName="text-5xl" className="gap-3" />
+        </h1>
+        <p className="mt-3 text-muted">
           Trade finance for stablecoins. Escrow that releases on verified delivery.
         </p>
       </header>

@@ -32,6 +32,10 @@ const config: Config = {
           soft: 'var(--danger-soft)',
         },
         info: 'var(--info)',
+        brand: 'var(--brand)',
+      },
+      fontFamily: {
+        brand: ['var(--font-brand)', 'Fraunces', 'serif'],
       },
     },
   },

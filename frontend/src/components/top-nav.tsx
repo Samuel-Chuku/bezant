@@ -8,7 +8,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useVerifierPending } from '@/hooks/use-verifier-pending';
 import { arcTestnet } from '@/lib/chains';
 import { shortAddress } from '@/lib/format';
-import { ArcLogo } from './arc-logo';
+import { BezantWordmark } from './bezant-logo';
 import { MobileDrawer, type NavItem } from './mobile-drawer';
 import { NotificationsBell } from './notifications-bell';
 import { WalletPill } from './wallet-pill';
@@ -130,12 +130,8 @@ export function TopNav() {
                 <path d="M3 6h18M3 12h18M3 18h18" />
               </svg>
             </button>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight text-neutral-100"
-            >
-              <ArcLogo size={22} />
-              <span>Bezant</span>
+            <Link href="/" className="inline-flex items-center" aria-label="Bezant home">
+              <BezantWordmark markSize={24} textClassName="text-lg" />
             </Link>
           </div>
 

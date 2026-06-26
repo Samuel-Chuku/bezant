@@ -28,6 +28,9 @@
   --danger: #e5544b;
   --danger-soft: rgba(229, 84, 75, 0.12);
   --info: #5aa9e6;
+
+  --brand: #e3cd97; /* champagne - the bezant coin nod; brand mark only, never UI action */
+  --brand-line: #4a4127; /* champagne-on-ink hairline (icon tile border) */
 }
 
 body {
