@@ -19,7 +19,11 @@ import { SidebarSummary } from '@/components/sidebar-summary';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://bezant.trade'),
-  title: 'Bezant',
+  title: {
+    default: 'Bezant · stablecoin trade finance',
+    // Per-route titles (set in each route's layout) render as "Verify · Bezant".
+    template: '%s · Bezant',
+  },
   description: 'Trade finance for stablecoins. Escrow that releases on verified delivery.',
 };
 
