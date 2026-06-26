@@ -106,7 +106,7 @@ export function SidebarSummary() {
       className="mx-auto mb-12 mt-4 max-w-md px-6 lg:fixed lg:m-0 lg:max-w-none lg:p-0 lg:z-30"
       style={inlineStyle}
     >
-      <aside className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5 shadow-lg">
+      <aside className="rounded-2xl border border-line bg-surface/40 p-5 shadow-lg">
         {/* Drag handle - visible only at lg+ where the widget is fixed. */}
         <div
           onPointerDown={onPointerDown}
@@ -117,7 +117,7 @@ export function SidebarSummary() {
           aria-label="Drag to move"
           title="Drag to move"
         >
-          <span className="text-neutral-700" aria-hidden>
+          <span className="text-muted" aria-hidden>
             <svg width="22" height="6" viewBox="0 0 22 6" fill="currentColor">
               <circle cx="3" cy="3" r="1.5" />
               <circle cx="11" cy="3" r="1.5" />
@@ -127,17 +127,17 @@ export function SidebarSummary() {
         </div>
 
         <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-medium text-neutral-100">Your USDC</h2>
+          <h2 className="text-sm font-medium text-fg">Your USDC</h2>
           {!showSources && (
             <Link
               href="/bridge"
-              className="text-[11px] text-emerald-400 hover:text-emerald-300"
+              className="text-[11px] text-primary hover:text-primary"
             >
               Go to bridge →
             </Link>
           )}
         </div>
-        <p className="mt-1 text-[11px] text-neutral-500">
+        <p className="mt-1 text-[11px] text-muted">
           {showSources
             ? 'Live balances on Arc and supported CCTP testnets.'
             : 'Live Arc balance for this wallet.'}
@@ -202,17 +202,17 @@ function BalanceRow({
   const has = !!data && Number(data.formatted) > 0;
 
   return (
-    <li className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs hover:bg-neutral-900/60">
+    <li className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs hover:bg-surface/60">
       <div className="min-w-0">
         <div
-          className={`truncate ${accent === 'emerald' ? 'text-emerald-300' : 'text-neutral-200'}`}
+          className={`truncate ${accent === 'emerald' ? 'text-primary' : 'text-fg'}`}
         >
           {label}
         </div>
-        <div className="text-[10px] text-neutral-500">{sublabel}</div>
+        <div className="text-[10px] text-muted">{sublabel}</div>
       </div>
-      <div className={`font-mono text-xs ${has ? 'text-neutral-100' : 'text-neutral-600'}`}>
-        {formatted} <span className="text-neutral-500">USDC</span>
+      <div className={`font-mono text-xs ${has ? 'text-fg' : 'text-muted'}`}>
+        {formatted} <span className="text-muted">USDC</span>
       </div>
     </li>
   );

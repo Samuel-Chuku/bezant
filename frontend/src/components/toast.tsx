@@ -71,16 +71,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 const TINT: Record<ToastType, { border: string; icon: ReactNode }> = {
   success: {
-    border: 'border-emerald-800/60',
-    icon: <span className="text-emerald-400">✓</span>,
+    border: 'border-primary/60',
+    icon: <span className="text-primary">✓</span>,
   },
   error: {
-    border: 'border-red-800/60',
-    icon: <span className="text-red-400">✕</span>,
+    border: 'border-danger/60',
+    icon: <span className="text-danger">✕</span>,
   },
   info: {
-    border: 'border-neutral-700',
-    icon: <span className="text-neutral-300">•</span>,
+    border: 'border-line-strong',
+    icon: <span className="text-fg">•</span>,
   },
 };
 
@@ -95,7 +95,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   const { border, icon } = TINT[toast.type];
   return (
     <div
-      className={`pointer-events-auto flex items-start gap-2 rounded-lg border bg-neutral-900/95 px-3 py-2 text-sm text-neutral-100 shadow-lg backdrop-blur transition-all duration-200 ${border} ${
+      className={`pointer-events-auto flex items-start gap-2 rounded-lg border bg-surface/95 px-3 py-2 text-sm text-fg shadow-lg backdrop-blur transition-all duration-200 ${border} ${
         shown ? 'translate-x-0 opacity-100' : 'translate-x-3 opacity-0'
       }`}
     >
@@ -109,7 +109,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
               href={toast.href}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sky-300 underline underline-offset-2 hover:text-sky-200"
+              className="inline-flex items-center gap-1 text-info underline underline-offset-2 hover:text-info"
             >
               {toast.hrefLabel ?? 'view tx'} <ExternalLinkIcon />
             </a>
@@ -120,7 +120,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="-mr-1 shrink-0 text-neutral-500 hover:text-neutral-200"
+        className="-mr-1 shrink-0 text-muted hover:text-fg"
       >
         ✕
       </button>

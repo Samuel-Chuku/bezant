@@ -160,9 +160,9 @@ export function GatewayPayoutPanel({
   // ── Active trade: pick where to be paid (saved for settlement) ──
   if (mode === 'prefer') {
     return (
-      <div className="space-y-2.5 rounded-lg border border-sky-900/40 bg-sky-950/20 p-4">
-        <p className="text-sm text-sky-100">Get paid on another chain? <span className="text-neutral-500">(optional)</span></p>
-        <p className="text-xs text-neutral-500">
+      <div className="space-y-2.5 rounded-lg border border-info/40 bg-info/20 p-4">
+        <p className="text-sm text-info">Get paid on another chain? <span className="text-muted">(optional)</span></p>
+        <p className="text-xs text-muted">
           You&apos;re paid in USDC on Arc by default when this settles. Prefer another chain? Pick one now and we&apos;ll route it for you right after settlement.
         </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -172,7 +172,7 @@ export function GatewayPayoutPanel({
           ))}
         </div>
         {pref && (
-          <p className="text-xs text-emerald-300">✓ We&apos;ll route your payout to {destName(pref)} right after settlement.</p>
+          <p className="text-xs text-primary">✓ We&apos;ll route your payout to {destName(pref)} right after settlement.</p>
         )}
       </div>
     );
@@ -182,14 +182,14 @@ export function GatewayPayoutPanel({
   const done = result ?? existing;
   if (done) {
     return (
-      <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm">
-        <div className="flex items-center gap-2 text-emerald-200">
+      <div className="rounded-lg border border-primary/40 bg-primary/20 p-4 text-sm">
+        <div className="flex items-center gap-2 text-primary">
           <ChainLogo sourceKey={done.destination.key as ChainLogoKey} className="h-5 w-5" />
           <span>Routed <span className="font-medium">{done.deliveredUsdc} USDC</span> to {done.destination.name}.</span>
         </div>
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs text-muted">
           {done.mintTxUrl ? (
-            <a href={done.mintTxUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 underline">
+            <a href={done.mintTxUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-info hover:text-info underline">
               View mint transaction <ExternalLinkIcon />
             </a>
           ) : (
@@ -204,7 +204,7 @@ export function GatewayPayoutPanel({
   // with just a subtle escape hatch.
   if (!pref && !open) {
     return (
-      <button onClick={() => setOpen(true)} className="text-xs text-sky-400/80 hover:text-sky-300">
+      <button onClick={() => setOpen(true)} className="text-xs text-info/80 hover:text-info">
         Receive your payout on another chain →
       </button>
     );
@@ -213,30 +213,30 @@ export function GatewayPayoutPanel({
   // Pre-chosen chain → streamlined one-click route (unless the picker is open).
   if (pref && !open) {
     return (
-      <div className="space-y-3 rounded-lg border border-sky-900/40 bg-sky-950/20 p-4">
+      <div className="space-y-3 rounded-lg border border-info/40 bg-info/20 p-4">
         <div>
-          <p className="text-sm text-sky-100">Route your payout to another chain</p>
-          <p className="mt-1 text-xs text-neutral-500">You were paid on Arc. Send it to your chosen chain via Circle Gateway.</p>
+          <p className="text-sm text-info">Route your payout to another chain</p>
+          <p className="mt-1 text-xs text-muted">You were paid on Arc. Send it to your chosen chain via Circle Gateway.</p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-sky-800/50 bg-sky-900/20 px-3 py-2 text-sm text-neutral-100">
+        <div className="flex items-center gap-2 rounded-md border border-info/50 bg-info/20 px-3 py-2 text-sm text-fg">
           <ChainLogo sourceKey={pref as ChainLogoKey} className="h-5 w-5" />
           <span className="font-medium">{destName(pref)}</span>
           {!busy && (
-            <button onClick={() => setOpen(true)} className="ml-auto text-xs text-sky-400 hover:text-sky-300">change</button>
+            <button onClick={() => setOpen(true)} className="ml-auto text-xs text-info hover:text-info">change</button>
           )}
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-neutral-400">
+          <label className="flex flex-col gap-1 text-xs text-muted">
             Amount (USDC)
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               disabled={busy}
               inputMode="decimal"
-              className="w-32 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+              className="w-32 rounded-md border border-line bg-bg px-2 py-1.5 text-sm text-fg"
             />
           </label>
-          <button onClick={run} disabled={busy} className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
+          <button onClick={run} disabled={busy} className="rounded-md bg-info px-3 py-1.5 text-sm font-medium text-white hover:bg-info disabled:opacity-50">
             {busy ? 'Routing…' : 'Route now'}
           </button>
         </div>
@@ -247,14 +247,14 @@ export function GatewayPayoutPanel({
 
   // Full chain picker (change chain, or the fallback opened from the link).
   return (
-    <div className="space-y-3 rounded-lg border border-sky-900/40 bg-sky-950/20 p-4">
+    <div className="space-y-3 rounded-lg border border-info/40 bg-info/20 p-4">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-sky-100">Pick a chain to be paid on</p>
-          <p className="mt-1 text-xs text-neutral-500">You were paid on Arc. Route some or all of it to another chain via Circle Gateway.</p>
+          <p className="text-sm text-info">Pick a chain to be paid on</p>
+          <p className="mt-1 text-xs text-muted">You were paid on Arc. Route some or all of it to another chain via Circle Gateway.</p>
         </div>
         {!busy && (
-          <button onClick={() => setOpen(false)} className="text-neutral-500 hover:text-neutral-300" aria-label="Close">
+          <button onClick={() => setOpen(false)} className="text-muted hover:text-fg" aria-label="Close">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
             </svg>
@@ -263,24 +263,24 @@ export function GatewayPayoutPanel({
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {destinations.length === 0 && <p className="col-span-full text-xs text-neutral-500">Loading chains…</p>}
+        {destinations.length === 0 && <p className="col-span-full text-xs text-muted">Loading chains…</p>}
         {destinations.map((d) => (
           <ChainChip key={d.key} label={d.name} chainKey={d.key as ChainLogoKey} selected={destKey === d.key} disabled={busy} onClick={() => setDestKey(d.key)} />
         ))}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs text-neutral-400">
+        <label className="flex flex-col gap-1 text-xs text-muted">
           Amount (USDC)
           <input
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={busy}
             inputMode="decimal"
-            className="w-32 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+            className="w-32 rounded-md border border-line bg-bg px-2 py-1.5 text-sm text-fg"
           />
         </label>
-        <button onClick={run} disabled={busy || !destKey} className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
+        <button onClick={run} disabled={busy || !destKey} className="rounded-md bg-info px-3 py-1.5 text-sm font-medium text-white hover:bg-info disabled:opacity-50">
           {busy ? 'Routing…' : 'Route payout'}
         </button>
       </div>
@@ -296,7 +296,7 @@ function ChainChip({ label, chainKey, selected, disabled, onClick }: { label: st
       onClick={onClick}
       disabled={disabled}
       className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition disabled:opacity-50 ${
-        selected ? 'border-sky-500 bg-sky-900/30 text-white' : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
+        selected ? 'border-info bg-info/12 text-white' : 'border-line bg-bg text-fg hover:border-line-strong'
       }`}
     >
       <ChainLogo sourceKey={chainKey} className="h-5 w-5" />
@@ -309,9 +309,9 @@ function RouteFootnote({ signerMode }: { signerMode: 'external' | 'circle' | nul
   return (
     <>
       {signerMode !== null && signerMode !== 'external' && (
-        <p className="text-xs text-amber-300">Passkey wallets can’t route cross-chain yet - connect an external wallet.</p>
+        <p className="text-xs text-warn">Passkey wallets can’t route cross-chain yet - connect an external wallet.</p>
       )}
-      <p className="text-[11px] text-neutral-600">A small Gateway fee (≈0.02 USDC) is taken on top of the amount.</p>
+      <p className="text-[11px] text-muted">A small Gateway fee (≈0.02 USDC) is taken on top of the amount.</p>
     </>
   );
 }

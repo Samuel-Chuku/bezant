@@ -46,13 +46,13 @@ export function MobileDrawer({
         onClick={onClose}
         className="absolute inset-0 bg-black/60"
       />
-      <aside className="absolute left-0 top-0 flex h-full w-72 flex-col border-r border-neutral-800 bg-neutral-950 p-6 shadow-2xl">
+      <aside className="absolute left-0 top-0 flex h-full w-72 flex-col border-r border-line bg-bg p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <BezantWordmark markSize={20} textClassName="text-base" />
           <button
             type="button"
             onClick={onClose}
-            className="text-xl leading-none text-neutral-500 hover:text-neutral-200"
+            className="text-xl leading-none text-muted hover:text-fg"
             aria-label="Close menu"
           >
             ×
@@ -68,8 +68,8 @@ export function MobileDrawer({
                 className={[
                   'rounded-lg px-3 py-2 text-sm transition',
                   active
-                    ? 'bg-neutral-900 text-neutral-100'
-                    : 'text-neutral-400 hover:bg-neutral-900/60 hover:text-neutral-100',
+                    ? 'bg-surface text-fg'
+                    : 'text-muted hover:bg-surface/60 hover:text-fg',
                 ].join(' ')}
               >
                 {item.label}
@@ -77,7 +77,7 @@ export function MobileDrawer({
             );
           })}
         </nav>
-        {footer && <div className="mt-auto border-t border-neutral-800 pt-4">{footer}</div>}
+        {footer && <div className="mt-auto border-t border-line pt-4">{footer}</div>}
       </aside>
     </div>
   );

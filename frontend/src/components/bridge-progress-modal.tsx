@@ -16,10 +16,10 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => (running ? undefined : onClose())} />
-      <div className="relative w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
-        <div className="border-b border-neutral-800 px-5 py-3.5">
-          <p className="text-sm font-medium text-neutral-200">Bridging {run.amount} USDC</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
+      <div className="relative w-full max-w-sm rounded-2xl border border-line bg-bg shadow-2xl">
+        <div className="border-b border-line px-5 py-3.5">
+          <p className="text-sm font-medium text-fg">Bridging {run.amount} USDC</p>
+          <p className="mt-0.5 text-xs text-muted">
             {run.sourceFullName} → {run.destinationFullName}
           </p>
         </div>
@@ -35,7 +35,7 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
                   <span className={LABEL_COLOR[state]}>{BRIDGE_STEP_LABELS[name]}</span>
                 </span>
                 {step?.explorerUrl && (
-                  <a href={step.explorerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300">
+                  <a href={step.explorerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-info hover:text-info">
                     tx <ExternalLinkIcon />
                   </a>
                 )}
@@ -45,16 +45,16 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
         </ol>
 
         <div className="px-5 pb-2 text-center text-xs">
-          {running && <span className="text-neutral-400">This can take a couple of minutes - keep this open.</span>}
-          {run.status === 'success' && (tail ?? <span className="text-emerald-400">Bridged ✓</span>)}
-          {run.status === 'error' && <span className="text-red-400">{run.errorMessage ?? 'Bridge failed.'}</span>}
+          {running && <span className="text-muted">This can take a couple of minutes - keep this open.</span>}
+          {run.status === 'success' && (tail ?? <span className="text-primary">Bridged ✓</span>)}
+          {run.status === 'error' && <span className="text-danger">{run.errorMessage ?? 'Bridge failed.'}</span>}
         </div>
 
-        <div className="border-t border-neutral-800 px-5 py-3.5">
+        <div className="border-t border-line px-5 py-3.5">
           <button
             onClick={onClose}
             disabled={running}
-            className="w-full rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:text-neutral-100 disabled:opacity-50"
+            className="w-full rounded-lg border border-line px-4 py-2 text-sm text-fg hover:text-fg disabled:opacity-50"
           >
             {running ? 'Bridging…' : 'Close'}
           </button>
@@ -65,17 +65,17 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
 }
 
 const LABEL_COLOR: Record<StepState | 'upcoming', string> = {
-  success: 'text-neutral-200',
-  pending: 'text-sky-300',
-  error: 'text-red-300',
-  noop: 'text-neutral-600 line-through',
-  upcoming: 'text-neutral-600',
+  success: 'text-fg',
+  pending: 'text-info',
+  error: 'text-danger',
+  noop: 'text-muted line-through',
+  upcoming: 'text-muted',
 };
 
 function StepIcon({ state }: { state: StepState | 'upcoming' }) {
   if (state === 'success') {
     return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary">
         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
@@ -84,7 +84,7 @@ function StepIcon({ state }: { state: StepState | 'upcoming' }) {
   }
   if (state === 'error') {
     return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-danger/15 text-danger">
         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
         </svg>
@@ -93,7 +93,7 @@ function StepIcon({ state }: { state: StepState | 'upcoming' }) {
   }
   if (state === 'pending') {
     return (
-      <span className="flex h-5 w-5 items-center justify-center text-sky-400">
+      <span className="flex h-5 w-5 items-center justify-center text-info">
         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
           <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-20" />
           <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
@@ -101,5 +101,5 @@ function StepIcon({ state }: { state: StepState | 'upcoming' }) {
       </span>
     );
   }
-  return <span className="flex h-5 w-5 items-center justify-center"><span className="h-2 w-2 rounded-full border border-neutral-700" /></span>;
+  return <span className="flex h-5 w-5 items-center justify-center"><span className="h-2 w-2 rounded-full border border-line-strong" /></span>;
 }

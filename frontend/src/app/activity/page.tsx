@@ -48,7 +48,7 @@ export default function ActivityPage() {
       <header className="mb-6 flex items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Activities</h1>
-          <p className="mt-2 text-sm text-neutral-400">
+          <p className="mt-2 text-sm text-muted">
             Your trades and pool moves, things waiting on you, and deadlines closing in.
           </p>
         </div>
@@ -56,7 +56,7 @@ export default function ActivityPage() {
           <button
             type="button"
             onClick={markAllRead}
-            className="shrink-0 rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-300 transition hover:text-neutral-100"
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs text-fg transition hover:text-fg"
           >
             Mark all read
           </button>
@@ -75,8 +75,8 @@ export default function ActivityPage() {
                 className={[
                   'rounded-full px-3 py-1 text-xs transition',
                   active
-                    ? 'bg-neutral-100 text-neutral-900'
-                    : 'border border-neutral-800 text-neutral-400 hover:text-neutral-100',
+                    ? 'bg-primary text-primary-fg'
+                    : 'border border-line text-muted hover:text-fg',
                 ].join(' ')}
               >
                 {f.label}
@@ -87,42 +87,42 @@ export default function ActivityPage() {
       )}
 
       {!signer.isConnected && (
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">
-          <p className="text-sm text-neutral-300">Connect a wallet to see your activity.</p>
+        <section className="rounded-2xl border border-line bg-surface/40 p-6">
+          <p className="text-sm text-fg">Connect a wallet to see your activity.</p>
         </section>
       )}
 
       {signer.isConnected && isError && (
-        <p className="text-sm text-red-400">Couldn&apos;t load activity: {errorMessage}</p>
+        <p className="text-sm text-danger">Couldn&apos;t load activity: {errorMessage}</p>
       )}
 
       {signer.isConnected && !isError && isLoading && items.length === 0 && (
         <ul className="space-y-2">
           {[0, 1, 2, 3].map((i) => (
-            <li key={i} className="animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-              <div className="h-3 w-20 rounded bg-neutral-800" />
-              <div className="mt-2 h-4 w-3/4 rounded bg-neutral-800" />
+            <li key={i} className="animate-pulse rounded-xl border border-line bg-surface/40 p-4">
+              <div className="h-3 w-20 rounded bg-surface-2" />
+              <div className="mt-2 h-4 w-3/4 rounded bg-surface-2" />
             </li>
           ))}
         </ul>
       )}
 
       {signer.isConnected && !isError && !isLoading && items.length === 0 && (
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6 text-center">
-          <p className="text-sm text-neutral-300">No activity yet.</p>
-          <p className="mt-2 text-xs text-neutral-500">
+        <section className="rounded-2xl border border-line bg-surface/40 p-6 text-center">
+          <p className="text-sm text-fg">No activity yet.</p>
+          <p className="mt-2 text-xs text-muted">
             Start a trade or deposit into the pool and it&apos;ll show up here.
           </p>
           <div className="mt-4 flex justify-center gap-2">
             <Link
               href="/trade/create"
-              className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
             >
               New trade
             </Link>
             <Link
               href="/pool"
-              className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:text-neutral-100"
+              className="rounded-lg border border-line px-4 py-2 text-sm text-fg hover:text-fg"
             >
               Explore the pool
             </Link>
@@ -131,7 +131,7 @@ export default function ActivityPage() {
       )}
 
       {signer.isConnected && items.length > 0 && shown.length === 0 && (
-        <p className="text-sm text-neutral-500">Nothing matches this filter.</p>
+        <p className="text-sm text-muted">Nothing matches this filter.</p>
       )}
 
       {shown.length > 0 && (
@@ -153,10 +153,10 @@ export default function ActivityPage() {
 }
 
 const KIND_BADGE: Record<NotificationItem['kind'], { label: string; className: string }> = {
-  action: { label: 'Action required', className: 'bg-emerald-500/15 text-emerald-300' },
-  deadline: { label: 'Deadline', className: 'bg-amber-500/15 text-amber-300' },
-  event: { label: 'Event', className: 'bg-neutral-700/40 text-neutral-300' },
-  status: { label: 'Status', className: 'bg-sky-500/15 text-sky-300' },
+  action: { label: 'Action required', className: 'bg-primary/15 text-primary' },
+  deadline: { label: 'Deadline', className: 'bg-warn/15 text-warn' },
+  event: { label: 'Event', className: 'bg-muted/40 text-fg' },
+  status: { label: 'Status', className: 'bg-info/15 text-info' },
   pool: { label: 'Pool', className: 'bg-violet-500/15 text-violet-300' },
 };
 
@@ -169,7 +169,7 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
         tabIndex={0}
         onClick={onOpen}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
-        className={`flex w-full cursor-pointer items-start justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-left transition hover:border-neutral-700 ${
+        className={`flex w-full cursor-pointer items-start justify-between gap-3 rounded-xl border border-line bg-surface/40 p-4 text-left transition hover:border-line-strong ${
           item.read ? 'opacity-60' : ''
         }`}
       >
@@ -178,10 +178,10 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
               {badge.label}
             </span>
-            {!item.read && <span className="inline-block h-1.5 w-1.5 rounded-full bg-neutral-100" aria-label="unread" />}
+            {!item.read && <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" aria-label="unread" />}
           </div>
-          <div className="mt-2 text-sm text-neutral-100">{item.summary}</div>
-          <div className="mt-1 flex items-center gap-3 text-[11px] text-neutral-500">
+          <div className="mt-2 text-sm text-fg">{item.summary}</div>
+          <div className="mt-1 flex items-center gap-3 text-[11px] text-muted">
             <span>{timeAgo(item.whenMs)}</span>
             {item.txHash && (
               <a
@@ -189,14 +189,14 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-0.5 text-neutral-400 hover:text-neutral-100"
+                className="inline-flex items-center gap-0.5 text-muted hover:text-fg"
               >
                 View tx <ExternalLinkIcon />
               </a>
             )}
           </div>
         </div>
-        <span className="mt-0.5 text-neutral-600">›</span>
+        <span className="mt-0.5 text-muted">›</span>
       </div>
     </li>
   );

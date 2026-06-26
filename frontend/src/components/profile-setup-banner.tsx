@@ -35,22 +35,22 @@ export function ProfileSetupBanner() {
 
   return (
     <>
-      <div className="border-b border-neutral-800/80 bg-neutral-900/40">
+      <div className="border-b border-line/80 bg-surface/40">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2 sm:px-6">
-          <span className="hidden h-6 w-6 shrink-0 items-center justify-center rounded-md bg-neutral-800 text-neutral-300 sm:inline-flex" aria-hidden>
+          <span className="hidden h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-2 text-fg sm:inline-flex" aria-hidden>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4" />
               <path d="M4 21a8 8 0 0 1 16 0" />
             </svg>
           </span>
-          <p className="flex-1 text-xs text-neutral-400">
-            <span className="font-medium text-neutral-200">Set up a profile</span> to get a display name
+          <p className="flex-1 text-xs text-muted">
+            <span className="font-medium text-fg">Set up a profile</span> to get a display name
             and build reputation faster. It stays optional - you can secure deals without one.
           </p>
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="shrink-0 rounded-md bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-900 transition hover:bg-white"
+            className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:bg-primary-hover"
           >
             Set up profile →
           </button>
@@ -58,7 +58,7 @@ export function ProfileSetupBanner() {
             type="button"
             onClick={dismiss}
             aria-label="Dismiss"
-            className="shrink-0 rounded-md p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+            className="shrink-0 rounded-md p-1 text-muted hover:bg-surface-2 hover:text-fg"
           >
             ×
           </button>

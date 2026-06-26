@@ -260,10 +260,10 @@ function VerifyGlyph() {
 
 function StatusPill({ status }: { status: VerifierAssignment['status'] }) {
   const style: Record<VerifierAssignment['status'], string> = {
-    pending: 'bg-emerald-500/15 text-emerald-300',
-    voted: 'bg-sky-500/15 text-sky-300',
-    resolved: 'bg-neutral-500/15 text-neutral-300',
-    expired: 'bg-red-500/15 text-red-300',
+    pending: 'bg-primary/15 text-primary',
+    voted: 'bg-info/15 text-info',
+    resolved: 'bg-muted/15 text-fg',
+    expired: 'bg-danger/15 text-danger',
   };
   const label: Record<VerifierAssignment['status'], string> = {
     pending: 'needs your vote',

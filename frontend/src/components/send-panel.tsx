@@ -90,30 +90,30 @@ export function SendPanel() {
   };
 
   return (
-    <section className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
+    <section className="rounded-xl border border-line bg-bg/50 p-5">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-wide text-neutral-500">Send USDC</div>
+        <div className="text-[11px] uppercase tracking-wide text-muted">Send USDC</div>
         <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">passkey wallet</span>
       </div>
 
-      <div className="mt-1 text-sm text-neutral-500">
-        Spendable balance: <span className="font-medium text-neutral-200">{available.toLocaleString()} USDC</span>
+      <div className="mt-1 text-sm text-muted">
+        Spendable balance: <span className="font-medium text-fg">{available.toLocaleString()} USDC</span>
       </div>
 
       <div className="mt-4 space-y-3">
         <label className="block">
-          <span className="text-xs text-neutral-500">Recipient (address or @handle)</span>
+          <span className="text-xs text-muted">Recipient (address or @handle)</span>
           <input
             value={to}
             onChange={(e) => setTo(e.target.value)}
             disabled={busy}
             placeholder="0x… or handle"
-            className="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+            className="mt-1 w-full rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
           />
         </label>
 
         <label className="block">
-          <span className="text-xs text-neutral-500">Amount (USDC)</span>
+          <span className="text-xs text-muted">Amount (USDC)</span>
           <div className="mt-1 flex items-center gap-2">
             <input
               value={amount}
@@ -121,13 +121,13 @@ export function SendPanel() {
               disabled={busy}
               inputMode="decimal"
               placeholder="0.00"
-              className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
             />
             <button
               type="button"
               onClick={() => setAmount(String(available))}
               disabled={busy || available <= 0}
-              className="shrink-0 rounded-md border border-neutral-800 px-2.5 py-2 text-xs text-neutral-400 hover:text-neutral-100 disabled:opacity-40"
+              className="shrink-0 rounded-md border border-line px-2.5 py-2 text-xs text-muted hover:text-fg disabled:opacity-40"
             >
               Max
             </button>
@@ -142,30 +142,30 @@ export function SendPanel() {
           {busy ? 'Checking…' : 'Send'}
         </button>
 
-        {error && <p className="text-xs text-red-300">{error}</p>}
-        <p className="text-[11px] text-neutral-600">Gas is sponsored - you only spend the amount you send.</p>
+        {error && <p className="text-xs text-danger">{error}</p>}
+        <p className="text-[11px] text-muted">Gas is sponsored - you only spend the amount you send.</p>
       </div>
 
       {/* Recipient confirmation - shows exactly who the funds go to before signing. */}
       {pending && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !busy && setPending(null)} />
-          <div className="relative w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
-            <p className="text-sm text-neutral-400">You&apos;re sending</p>
-            <p className="mt-1 text-2xl font-semibold text-neutral-100">
-              {amount} <span className="text-base text-neutral-400">USDC</span>
+          <div className="relative w-full max-w-sm rounded-2xl border border-line bg-bg p-5 shadow-2xl">
+            <p className="text-sm text-muted">You&apos;re sending</p>
+            <p className="mt-1 text-2xl font-semibold text-fg">
+              {amount} <span className="text-base text-muted">USDC</span>
             </p>
 
-            <p className="mt-4 text-xs uppercase tracking-wide text-neutral-500">To</p>
+            <p className="mt-4 text-xs uppercase tracking-wide text-muted">To</p>
             {pending.handle ? (
               <div className="mt-1">
-                <p className="text-lg font-bold text-neutral-100">@{pending.handle}</p>
-                <p className="mt-0.5 break-all font-mono text-sm font-bold text-neutral-300">({pending.address})</p>
+                <p className="text-lg font-bold text-fg">@{pending.handle}</p>
+                <p className="mt-0.5 break-all font-mono text-sm font-bold text-fg">({pending.address})</p>
               </div>
             ) : (
               <div className="mt-1">
-                <p className="break-all font-mono text-base font-bold text-neutral-100">{pending.address}</p>
-                <p className="mt-1 text-xs text-amber-300">No handle linked to this address - double-check it&apos;s correct.</p>
+                <p className="break-all font-mono text-base font-bold text-fg">{pending.address}</p>
+                <p className="mt-1 text-xs text-warn">No handle linked to this address - double-check it&apos;s correct.</p>
               </div>
             )}
 
@@ -173,7 +173,7 @@ export function SendPanel() {
               <button
                 onClick={() => setPending(null)}
                 disabled={busy}
-                className="flex-1 rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:text-neutral-100 disabled:opacity-50"
+                className="flex-1 rounded-lg border border-line px-4 py-2 text-sm text-fg hover:text-fg disabled:opacity-50"
               >
                 Cancel
               </button>

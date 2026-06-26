@@ -56,7 +56,7 @@ export function HandleAddr({
   const inner = handle ? (
     <>
       @{handle}
-      {withAddress && <span className="text-neutral-500"> ({short(address)})</span>}
+      {withAddress && <span className="text-muted"> ({short(address)})</span>}
     </>
   ) : (
     short(address)

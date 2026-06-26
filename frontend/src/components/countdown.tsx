@@ -13,32 +13,32 @@ function urgencyFor(secondsRemaining: number): Urgency {
 }
 
 const CHIP_COLOR: Record<Urgency, string> = {
-  past: 'border-neutral-800 bg-neutral-950/60 text-neutral-500',
-  red: 'border-red-700/60 bg-red-950/40 text-red-300',
-  amber: 'border-amber-700/60 bg-amber-950/40 text-amber-200',
-  emerald: 'border-emerald-800/60 bg-emerald-950/30 text-emerald-300',
+  past: 'border-line bg-bg/60 text-muted',
+  red: 'border-danger/60 bg-danger/12 text-danger',
+  amber: 'border-warn/60 bg-warn/12 text-warn',
+  emerald: 'border-primary/60 bg-primary/12 text-primary',
 };
 
 const BANNER_COLOR: Record<Urgency, { bg: string; text: string; dot: string }> = {
   past: {
-    bg: 'border-neutral-800 bg-neutral-900/40',
-    text: 'text-neutral-400',
-    dot: 'bg-neutral-600',
+    bg: 'border-line bg-surface/40',
+    text: 'text-muted',
+    dot: 'bg-muted',
   },
   red: {
-    bg: 'border-red-800/60 bg-red-950/30',
-    text: 'text-red-200',
-    dot: 'bg-red-500',
+    bg: 'border-danger/60 bg-danger/12',
+    text: 'text-danger',
+    dot: 'bg-danger',
   },
   amber: {
-    bg: 'border-amber-800/60 bg-amber-950/30',
-    text: 'text-amber-200',
-    dot: 'bg-amber-400',
+    bg: 'border-warn/60 bg-warn/12',
+    text: 'text-warn',
+    dot: 'bg-warn',
   },
   emerald: {
-    bg: 'border-emerald-800/60 bg-emerald-950/20',
-    text: 'text-emerald-200',
-    dot: 'bg-emerald-500',
+    bg: 'border-primary/60 bg-primary/20',
+    text: 'text-primary',
+    dot: 'bg-primary',
   },
 };
 
@@ -119,14 +119,14 @@ export function CountdownBanner({
     <div className={`rounded-xl border ${color.bg} p-4`}>
       <div className="flex items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full ${color.dot}`} aria-hidden />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
           {label}
         </span>
       </div>
       <div className={`mt-1 font-mono text-2xl tabular-nums ${color.text}`}>
         {formatFine(remaining)}
       </div>
-      <div className="mt-0.5 text-[11px] text-neutral-500">
+      <div className="mt-0.5 text-[11px] text-muted">
         {remaining > 0
           ? `Deadline: ${new Date(unix * 1000).toLocaleString()}`
           : `Passed: ${new Date(unix * 1000).toLocaleString()}`}

@@ -6,6 +6,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { EmailSignIn } from '@/components/email-sign-in';
 import { BezantWordmark } from '@/components/bezant-logo';
+import { buttonClass } from '@/components/ui';
 import { shortAddress } from '@/lib/format';
 
 export default function Home() {
@@ -27,17 +28,17 @@ export default function Home() {
       </header>
 
       {!signer.isConnected && (
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
+        <section className="rounded-2xl border border-line bg-surface/50 p-6">
           <h2 className="text-lg font-medium">Get started</h2>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-muted">
             Choose how you want to sign. Both paths use the same backend; the only difference is who
             holds your key.
           </p>
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-5">
+            <div className="rounded-xl border border-line bg-bg/40 p-5">
               <h3 className="font-medium">Connect a wallet</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-muted">
                 MetaMask, Coinbase, WalletConnect. You keep your own keys.
               </p>
               <div className="mt-4">
@@ -45,9 +46,9 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-5">
+            <div className="rounded-xl border border-line bg-bg/40 p-5">
               <h3 className="font-medium">Sign in with email</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-muted">
                 Backed by a Circle smart account on Arc. Your email is your identifier; a passkey
                 (Bitwarden, Touch ID, etc.) signs your transactions. No wallet required.
               </p>
@@ -60,13 +61,13 @@ export default function Home() {
       )}
 
       {signer.isConnected && (
-        <section className="rounded-2xl border border-emerald-900/40 bg-emerald-950/20 p-6">
+        <section className="rounded-2xl border border-primary/40 bg-primary/20 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-medium uppercase tracking-wide text-emerald-400">
+              <h2 className="text-sm font-medium uppercase tracking-wide text-primary">
                 Connected ({signer.mode === 'external' ? 'wallet' : 'passkey'})
               </h2>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-muted">
                 {signer.mode === 'external'
                   ? 'Signing locally via your browser wallet.'
                   : 'Signing via your Circle smart account. Gas sponsored by Circle paymaster.'}
@@ -75,7 +76,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => signer.disconnect?.()}
-              className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-100"
+              className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted hover:text-fg"
             >
               Disconnect
             </button>
@@ -87,29 +88,29 @@ export default function Home() {
           <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
             {displayName && (
               <div>
-                <dt className="text-neutral-500">Signed in as</dt>
-                <dd className="text-neutral-100">
+                <dt className="text-muted">Signed in as</dt>
+                <dd className="text-fg">
                   {user?.handle ? (
                     <span className="font-medium">{user.handle}</span>
                   ) : (
-                    <span className="font-mono text-xs text-neutral-300">{displayName}</span>
+                    <span className="font-mono text-xs text-fg">{displayName}</span>
                   )}
                 </dd>
               </div>
             )}
             {user?.agentId && (
               <div>
-                <dt className="inline-flex items-center gap-1.5 text-neutral-500">
+                <dt className="inline-flex items-center gap-1.5 text-muted">
                   Agent ID
                   <AgentIdTooltip />
                 </dt>
-                <dd className="text-neutral-200">
+                <dd className="text-fg">
                   <Link
                     href={`/reputation/agent/${encodeURIComponent(user.agentId)}`}
-                    className="inline-flex items-center gap-1 hover:text-neutral-100"
+                    className="inline-flex items-center gap-1 hover:text-fg"
                   >
                     <span className="font-mono text-xs">#{user.agentId}</span>
-                    <span className="text-neutral-500" aria-hidden>
+                    <span className="text-muted" aria-hidden>
                       ›
                     </span>
                   </Link>
@@ -119,25 +120,19 @@ export default function Home() {
           </dl>
 
           {userState.status === 'loading' && (
-            <p className="mt-3 text-xs text-neutral-500">Looking up your account…</p>
+            <p className="mt-3 text-xs text-muted">Looking up your account…</p>
           )}
           {userState.status === 'error' && (
-            <p className="mt-3 text-xs text-red-400">
+            <p className="mt-3 text-xs text-danger">
               Couldn&apos;t reach the backend: {userState.message}
             </p>
           )}
 
-          <div className="mt-6 flex flex-wrap gap-2 border-t border-emerald-900/30 pt-4">
-            <Link
-              href="/trade/create"
-              className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white"
-            >
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-primary/30 pt-4">
+            <Link href="/trade/create" className={buttonClass('primary')}>
               Create a trade
             </Link>
-            <Link
-              href="/trade"
-              className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 transition hover:text-neutral-100"
-            >
+            <Link href="/trade" className={buttonClass('secondary')}>
               My trades
             </Link>
           </div>
@@ -147,7 +142,7 @@ export default function Home() {
       {/* Agent linking (optional, advanced) lives on the profile page now,
           not on the landing surface. */}
 
-      <footer className="mt-16 text-xs text-neutral-600">
+      <footer className="mt-16 text-xs text-muted">
         Connected to{' '}
         <span className="font-mono">
           {process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001'}
@@ -170,18 +165,18 @@ function AgentIdTooltip() {
       aria-label="What is an Agent ID?"
       title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets Bezant surface your reputation badge next to your name on every trade."
     >
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-700 text-[10px] text-neutral-500 group-hover:text-neutral-300">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-line-strong text-[10px] text-muted group-hover:text-fg">
         ?
       </span>
-      <span className="invisible absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-xs font-sans normal-case text-neutral-300 shadow-xl group-hover:visible group-focus:visible">
-        <span className="block font-medium text-neutral-100">What&apos;s an Agent ID?</span>
+      <span className="invisible absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-line bg-bg p-3 text-xs font-sans normal-case text-fg shadow-xl group-hover:visible group-focus:visible">
+        <span className="block font-medium text-fg">What&apos;s an Agent ID?</span>
         <span className="mt-1 block">
           An ERC-8004 <span className="font-mono">agentId</span> is your portable,
           ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so
           your trust history follows you across apps and wallet rotations.
         </span>
-        <span className="mt-2 block text-neutral-400">
-          Linking it surfaces your <span className="text-amber-300">★ score</span>{' '}
+        <span className="mt-2 block text-muted">
+          Linking it surfaces your <span className="text-warn">★ score</span>{' '}
           next to your name on every trade in Bezant.
         </span>
       </span>

@@ -22,31 +22,31 @@ export function RecentPoolStakes() {
 
   return (
     <section className="mt-8">
-      <h2 className="text-xs uppercase tracking-wide text-neutral-500">Recent deposits</h2>
+      <h2 className="text-xs uppercase tracking-wide text-muted">Recent deposits</h2>
       {items.length === 0 ? (
-        <p className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 px-3 py-8 text-center text-sm text-neutral-500">
+        <p className="mt-3 rounded-xl border border-line bg-bg/40 px-3 py-8 text-center text-sm text-muted">
           No deposits yet - be the first to provide liquidity.
         </p>
       ) : (
-        <ul className="mt-3 divide-y divide-neutral-900 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/40">
+        <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-bg/40">
           {items.map((s) => (
-            <li key={s.key} className="flex items-center gap-3 px-4 py-3 transition hover:bg-neutral-900/40">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+            <li key={s.key} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface/40">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <DepositGlyph />
               </span>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-neutral-100">
-                  {s.amountUsdc} <span className="text-xs font-normal text-neutral-500">USDC</span>
+                <div className="text-sm font-semibold text-fg">
+                  {s.amountUsdc} <span className="text-xs font-normal text-muted">USDC</span>
                 </div>
-                <div className="font-mono text-xs text-neutral-500">{shortAddress(s.lp)}</div>
+                <div className="font-mono text-xs text-muted">{shortAddress(s.lp)}</div>
               </div>
               <div className="flex shrink-0 items-center gap-3">
-                <span className="text-xs text-neutral-500">{timeAgo(s.whenMs)}</span>
+                <span className="text-xs text-muted">{timeAgo(s.whenMs)}</span>
                 <a
                   href={arcExplorerTxUrl(s.txHash)}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md border border-neutral-800 px-2 py-1 text-xs text-sky-300 transition hover:border-neutral-700 hover:bg-neutral-900"
+                  className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-info transition hover:border-line-strong hover:bg-surface"
                 >
                   tx <ExternalLinkIcon />
                 </a>

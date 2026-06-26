@@ -83,14 +83,14 @@ export function PoolPanel() {
   };
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-4">
+    <div className="rounded-xl border border-line bg-bg/50 p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xs uppercase tracking-wide text-neutral-500">Financing pool (LP)</h2>
-        {stats && <span className="text-xs text-neutral-500">share price {stats.sharePrice.toFixed(4)}</span>}
+        <h2 className="text-xs uppercase tracking-wide text-muted">Financing pool (LP)</h2>
+        {stats && <span className="text-xs text-muted">share price {stats.sharePrice.toFixed(4)}</span>}
       </div>
 
       {!stats ? (
-        <p className="mt-3 text-sm text-neutral-500">Pool unavailable.</p>
+        <p className="mt-3 text-sm text-muted">Pool unavailable.</p>
       ) : (
         <>
           <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
@@ -100,7 +100,7 @@ export function PoolPanel() {
           </div>
 
           <div className="mt-3">
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">Yield</div>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">Yield</div>
             <PoolYieldStrip />
           </div>
 
@@ -109,29 +109,29 @@ export function PoolPanel() {
               <button
                 onClick={() => setAction('deposit')}
                 disabled={!signer.isConnected}
-                className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-40"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg disabled:opacity-40"
               >
                 Deposit
               </button>
               <button
                 onClick={() => setAction('withdraw')}
                 disabled={!signer.isConnected}
-                className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 disabled:opacity-40"
+                className="rounded-lg border border-line-strong px-4 py-2 text-sm font-medium text-fg disabled:opacity-40"
               >
                 Withdraw
               </button>
             </div>
             {signer.isConnected && stats.myShares && stats.myShares !== '0' && (
               <div className="text-right">
-                <div className="text-[10px] uppercase tracking-wide text-neutral-500">Your position</div>
-                <div className="text-2xl font-semibold leading-tight text-emerald-300">
-                  {stats.myValueUsdc} <span className="text-sm font-normal text-neutral-500">USDC</span>
+                <div className="text-[10px] uppercase tracking-wide text-muted">Your position</div>
+                <div className="text-2xl font-semibold leading-tight text-primary">
+                  {stats.myValueUsdc} <span className="text-sm font-normal text-muted">USDC</span>
                 </div>
               </div>
             )}
           </div>
           {!signer.isConnected && (
-            <p className="mt-2 text-xs text-neutral-600">Connect a wallet to deposit or withdraw.</p>
+            <p className="mt-2 text-xs text-muted">Connect a wallet to deposit or withdraw.</p>
           )}
         </>
       )}
@@ -228,9 +228,9 @@ function AmountModal({
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-0.5 text-neutral-200">{children} USDC</div>
+    <div className="rounded-lg border border-line bg-bg/40 px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-0.5 text-fg">{children} USDC</div>
     </div>
   );
 }

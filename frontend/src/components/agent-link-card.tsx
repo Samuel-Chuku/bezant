@@ -92,7 +92,7 @@ export function AgentLinkCard({
               {busy ? 'Unlinking…' : 'Unlink'}
             </button>
           </div>
-          {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
+          {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
         </div>
       );
     }
@@ -127,7 +127,7 @@ export function AgentLinkCard({
         >
           {registering ? registerLabel : 'Register a new agent'}
         </button>
-        {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
       </div>
     );
   }
@@ -135,15 +135,15 @@ export function AgentLinkCard({
   // ── Full standalone card ──
   if (currentAgentId !== null) {
     return (
-      <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
-        <h2 className="text-sm font-medium text-neutral-300">ERC-8004 agent linked</h2>
-        <p className="mt-1 text-xs text-neutral-500">
+      <section className="rounded-2xl border border-line bg-surface/40 p-5">
+        <h2 className="text-sm font-medium text-fg">ERC-8004 agent linked</h2>
+        <p className="mt-1 text-xs text-muted">
           Reputation reads on this address will resolve to agent <span className="font-mono">#{currentAgentId}</span>.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
             href={`/reputation/agent/${encodeURIComponent(currentAgentId)}`}
-            className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-950 hover:bg-white"
+            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover"
           >
             View reputation
           </Link>
@@ -151,20 +151,20 @@ export function AgentLinkCard({
             type="button"
             onClick={doUnlink}
             disabled={busy}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-fg hover:bg-surface-2 disabled:opacity-50"
           >
             {busy ? 'Unlinking…' : 'Unlink'}
           </button>
         </div>
-        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       </section>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
-      <h2 className="text-sm font-medium text-neutral-300">Link your ERC-8004 agent</h2>
-      <p className="mt-1 text-xs text-neutral-500">
+    <section className="rounded-2xl border border-line bg-surface/40 p-5">
+      <h2 className="text-sm font-medium text-fg">Link your ERC-8004 agent</h2>
+      <p className="mt-1 text-xs text-muted">
         Optional. If you own an agent on the IdentityRegistry, link its agentId here to surface your reputation across Bezant.
       </p>
       <div className="mt-3 flex gap-2">
@@ -175,33 +175,33 @@ export function AgentLinkCard({
           onChange={(e) => setInput(e.target.value)}
           placeholder="e.g. 42"
           disabled={registering !== null}
-          className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
+          className="flex-1 rounded-lg border border-line bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none disabled:opacity-50"
         />
         <button
           type="button"
           onClick={doLink}
           disabled={busy || registering !== null || !input.trim()}
-          className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted"
         >
           {busy ? 'Verifying…' : 'Link'}
         </button>
       </div>
 
-      <div className="mt-4 border-t border-neutral-800/60 pt-4">
-        <p className="text-xs text-neutral-500">
+      <div className="mt-4 border-t border-line/60 pt-4">
+        <p className="text-xs text-muted">
           Don&apos;t have one yet? Register a fresh agent for your wallet in one click. One on-chain transaction, then it&apos;s auto-linked.
         </p>
         <button
           type="button"
           onClick={doRegister}
           disabled={busy || registering !== null}
-          className="mt-2 w-full rounded-lg border border-emerald-900/40 bg-emerald-950/30 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-2 w-full rounded-lg border border-primary/40 bg-primary/12 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {registerLabel}
         </button>
       </div>
 
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </section>
   );
 }

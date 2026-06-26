@@ -5,34 +5,36 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Ink & Mint tokens (defined in globals.css :root).
-        bg: 'var(--bg)',
+        // Ink & Mint tokens. Stored as RGB channels in globals.css :root so the
+        // `<alpha-value>` form below makes opacity modifiers work (bg-surface/50,
+        // border-primary/20, etc.). The `soft` variants are fixed-alpha tints.
+        bg: 'rgb(var(--bg) / <alpha-value>)',
         surface: {
-          DEFAULT: 'var(--surface)',
-          2: 'var(--surface-2)',
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          2: 'rgb(var(--surface-2) / <alpha-value>)',
         },
         line: {
-          DEFAULT: 'var(--line)',
-          strong: 'var(--line-strong)',
+          DEFAULT: 'rgb(var(--line) / <alpha-value>)',
+          strong: 'rgb(var(--line-strong) / <alpha-value>)',
         },
-        fg: 'var(--fg)',
-        muted: 'var(--muted)',
+        fg: 'rgb(var(--fg) / <alpha-value>)',
+        muted: 'rgb(var(--muted) / <alpha-value>)',
         primary: {
-          DEFAULT: 'var(--primary)',
-          hover: 'var(--primary-hover)',
-          fg: 'var(--primary-fg)',
-          soft: 'var(--primary-soft)',
+          DEFAULT: 'rgb(var(--primary) / <alpha-value>)',
+          hover: 'rgb(var(--primary-hover) / <alpha-value>)',
+          fg: 'rgb(var(--primary-fg) / <alpha-value>)',
+          soft: 'rgb(var(--primary) / 0.12)',
         },
         warn: {
-          DEFAULT: 'var(--warn)',
-          soft: 'var(--warn-soft)',
+          DEFAULT: 'rgb(var(--warn) / <alpha-value>)',
+          soft: 'rgb(var(--warn) / 0.12)',
         },
         danger: {
-          DEFAULT: 'var(--danger)',
-          soft: 'var(--danger-soft)',
+          DEFAULT: 'rgb(var(--danger) / <alpha-value>)',
+          soft: 'rgb(var(--danger) / 0.12)',
         },
-        info: 'var(--info)',
-        brand: 'var(--brand)',
+        info: 'rgb(var(--info) / <alpha-value>)',
+        brand: 'rgb(var(--brand) / <alpha-value>)',
       },
       fontFamily: {
         brand: ['var(--font-brand)', 'Fraunces', 'serif'],

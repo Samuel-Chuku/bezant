@@ -104,7 +104,7 @@ export function BridgeWidget({
   if (!signer.isConnected) {
     return (
       <Shell>
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-muted">
           Connect a wallet to bridge USDC.
         </p>
       </Shell>
@@ -270,7 +270,7 @@ export function BridgeWidget({
               disabled={run.status === 'running'}
             />
           </div>
-          <div className="mb-3 text-sm text-neutral-400">→ {destination.shortName}</div>
+          <div className="mb-3 text-sm text-muted">→ {destination.shortName}</div>
         </div>
       ) : (
         <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
@@ -289,7 +289,7 @@ export function BridgeWidget({
             disabled={run.status === 'running'}
             aria-label="Swap source and destination"
             title="Swap source and destination"
-            className="mt-6 flex h-11 w-11 items-center justify-center self-center rounded-full border border-neutral-800 bg-neutral-950/60 text-neutral-400 transition hover:border-neutral-700 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-6 flex h-11 w-11 items-center justify-center self-center rounded-full border border-line bg-bg/60 text-muted transition hover:border-line-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M8 3 4 7l4 4" />
@@ -311,43 +311,43 @@ export function BridgeWidget({
       )}
 
       {sameChain && (
-        <p className="mt-3 text-sm text-amber-400">
+        <p className="mt-3 text-sm text-warn">
           Source and destination can&apos;t be the same chain.
         </p>
       )}
 
       {!sameChain && outboundComingSoon && (
-        <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
+        <div className="mt-4 rounded-lg border border-warn/50 bg-warn/12 px-3.5 py-2.5 text-sm text-warn">
           Bridging out of {source.shortName} is coming soon. For now you can only bridge into Arc.
         </div>
       )}
 
       {!sameChain && !outboundComingSoon && destinationComingSoon && (
-        <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
+        <div className="mt-4 rounded-lg border border-warn/50 bg-warn/12 px-3.5 py-2.5 text-sm text-warn">
           {destination.shortName} support is coming soon. Pick a different destination for now.
         </div>
       )}
 
       {!sameChain && !outboundComingSoon && !destinationComingSoon && walletMismatch && (
-        <div className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3.5 py-2.5 text-sm text-amber-300">
+        <div className="mt-4 rounded-lg border border-warn/50 bg-warn/12 px-3.5 py-2.5 text-sm text-warn">
           Bridging into {destination.shortName} needs an injected wallet (MetaMask, Rabby)
           holding USDC on {source.fullName}.
         </div>
       )}
 
       {!sameChain && !outboundComingSoon && !destinationComingSoon && !walletMismatch && signer.mode === 'external' && !walletOnSourceChain && (
-        <p className="mt-3 text-sm text-amber-400">
+        <p className="mt-3 text-sm text-warn">
           Your wallet is on a different network. Click {source.fullName} to switch.
         </p>
       )}
 
       {!source.arcOnly && !source.comingSoon && (
-        <div className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-neutral-500">
+        <div className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-muted">
           <a
             href={source.gasFaucetUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 hover:text-neutral-300"
+            className="inline-flex items-center gap-1 hover:text-fg"
           >
             Get {source.gasSymbol} for gas <ExternalLinkIcon />
           </a>
@@ -356,7 +356,7 @@ export function BridgeWidget({
             href={USDC_FAUCET_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 hover:text-neutral-300"
+            className="inline-flex items-center gap-1 hover:text-fg"
           >
             Get test USDC <ExternalLinkIcon />
           </a>
@@ -364,20 +364,20 @@ export function BridgeWidget({
       )}
 
       <div className="mt-6">
-        <div className="flex items-center justify-between text-[13px] uppercase tracking-wide text-neutral-500">
+        <div className="flex items-center justify-between text-[13px] uppercase tracking-wide text-muted">
           <span>{lockedAmount ? 'Amount needed' : 'Amount'}</span>
           {!lockedAmount && sourceBalance && Number(sourceBalance.formatted) > 0 && (
             <button
               type="button"
               onClick={handleMax}
               disabled={run.status === 'running'}
-              className="text-[13px] uppercase tracking-wide text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+              className="text-[13px] uppercase tracking-wide text-primary hover:text-primary disabled:opacity-50"
             >
               Max
             </button>
           )}
         </div>
-        <div className="mt-2.5 flex items-center rounded-lg border border-neutral-800 bg-neutral-950/40 focus-within:border-neutral-600">
+        <div className="mt-2.5 flex items-center rounded-lg border border-line bg-bg/40 focus-within:border-line-strong">
           <input
             type="text"
             inputMode="decimal"
@@ -385,22 +385,22 @@ export function BridgeWidget({
             onChange={(e) => setAmount(e.target.value)}
             disabled={run.status === 'running' || !!lockedAmount}
             placeholder="0.00"
-            className="flex-1 bg-transparent px-3.5 py-3 text-lg text-neutral-100 placeholder:text-neutral-700 focus:outline-none disabled:opacity-70"
+            className="flex-1 bg-transparent px-3.5 py-3 text-lg text-fg placeholder:text-muted focus:outline-none disabled:opacity-70"
           />
-          <span className="pr-3.5 text-sm text-neutral-500">USDC</span>
+          <span className="pr-3.5 text-sm text-muted">USDC</span>
         </div>
       </div>
 
-      <p className="mt-3.5 text-sm text-neutral-500">
+      <p className="mt-3.5 text-sm text-muted">
         Receives on {destination.shortName} as{' '}
-        <span className="font-mono text-neutral-300">{shortAddress(signer.address)}</span>
+        <span className="font-mono text-fg">{shortAddress(signer.address)}</span>
       </p>
 
       <button
         type="button"
         disabled={!canSubmit}
         onClick={handleBridge}
-        className="mt-5 w-full rounded-lg bg-neutral-100 px-4 py-3 text-base font-medium text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+        className="mt-5 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-primary-fg transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted"
       >
         {run.status === 'running'
           ? 'Bridging…'
@@ -414,7 +414,7 @@ export function BridgeWidget({
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-7">{children}</section>
+    <section className="rounded-2xl border border-line bg-surface/40 p-7">{children}</section>
   );
 }
 
@@ -458,23 +458,23 @@ function ChainPicker({
 
   return (
     <div ref={ref} className="relative">
-      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-muted">{label}</div>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         className={[
-          'flex w-full items-center gap-3 rounded-xl border bg-neutral-950/40 p-3.5 text-left transition',
+          'flex w-full items-center gap-3 rounded-xl border bg-bg/40 p-3.5 text-left transition',
           highlight
-            ? 'border-emerald-500/40 bg-emerald-950/20 hover:border-emerald-400/60'
-            : 'border-neutral-800 hover:border-neutral-700',
+            ? 'border-primary/40 bg-primary/20 hover:border-primary/60'
+            : 'border-line hover:border-line-strong',
           disabled ? 'cursor-not-allowed opacity-60' : '',
         ].join(' ')}
       >
         <ChainLogo sourceKey={value.key} className="h-10 w-10 flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-base text-neutral-100">{value.shortName}</div>
-          <div className="truncate text-[11px] text-neutral-500">
+          <div className="truncate text-base text-fg">{value.shortName}</div>
+          <div className="truncate text-[11px] text-muted">
             {value.comingSoon
               ? 'Coming soon'
               : balance !== undefined
@@ -482,13 +482,13 @@ function ChainPicker({
                 : value.fullName}
           </div>
         </div>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-neutral-500" aria-hidden>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-muted" aria-hidden>
           <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 z-20 mt-1.5 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-xl">
+        <div className="absolute left-0 right-0 z-20 mt-1.5 overflow-hidden rounded-xl border border-line bg-bg shadow-xl">
           {options.map((opt) => {
             const isDisabled = opt.key === excludeKey;
             const isActive = opt.key === value.key;
@@ -503,24 +503,24 @@ function ChainPicker({
                 }}
                 className={[
                   'flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-base transition',
-                  isActive ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-200',
+                  isActive ? 'bg-surface text-fg' : 'text-fg',
                   isDisabled
                     ? 'cursor-not-allowed opacity-40'
-                    : 'hover:bg-neutral-900',
+                    : 'hover:bg-surface',
                 ].join(' ')}
               >
                 <ChainLogo sourceKey={opt.key} className="h-7 w-7 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate">{opt.shortName}</div>
-                  <div className="truncate text-[11px] text-neutral-500">{opt.fullName}</div>
+                  <div className="truncate text-[11px] text-muted">{opt.fullName}</div>
                 </div>
                 {opt.arcOnly && (
-                  <span className="rounded bg-emerald-950/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
+                  <span className="rounded bg-primary/12 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-primary">
                     home
                   </span>
                 )}
                 {opt.comingSoon && (
-                  <span className="rounded bg-amber-950/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+                  <span className="rounded bg-warn/12 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-warn">
                     soon
                   </span>
                 )}

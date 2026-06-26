@@ -122,19 +122,19 @@ export default function CreatePactPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <header className="mb-8">
-        <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
+        <Link href="/" className="text-xs text-muted hover:text-fg">
           ← back
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a pact</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-muted">
           Post a pact to the escrow on Arc. You&apos;re the <strong>client</strong>: you set the provider,
           the deadline, and the challenge window. The provider quotes the price next (
-          <code className="text-neutral-500">setBudget</code>), and you fund to accept.
+          <code className="text-muted">setBudget</code>), and you fund to accept.
         </p>
       </header>
 
       {!signer.isConnected && (
-        <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
+        <div className="rounded-xl border border-warn/40 bg-warn/20 p-4 text-sm text-warn">
           You need to connect a wallet or sign in with a passkey before posting a pact.{' '}
           <Link href="/" className="underline">
             Go to sign-in
@@ -144,7 +144,7 @@ export default function CreatePactPage() {
       )}
 
       {signer.isConnected && (
-        <section className="space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
+        <section className="space-y-5 rounded-2xl border border-line bg-surface/50 p-6">
           <Field label="Description" hint="What's being done? Short and specific.">
             <textarea
               value={description}
@@ -152,7 +152,7 @@ export default function CreatePactPage() {
               rows={3}
               placeholder="Write 3 product taglines for an AI coffee company."
               disabled={isBusy}
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+              className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
             />
           </Field>
 
@@ -166,7 +166,7 @@ export default function CreatePactPage() {
               onChange={(e) => setProviderInput(e.target.value)}
               placeholder="smoke-provider or 0x…"
               disabled={isBusy}
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+              className="w-full rounded-lg border border-line bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
             />
           </Field>
 
@@ -181,7 +181,7 @@ export default function CreatePactPage() {
                 value={expiresIn}
                 onChange={(e) => setExpiresIn(Number(e.target.value))}
                 disabled={isBusy}
-                className="w-32 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-neutral-600 focus:outline-none"
+                className="w-32 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg focus:border-primary focus:outline-none"
               />
               <div className="flex gap-2 text-xs">
                 {[
@@ -194,7 +194,7 @@ export default function CreatePactPage() {
                     type="button"
                     onClick={() => setExpiresIn(value as number)}
                     disabled={isBusy}
-                    className="rounded-md border border-neutral-800 px-2 py-1 text-neutral-400 hover:text-neutral-100"
+                    className="rounded-md border border-line px-2 py-1 text-muted hover:text-fg"
                   >
                     {label}
                   </button>
@@ -214,7 +214,7 @@ export default function CreatePactPage() {
                 value={challengeWindow}
                 onChange={(e) => setChallengeWindow(Number(e.target.value))}
                 disabled={isBusy}
-                className="w-32 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-neutral-600 focus:outline-none"
+                className="w-32 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg focus:border-primary focus:outline-none"
               />
               <div className="flex gap-2 text-xs">
                 {[
@@ -227,7 +227,7 @@ export default function CreatePactPage() {
                     type="button"
                     onClick={() => setChallengeWindow(value as number)}
                     disabled={isBusy}
-                    className="rounded-md border border-neutral-800 px-2 py-1 text-neutral-400 hover:text-neutral-100"
+                    className="rounded-md border border-line px-2 py-1 text-muted hover:text-fg"
                   >
                     {label}
                   </button>
@@ -236,12 +236,12 @@ export default function CreatePactPage() {
             </div>
           </Field>
 
-          <div className="border-t border-neutral-800 pt-4">
+          <div className="border-t border-line pt-4">
             <button
               type="button"
               onClick={submit}
               disabled={isBusy}
-              className="rounded-lg bg-neutral-100 px-5 py-2 text-sm font-medium text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-fg transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted"
             >
               {submission.status === 'resolving' && 'Resolving addresses…'}
               {submission.status === 'signing' && 'Waiting for signature…'}
@@ -251,30 +251,30 @@ export default function CreatePactPage() {
                 submission.status === 'error') &&
                 'Post pact'}
             </button>
-            <p className="mt-3 text-xs text-neutral-500">
+            <p className="mt-3 text-xs text-muted">
               Signing as <span className="font-mono">{signer.address}</span> (
               {signer.mode === 'external' ? 'external wallet' : 'passkey'}).
             </p>
           </div>
 
           {submission.status === 'error' && (
-            <p className="rounded-lg border border-red-900/40 bg-red-950/20 px-3 py-2 text-xs text-red-400 break-words">
+            <p className="rounded-lg border border-danger/40 bg-danger/20 px-3 py-2 text-xs text-danger break-words">
               {submission.message}
             </p>
           )}
 
           {submission.status === 'done' && (
-            <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-4 text-sm">
-              <p className="font-medium text-emerald-300">
+            <div className="rounded-lg border border-primary/40 bg-primary/20 p-4 text-sm">
+              <p className="font-medium text-primary">
                 Pact <span className="font-mono">#{submission.pactId}</span> created.
               </p>
-              <p className="mt-1 text-xs text-neutral-400">
+              <p className="mt-1 text-xs text-muted">
                 Tx{' '}
                 <a
                   href={arcExplorerTxUrl(submission.txHash)}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono text-emerald-400 underline"
+                  className="font-mono text-primary underline"
                 >
                   {submission.txHash.slice(0, 10)}…{submission.txHash.slice(-6)}
                 </a>
@@ -299,8 +299,8 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-neutral-200">{label}</label>
-      {hint && <p className="mt-1 text-xs text-neutral-500">{hint}</p>}
+      <label className="block text-sm font-medium text-fg">{label}</label>
+      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
       <div className="mt-2">{children}</div>
     </div>
   );

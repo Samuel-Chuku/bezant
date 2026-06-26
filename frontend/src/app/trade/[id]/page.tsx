@@ -53,13 +53,13 @@ import {
 } from '@/lib/api';
 
 const STATUS_COLOR: Record<string, string> = {
-  Proposing: 'text-sky-300',
-  Agreed: 'text-amber-300',
+  Proposing: 'text-info',
+  Agreed: 'text-warn',
   Funded: 'text-violet-300',
-  Released: 'text-emerald-300',
-  Disputed: 'text-red-300',
-  Refunded: 'text-neutral-300',
-  Cancelled: 'text-neutral-400',
+  Released: 'text-primary',
+  Disputed: 'text-danger',
+  Refunded: 'text-fg',
+  Cancelled: 'text-muted',
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -363,13 +363,13 @@ export default function TradeDetailPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
-      <Link href="/trade" className="text-xs text-neutral-500 hover:text-neutral-100">
+      <Link href="/trade" className="text-xs text-muted hover:text-fg">
         ← my trades
       </Link>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">Trade #{id}</h1>
         {myRole && (
-          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[11px] uppercase tracking-wide text-neutral-400">
+          <span className="rounded-full border border-line-strong px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted">
             you: {myRole}
           </span>
         )}
@@ -378,8 +378,8 @@ export default function TradeDetailPage() {
         )}
       </div>
 
-      {!trade && !error && <p className="mt-6 text-sm text-neutral-400">Loading…</p>}
-      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+      {!trade && !error && <p className="mt-6 text-sm text-muted">Loading…</p>}
+      {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
       {trade && (
         <>
@@ -390,13 +390,13 @@ export default function TradeDetailPage() {
           )}
 
           {!isParticipant ? (
-            <p className="mt-8 rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">
+            <p className="mt-8 rounded-lg border border-line bg-bg/40 p-4 text-sm text-muted">
               Only the buyer and seller can view this trade&apos;s details.
               {!signer.isConnected && ' Connect the buyer or seller wallet to see it.'}
             </p>
           ) : (
           <>
-          <div className="mt-6 rounded-xl border border-neutral-900 bg-neutral-950/40 px-4 py-4">
+          <div className="mt-6 rounded-xl border border-line bg-bg/40 px-4 py-4">
             <TradeStatusTracker status={trade.status} isPanelTrade={isPanelTrade} />
             {isPanelTrade && verification?.assigned && (
               <button onClick={() => setShowPanelModal(true)} className="mt-3 text-xs text-violet-300 hover:text-violet-200">
@@ -404,7 +404,7 @@ export default function TradeDetailPage() {
               </button>
             )}
             {!isPanelTrade && officerReview?.exists && (
-              <button onClick={() => setShowOfficerModal(true)} className="mt-3 text-xs text-emerald-300 hover:text-emerald-200">
+              <button onClick={() => setShowOfficerModal(true)} className="mt-3 text-xs text-primary hover:text-primary">
                 View Trade Officer review →
               </button>
             )}
@@ -420,7 +420,7 @@ export default function TradeDetailPage() {
 
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
             <Field label="Status">
-              <span className={STATUS_COLOR[trade.status] ?? 'text-neutral-200'}>{trade.status}</span>
+              <span className={STATUS_COLOR[trade.status] ?? 'text-fg'}>{trade.status}</span>
             </Field>
             <Field label="Amount">{trade.amountUsdc} USDC</Field>
             <Field label={trade.status === 'Funded' || trade.status === 'Released' ? 'Deposit (locked)' : 'Deposit if funded now'}>
@@ -434,9 +434,9 @@ export default function TradeDetailPage() {
           </div>
 
           {lastTx && (
-            <p className="mt-4 text-sm text-neutral-400">
+            <p className="mt-4 text-sm text-muted">
               Last tx:{' '}
-              <a href={arcExplorerTxUrl(lastTx)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-300 hover:underline">
+              <a href={arcExplorerTxUrl(lastTx)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-info hover:underline">
                 {lastTx.slice(0, 10)}… <ExternalLinkIcon />
               </a>
             </p>
@@ -446,7 +446,7 @@ export default function TradeDetailPage() {
             {/* PROPOSING - negotiation */}
             {trade.status === 'Proposing' && (
               <div className="space-y-3">
-                <p className="text-sm text-neutral-300">
+                <p className="text-sm text-fg">
                   Standing offer: <strong>{trade.amountUsdc} USDC</strong>, proposed by the <strong>{offerBy}</strong>.
                 </p>
                 {myTurn && (
@@ -457,13 +457,13 @@ export default function TradeDetailPage() {
                     </div>
                     <div className="flex items-end gap-2">
                       <label className="block">
-                        <span className="text-xs text-neutral-400">Counter amount (USDC)</span>
+                        <span className="text-xs text-muted">Counter amount (USDC)</span>
                         <input
                           value={counterAmount}
                           onChange={(e) => setCounterAmount(e.target.value)}
                           inputMode="decimal"
                           placeholder="e.g. 9"
-                          className="mt-1 w-40 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                          className="mt-1 w-40 rounded-lg border border-line bg-bg px-3 py-2 text-sm"
                         />
                       </label>
                       <Action onClick={doCounter} busy={busy === 'counter'} variant="ghost">Counter</Action>
@@ -487,12 +487,12 @@ export default function TradeDetailPage() {
                   Fund {trade.estimatedDepositUsdc} USDC (approve + lock)
                 </Action>
                 <div>
-                  <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-sky-300 hover:underline">
+                  <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-info hover:underline">
                     {showBridge ? 'Hide bridge' : 'Fund this trade from another chain?'}
                   </button>
                   {showBridge && (
-                    <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
-                      <p className="mb-2 text-xs text-neutral-500">
+                    <div className="mt-3 rounded-xl border border-line bg-bg/40 p-3">
+                      <p className="mb-2 text-xs text-muted">
                         Bridge the {trade.estimatedDepositUsdc} USDC you need straight to your Arc wallet via CCTP, then fund - pick a source chain and go.
                       </p>
                       <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} lockedAmount={trade.estimatedDepositUsdc} lockToArc />
@@ -512,8 +512,8 @@ export default function TradeDetailPage() {
 
             {/* FUNDED - buyer challenge window open (officer approved, not yet settled) */}
             {trade.status === 'Funded' && !isPanelTrade && windowActive && trade.challengeWindowUntil != null && (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/40 bg-amber-950/20 p-4">
-                <p className="text-sm text-amber-100">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-warn/40 bg-warn/20 p-4">
+                <p className="text-sm text-warn">
                   {isBuyer
                     ? 'Delivery submitted. Review it now - it settles to the seller automatically unless you dispute.'
                     : isSeller
@@ -528,7 +528,7 @@ export default function TradeDetailPage() {
             {trade.status === 'Funded' && !isPanelTrade && isSeller && !windowActive && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <p className="text-sm text-neutral-300">
+                  <p className="text-sm text-fg">
                     Submit your delivery document - the Trade Officer reviews it and, on a pass, the trade settles to you automatically.
                   </p>
                   <textarea
@@ -536,11 +536,11 @@ export default function TradeDetailPage() {
                     onChange={(e) => setDoc(e.target.value)}
                     rows={3}
                     placeholder="Paste your bill of lading / tracking / customs document - must name the document type and include a real reference number, e.g. 'Bill of Lading MAEU123456789 - 2000kg textiles, Jebel Ali → Lagos, carrier Maersk'."
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
                   />
                   <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
                   {officerNote && (
-                    <div className={`rounded-lg border p-3 text-sm ${officerNote.highValue ? 'border-sky-900/50 bg-sky-950/20 text-sky-200' : 'border-amber-900/50 bg-amber-950/20 text-amber-100'}`}>
+                    <div className={`rounded-lg border p-3 text-sm ${officerNote.highValue ? 'border-info/50 bg-info/20 text-info' : 'border-warn/50 bg-warn/20 text-warn'}`}>
                       <p className="font-medium">
                         {officerNote.highValue
                           ? 'High-value trade - routed to a human reviewer.'
@@ -560,15 +560,15 @@ export default function TradeDetailPage() {
                   )}
                 </div>
                 {!trade.financingAdvanced && (
-                  <div className="border-t border-neutral-900 pt-3">
+                  <div className="border-t border-line pt-3">
                     {financingQuote ? (
                       <div className="space-y-2">
-                        <p className="text-xs text-neutral-400">
+                        <p className="text-xs text-muted">
                           Trade Officer underwriting - buyer is{' '}
-                          <strong className="text-neutral-200">tier {financingQuote.buyerTier}</strong>, so you qualify for an advance now (repaid at settlement):
+                          <strong className="text-fg">tier {financingQuote.buyerTier}</strong>, so you qualify for an advance now (repaid at settlement):
                         </p>
-                        <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 text-sm">
-                          <Row label="Advance now"><span className="text-emerald-300">{financingQuote.advanceUsdc} USDC</span></Row>
+                        <div className="rounded-lg border border-line bg-bg/40 p-3 text-sm">
+                          <Row label="Advance now"><span className="text-primary">{financingQuote.advanceUsdc} USDC</span></Row>
                           <Row label={`Fee (${(financingQuote.feeBps / 100).toFixed(financingQuote.feeBps % 100 ? 2 : 0)}%)`}>{financingQuote.feeUsdc} USDC</Row>
                           <Row label="Repaid at settlement">{financingQuote.repayUsdc} USDC</Row>
                         </div>
@@ -578,13 +578,13 @@ export default function TradeDetailPage() {
                       </div>
                     ) : (
                       <>
-                        <p className="mb-2 text-xs text-neutral-500">Need cash before delivery is verified? Draw an advance now (repaid at settlement).</p>
+                        <p className="mb-2 text-xs text-muted">Need cash before delivery is verified? Draw an advance now (repaid at settlement).</p>
                         <Action onClick={doFinance} busy={busy === 'finance'} variant="ghost">Request financing</Action>
                       </>
                     )}
                   </div>
                 )}
-                <div className="border-t border-neutral-900 pt-3">
+                <div className="border-t border-line pt-3">
                   <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="prefer" />
                 </div>
               </div>
@@ -596,16 +596,16 @@ export default function TradeDetailPage() {
             {/* FUNDED - buyer can reclaim after the deadline; either party can
                 dispute once delivery is in (nothing to contest before that). */}
             {trade.status === 'Funded' && (isBuyer || isSeller) && (deliverySubmitted || (isBuyer && deadlinePassed)) && (
-              <div className="space-y-2 border-t border-neutral-900 pt-3">
+              <div className="space-y-2 border-t border-line pt-3">
                 {isBuyer && deadlinePassed && (
                   <div>
-                    <p className="mb-2 text-xs text-neutral-500">The deadline passed with no attestation - reclaim your deposit.</p>
+                    <p className="mb-2 text-xs text-muted">The deadline passed with no attestation - reclaim your deposit.</p>
                     <Action onClick={doRefund} busy={busy === 'refund'} variant="ghost">Claim refund</Action>
                   </div>
                 )}
                 {deliverySubmitted && (
                   <div>
-                    <p className="mb-2 text-xs text-neutral-500">
+                    <p className="mb-2 text-xs text-muted">
                       {isSeller
                         ? 'Delivered but it isn’t settling, or worried about an unfair refund? Raising a dispute pauses the buyer’s refund and lets the arbitrator decide.'
                         : 'Something wrong with this delivery? Flag it for the arbitrator to resolve.'}
@@ -619,7 +619,7 @@ export default function TradeDetailPage() {
             {trade.status === 'Released' && (
               <div className="space-y-3">
                 <OutcomeCard tone="emerald" title="Settled" tx={events.find((e) => e.kind === 'Released')?.txHash} txLabel="View settlement">
-                  <strong className="text-emerald-100">{trade.amountUsdc} USDC</strong> released to the seller. The buyer&apos;s credit passport was updated.
+                  <strong className="text-primary">{trade.amountUsdc} USDC</strong> released to the seller. The buyer&apos;s credit passport was updated.
                 </OutcomeCard>
                 <GatewayPayoutPanel tradeId={id} sellerAddress={trade.seller} defaultAmountUsdc={trade.amountUsdc} mode="settle" />
                 {(isBuyer || isSeller) && signer.isConnected && (
@@ -634,12 +634,12 @@ export default function TradeDetailPage() {
             )}
             {trade.status === 'Refunded' && (
               <OutcomeCard tone="amber" title="Refunded" tx={events.find((e) => e.kind === 'Refunded')?.txHash} txLabel="View refund">
-                <strong className="text-amber-100">{trade.depositUsdc} USDC</strong> deposit returned to the buyer - no delivery was attested by the deadline.
+                <strong className="text-warn">{trade.depositUsdc} USDC</strong> deposit returned to the buyer - no delivery was attested by the deadline.
               </OutcomeCard>
             )}
             {trade.status === 'Disputed' && isArbitrator && (
-              <div className="space-y-3 rounded-lg border border-red-900/40 bg-red-950/20 p-4">
-                <p className="text-sm text-red-200">
+              <div className="space-y-3 rounded-lg border border-danger/40 bg-danger/20 p-4">
+                <p className="text-sm text-danger">
                   You are the arbitrator for this disputed trade. Decide the outcome - the escrowed funds go to whichever party you choose.
                 </p>
                 <div className="flex flex-wrap gap-3">
@@ -654,13 +654,13 @@ export default function TradeDetailPage() {
               </OutcomeCard>
             )}
 
-            {!signer.isConnected && <p className="text-sm text-amber-300">Connect a wallet to act on this trade.</p>}
+            {!signer.isConnected && <p className="text-sm text-warn">Connect a wallet to act on this trade.</p>}
           </div>
 
           {/* Event timeline */}
           {events.length > 0 && (
             <div className="mt-10">
-              <h2 className="text-xs uppercase tracking-wide text-neutral-500">Activity</h2>
+              <h2 className="text-xs uppercase tracking-wide text-muted">Activity</h2>
               <ol className="mt-3 space-y-2">
                 {(() => {
                   // If the seller drew financing, the Settled amount is only the
@@ -680,18 +680,18 @@ export default function TradeDetailPage() {
                     return (
                       // One tx can emit several events (e.g. attest auto-settle →
                       // Attested + Released share a txHash), so the key includes kind + index.
-                      <li key={`${e.txHash}-${e.kind}-${i}`} className="flex items-start justify-between gap-3 rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2 text-sm">
+                      <li key={`${e.txHash}-${e.kind}-${i}`} className="flex items-start justify-between gap-3 rounded-lg border border-line bg-bg/40 px-3 py-2 text-sm">
                         <div>
                           <div>
-                            <span className="text-neutral-200">{EVENT_LABEL[e.kind] ?? e.kind}</span>
-                            {e.amountUsdc && !financedSettle && <span className="text-neutral-500"> · {e.amountUsdc} USDC</span>}
-                            {e.actor && <span className="text-neutral-600"> · {short(e.actor)}</span>}
+                            <span className="text-fg">{EVENT_LABEL[e.kind] ?? e.kind}</span>
+                            {e.amountUsdc && !financedSettle && <span className="text-muted"> · {e.amountUsdc} USDC</span>}
+                            {e.actor && <span className="text-muted"> · {short(e.actor)}</span>}
                           </div>
-                          {hint && <p className="mt-0.5 text-xs text-neutral-500">{hint}</p>}
+                          {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
-                          <span className="text-xs text-neutral-500">{sqlTimeAgo(e.at)}</span>
-                          <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">
+                          <span className="text-xs text-muted">{sqlTimeAgo(e.at)}</span>
+                          <a href={arcExplorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-info hover:underline">
                             tx <ExternalLinkIcon />
                           </a>
                         </div>
@@ -713,7 +713,7 @@ export default function TradeDetailPage() {
       <BridgeProgressModal
         run={bridgeRun}
         onClose={() => setBridgeRun(INITIAL_RUN)}
-        tail={busy === 'fund' ? <span className="text-sky-300">Bridged ✓ - funding your trade…</span> : undefined}
+        tail={busy === 'fund' ? <span className="text-info">Bridged ✓ - funding your trade…</span> : undefined}
       />
     </main>
   );
@@ -722,17 +722,17 @@ export default function TradeDetailPage() {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex justify-between py-0.5">
-      <span className="text-neutral-500">{label}</span>
-      <span className="text-neutral-200">{children}</span>
+      <span className="text-muted">{label}</span>
+      <span className="text-fg">{children}</span>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-neutral-900 bg-neutral-950/50 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-0.5 text-neutral-200">{children}</div>
+    <div className="rounded-lg border border-line bg-bg/50 px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-0.5 text-fg">{children}</div>
     </div>
   );
 }
@@ -751,7 +751,7 @@ function Action({
   children: React.ReactNode;
 }) {
   const base = 'rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40';
-  const style = variant === 'solid' ? 'bg-neutral-100 text-neutral-900' : 'border border-neutral-700 text-neutral-200';
+  const style = variant === 'solid' ? 'bg-primary text-primary-fg' : 'border border-line-strong text-fg';
   return (
     <button onClick={onClick} disabled={busy || disabled} className={`${base} ${style}`}>
       {busy ? 'Working…' : children}
@@ -760,16 +760,16 @@ function Action({
 }
 
 function Waiting({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-4 text-sm text-neutral-400">{children}</p>;
+  return <p className="rounded-lg border border-line bg-bg/40 p-4 text-sm text-muted">{children}</p>;
 }
 
 // Terminal / in-flight outcome summary card (Settled / Refunded / Cancelled /
 // Disputed) - icon badge + headline + body + an optional "view tx" button.
 const OUTCOME_TONES = {
-  emerald: { border: 'border-emerald-900/40', from: 'from-emerald-950/40', badge: 'bg-emerald-500/15 text-emerald-300', title: 'text-emerald-100', btn: 'bg-emerald-600 hover:bg-emerald-500', icon: <path d="M20 6 9 17l-5-5" /> },
-  amber: { border: 'border-amber-900/40', from: 'from-amber-950/40', badge: 'bg-amber-500/15 text-amber-300', title: 'text-amber-100', btn: 'bg-amber-600 hover:bg-amber-500', icon: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></> },
-  red: { border: 'border-red-900/40', from: 'from-red-950/40', badge: 'bg-red-500/15 text-red-300', title: 'text-red-100', btn: 'bg-red-600 hover:bg-red-500', icon: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></> },
-  neutral: { border: 'border-neutral-800', from: 'from-neutral-900/40', badge: 'bg-neutral-500/15 text-neutral-300', title: 'text-neutral-100', btn: 'bg-neutral-700 hover:bg-neutral-600', icon: <><circle cx="12" cy="12" r="9" /><path d="m15 9-6 6M9 9l6 6" /></> },
+  emerald: { border: 'border-primary/40', from: 'from-primary/40', badge: 'bg-primary/15 text-primary', title: 'text-primary', btn: 'bg-primary hover:bg-primary', icon: <path d="M20 6 9 17l-5-5" /> },
+  amber: { border: 'border-warn/40', from: 'from-warn/40', badge: 'bg-warn/15 text-warn', title: 'text-warn', btn: 'bg-warn hover:bg-warn', icon: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></> },
+  red: { border: 'border-danger/40', from: 'from-danger/40', badge: 'bg-danger/15 text-danger', title: 'text-danger', btn: 'bg-danger hover:bg-danger', icon: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></> },
+  neutral: { border: 'border-line', from: 'from-surface/40', badge: 'bg-muted/15 text-fg', title: 'text-fg', btn: 'bg-muted hover:bg-surface-2', icon: <><circle cx="12" cy="12" r="9" /><path d="m15 9-6 6M9 9l6 6" /></> },
 } as const;
 
 function OutcomeCard({
@@ -787,7 +787,7 @@ function OutcomeCard({
 }) {
   const T = OUTCOME_TONES[tone];
   return (
-    <div className={`rounded-xl border ${T.border} bg-gradient-to-br ${T.from} to-neutral-950/30 p-5`}>
+    <div className={`rounded-xl border ${T.border} bg-gradient-to-br ${T.from} to-bg/30 p-5`}>
       <div className="flex items-start gap-3">
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${T.badge}`}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -796,7 +796,7 @@ function OutcomeCard({
         </span>
         <div className="min-w-0 flex-1">
           <h3 className={`text-base font-semibold ${T.title}`}>{title}</h3>
-          <div className="mt-0.5 text-sm text-neutral-300">{children}</div>
+          <div className="mt-0.5 text-sm text-fg">{children}</div>
           {tx && (
             <a href={arcExplorerTxUrl(tx)} target="_blank" rel="noreferrer" className={`mt-3 inline-flex items-center gap-1.5 rounded-lg ${T.btn} px-3 py-1.5 text-xs font-semibold text-white transition`}>
               {txLabel} <ExternalLinkIcon />
@@ -829,13 +829,13 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
   if (agentId === undefined) return null;
   if (agentId === null) {
     return (
-      <p className="rounded-lg border border-neutral-900 bg-neutral-950/40 px-4 py-3 text-xs text-neutral-500">
+      <p className="rounded-lg border border-line bg-bg/40 px-4 py-3 text-xs text-muted">
         Your counterparty hasn&apos;t linked an agent, so there&apos;s no reputation to leave.
       </p>
     );
   }
   if (rated !== null) {
-    return <p className="text-xs text-emerald-300">Thanks - you left {rated ? '👍' : '👎'} feedback.</p>;
+    return <p className="text-xs text-primary">Thanks - you left {rated ? '👍' : '👎'} feedback.</p>;
   }
 
   const rate = async (positive: boolean) => {
@@ -859,11 +859,11 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/40 px-4 py-3">
-      <span className="text-sm text-neutral-300">Rate your counterparty</span>
+    <div className="flex items-center gap-3 rounded-lg border border-line bg-bg/40 px-4 py-3">
+      <span className="text-sm text-fg">Rate your counterparty</span>
       <div className="ml-auto flex gap-2">
-        <button onClick={() => rate(true)} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-50">👍</button>
-        <button onClick={() => rate(false)} disabled={busy} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm hover:border-red-700 hover:text-red-300 disabled:opacity-50">👎</button>
+        <button onClick={() => rate(true)} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-primary hover:text-primary disabled:opacity-50">👍</button>
+        <button onClick={() => rate(false)} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-danger hover:text-danger disabled:opacity-50">👎</button>
       </div>
     </div>
   );

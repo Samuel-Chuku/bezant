@@ -5,8 +5,8 @@ import type { TradeStep } from '@/lib/trade-status';
 // counterparty. Shared by the trades list cards and the trade-detail page.
 export function StepCue({ step, compact = false }: { step: TradeStep; compact?: boolean }) {
   const c = step.forMe
-    ? { dot: 'bg-amber-400', text: 'text-amber-200' }
-    : { dot: 'bg-sky-400', text: 'text-sky-300' };
+    ? { dot: 'bg-warn', text: 'text-warn' }
+    : { dot: 'bg-info', text: 'text-info' };
   return (
     <div className="flex items-center gap-2">
       <span className="relative flex h-2 w-2 shrink-0">

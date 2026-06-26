@@ -11,6 +11,7 @@ import { AgentLinkCard } from '@/components/agent-link-card';
 import { SendPanel } from '@/components/send-panel';
 import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
+import { StatCard } from '@/components/ui';
 import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { timeAgo } from '@/lib/relative-time';
@@ -43,7 +44,7 @@ export default function ProfilePage() {
     return (
       <main className="mx-auto max-w-5xl px-6 py-16">
         <h1 className="text-3xl font-semibold tracking-tight">Profile</h1>
-        <p className="mt-6 text-sm text-neutral-400">
+        <p className="mt-6 text-sm text-muted">
           Connect a wallet or sign in to see your profile.{' '}
           <Link href="/" className="underline">
             Sign in
@@ -59,16 +60,16 @@ export default function ProfilePage() {
 
       <div className="mt-6 space-y-6">
         {/* Identity + agent linking (compact, on the right) */}
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
+        <section className="rounded-xl border border-line bg-bg/50 p-5">
           <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-4">
                 <Avatar address={signer.address} size={48} />
                 <div className="min-w-0">
-                  <div className="truncate text-lg font-medium text-neutral-100">
+                  <div className="truncate text-lg font-medium text-fg">
                     {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
                   </div>
-                  <div className="font-mono text-xs text-neutral-500">{signer.address}</div>
+                  <div className="font-mono text-xs text-muted">{signer.address}</div>
                 </div>
               </div>
 
@@ -88,10 +89,10 @@ export default function ProfilePage() {
               </dl>
 
               {userState.status === 'loading' && (
-                <p className="mt-3 text-xs text-neutral-500">Looking up your account…</p>
+                <p className="mt-3 text-xs text-muted">Looking up your account…</p>
               )}
               {userState.status === 'error' && (
-                <p className="mt-3 text-xs text-red-400">Couldn&apos;t reach the backend: {userState.message}</p>
+                <p className="mt-3 text-xs text-danger">Couldn&apos;t reach the backend: {userState.message}</p>
               )}
             </div>
 
@@ -163,11 +164,7 @@ function StatsStrip({ stats }: { stats: UserStats | null }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-4">
-          <div className="text-[11px] uppercase tracking-wide text-neutral-500">{c.label}</div>
-          <div className="mt-1 text-xl font-semibold text-neutral-100">{c.value}</div>
-          {c.hint && <div className="mt-0.5 text-[11px] text-neutral-500">{c.hint}</div>}
-        </div>
+        <StatCard key={c.label} label={c.label} value={c.value} hint={c.hint} />
       ))}
     </div>
   );
@@ -185,11 +182,11 @@ function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
         </Link>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
-        <Field label="Staked">{v.stakeUsdc} USDC{v.lockedUsdc !== '0' ? <span className="text-neutral-500"> · {v.lockedUsdc} locked</span> : null}</Field>
+        <Field label="Staked">{v.stakeUsdc} USDC{v.lockedUsdc !== '0' ? <span className="text-muted"> · {v.lockedUsdc} locked</span> : null}</Field>
         <Field label="Panels served">{v.panelsServed}</Field>
         <Field label="Accuracy">{v.accuracy != null ? `${Math.round(v.accuracy * 100)}%` : '-'}</Field>
         <Field label="Net rewards">
-          <span className={pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-red-300' : 'text-neutral-200'}>
+          <span className={pnl > 0 ? 'text-primary' : pnl < 0 ? 'text-danger' : 'text-fg'}>
             {pnl > 0 ? '+' : ''}{v.netPnlUsdc} USDC
           </span>
         </Field>
@@ -218,31 +215,31 @@ function LpPositionCard({ address }: { address: string }) {
   const hasPosition = stats?.myShares && stats.myShares !== '0';
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
+    <div className="rounded-xl border border-line bg-bg/50 p-5">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-wide text-neutral-500">Financing pool (LP)</div>
-        <Link href="/pool" className="text-xs text-neutral-400 hover:text-neutral-100">
+        <div className="text-[11px] uppercase tracking-wide text-muted">Financing pool (LP)</div>
+        <Link href="/pool" className="text-xs text-muted hover:text-fg">
           Manage ›
         </Link>
       </div>
 
       {!stats ? (
-        <p className="mt-3 text-sm text-neutral-500">Pool unavailable.</p>
+        <p className="mt-3 text-sm text-muted">Pool unavailable.</p>
       ) : hasPosition ? (
         <>
           <div className="mt-3">
-            <div className="text-2xl font-semibold text-emerald-300">{stats.myValueUsdc} USDC</div>
-            <div className="text-xs text-neutral-500">your position</div>
+            <div className="text-2xl font-semibold text-primary">{stats.myValueUsdc} USDC</div>
+            <div className="text-xs text-muted">your position</div>
           </div>
           <div className="mt-3">
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">Pool yield</div>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">Pool yield</div>
             <PoolYieldStrip />
           </div>
         </>
       ) : (
-        <p className="mt-3 text-sm text-neutral-400">
+        <p className="mt-3 text-sm text-muted">
           You haven&apos;t deposited yet.{' '}
-          <Link href="/pool" className="underline hover:text-neutral-200">
+          <Link href="/pool" className="underline hover:text-fg">
             Learn about the pool →
           </Link>
         </p>
@@ -273,10 +270,10 @@ function RecentActivity() {
   const recent = [...actions, ...events];
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-5">
+    <div className="rounded-xl border border-line bg-bg/50 p-5">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-wide text-neutral-500">Recent activity</div>
-        <Link href="/activity" className="text-xs text-neutral-400 hover:text-neutral-100">
+        <div className="text-[11px] uppercase tracking-wide text-muted">Recent activity</div>
+        <Link href="/activity" className="text-xs text-muted hover:text-fg">
           See all Activities ›
         </Link>
       </div>
@@ -285,15 +282,15 @@ function RecentActivity() {
         <div className="mt-3 space-y-2.5">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex animate-pulse items-center gap-2.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-neutral-800" />
-              <span className="h-3 flex-1 rounded bg-neutral-800" />
+              <span className="h-1.5 w-1.5 rounded-full bg-surface-2" />
+              <span className="h-3 flex-1 rounded bg-surface-2" />
             </div>
           ))}
         </div>
       ) : recent.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-400">No activity yet.</p>
+        <p className="mt-3 text-sm text-muted">No activity yet.</p>
       ) : (
-        <ul className="mt-3 divide-y divide-neutral-800/70">
+        <ul className="mt-3 divide-y divide-line/70">
           {recent.map((it, i) => (
             <ActivityRow key={`${it.key}-${i}`} item={it} onClick={() => router.push(it.href ?? '/activity')} />
           ))}
@@ -316,18 +313,18 @@ function ActivityRow({ item, onClick }: { item: NotificationItem; onClick: () =>
       >
         <span
           className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
-            needsAction ? 'bg-emerald-400' : 'bg-neutral-600'
+            needsAction ? 'bg-primary' : 'bg-muted'
           }`}
           aria-hidden
         />
         <span className="min-w-0 flex-1">
-          <span className="text-sm text-neutral-200">{item.summary}</span>
+          <span className="text-sm text-fg">{item.summary}</span>
           {needsAction && (
-            <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+            <span className="ml-2 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
               action
             </span>
           )}
-          <span className="mt-0.5 block text-[11px] text-neutral-500">{timeAgo(item.whenMs)}</span>
+          <span className="mt-0.5 block text-[11px] text-muted">{timeAgo(item.whenMs)}</span>
         </span>
       </button>
     </li>
@@ -337,8 +334,8 @@ function ActivityRow({ item, onClick }: { item: NotificationItem; onClick: () =>
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs text-neutral-500">{label}</dt>
-      <dd className="mt-0.5 text-neutral-200">{children}</dd>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5 text-fg">{children}</dd>
     </div>
   );
 }

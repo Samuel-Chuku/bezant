@@ -75,7 +75,7 @@ export function RecentVerifierStakes() {
         <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
           {rows.map((s) => (
             <li key={s.key} className="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-surface-2">
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${s.isStake ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${s.isStake ? 'bg-primary/10 text-primary' : 'bg-warn/10 text-warn'}`}>
                 <Arrow down={s.isStake} />
               </span>
               <div className="min-w-0 flex-1">
@@ -86,7 +86,7 @@ export function RecentVerifierStakes() {
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 <span className="text-xs text-muted">{timeAgo(s.whenMs)}</span>
-                <a href={arcExplorerTxUrl(s.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-sky-300 transition hover:border-line-strong">
+                <a href={arcExplorerTxUrl(s.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-info transition hover:border-line-strong">
                   tx <ExternalLinkIcon />
                 </a>
               </div>

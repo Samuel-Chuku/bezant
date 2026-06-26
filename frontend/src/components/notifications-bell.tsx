@@ -52,12 +52,12 @@ export function NotificationsBell() {
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"
         aria-expanded={open}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-300 transition hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-100"
+        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface/60 text-fg transition hover:border-line-strong hover:bg-surface hover:text-fg"
       >
         <BellGlyph />
         {unreadCount > 0 && (
           <span
-            className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-medium text-white"
+            className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-medium text-white"
             aria-label={`${unreadCount} unread`}
           >
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -69,15 +69,15 @@ export function NotificationsBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-bg shadow-2xl"
         >
-          <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2.5">
-            <h3 className="text-sm font-medium text-neutral-100">Notifications</h3>
+          <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <h3 className="text-sm font-medium text-fg">Notifications</h3>
             {items.length > 0 && unreadCount > 0 && (
               <button
                 type="button"
                 onClick={markAllRead}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300"
+                className="text-[11px] text-primary hover:text-primary"
               >
                 Mark all read
               </button>
@@ -86,15 +86,15 @@ export function NotificationsBell() {
 
           <div className="max-h-96 overflow-y-auto">
             {isLoading && items.length === 0 && (
-              <p className="px-4 py-6 text-center text-xs text-neutral-500">Loading…</p>
+              <p className="px-4 py-6 text-center text-xs text-muted">Loading…</p>
             )}
             {!isLoading && items.length === 0 && (
-              <p className="px-4 py-6 text-center text-xs text-neutral-500">
+              <p className="px-4 py-6 text-center text-xs text-muted">
                 No notifications yet.
               </p>
             )}
             {visible.length > 0 && (
-              <ul className="divide-y divide-neutral-800/80">
+              <ul className="divide-y divide-line/80">
                 {visible.map((item, i) => (
                   <NotificationRow
                     key={`${item.key}-${i}`}
@@ -110,10 +110,10 @@ export function NotificationsBell() {
             )}
           </div>
 
-          <footer className="border-t border-neutral-800 px-4 py-2.5">
+          <footer className="border-t border-line px-4 py-2.5">
             <Link
               href="/activity"
-              className="block text-center text-[11px] text-neutral-400 hover:text-neutral-100"
+              className="block text-center text-[11px] text-muted hover:text-fg"
               onClick={() => setOpen(false)}
             >
               See all Activities →
@@ -133,10 +133,10 @@ function NotificationRow({
   onClick: () => void;
 }) {
   const kindStyles: Record<NotificationItem['kind'], string> = {
-    action: 'bg-emerald-500',
-    deadline: 'bg-amber-400',
-    event: 'bg-neutral-500',
-    status: 'bg-sky-500/70',
+    action: 'bg-primary',
+    deadline: 'bg-warn',
+    event: 'bg-muted',
+    status: 'bg-info',
     pool: 'bg-violet-400',
   };
   const kindLabels: Record<NotificationItem['kind'], string> = {
@@ -152,7 +152,7 @@ function NotificationRow({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-start gap-2.5 px-4 py-3 text-left transition hover:bg-neutral-900/60 ${
+        className={`flex w-full items-start gap-2.5 px-4 py-3 text-left transition hover:bg-surface/60 ${
           item.read ? 'opacity-60' : ''
         }`}
       >
@@ -161,8 +161,8 @@ function NotificationRow({
           aria-hidden
         />
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-neutral-200">{item.summary}</div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-wider text-neutral-500">
+          <div className="text-xs text-fg">{item.summary}</div>
+          <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted">
             {kindLabels[item.kind]}
             {item.whenIso && ` · ${relativeOrAbsolute(item.whenIso)}`}
           </div>

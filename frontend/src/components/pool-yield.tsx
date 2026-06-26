@@ -32,10 +32,10 @@ export function PoolYieldStrip({ className = '' }: { className?: string }) {
 }
 
 function YieldStat({ label, pct }: { label: string; pct: number | null }) {
-  const color = pct == null ? 'text-neutral-500' : pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+  const color = pct == null ? 'text-muted' : pct >= 0 ? 'text-primary' : 'text-danger';
   return (
-    <div className="rounded-lg border border-neutral-900 bg-neutral-950/40 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
+    <div className="rounded-lg border border-line bg-bg/40 px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted">{label}</div>
       <div className={`mt-0.5 text-sm font-medium ${color}`} title={pct == null ? 'Not enough history yet' : undefined}>
         {pct == null ? '-' : `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}
       </div>

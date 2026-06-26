@@ -9,7 +9,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       className={[
-        'animate-pulse rounded-md bg-neutral-800/70',
+        'animate-pulse rounded-md bg-surface-2/70',
         className ?? 'h-4 w-full',
       ].join(' ')}
     />
@@ -20,7 +20,7 @@ export function Skeleton({ className }: { className?: string }) {
 // /pacts, /market, etc. so loading states feel consistent.
 export function ListItemSkeleton() {
   return (
-    <div className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-900/30 p-4">
+    <div className="space-y-2 rounded-xl border border-line bg-surface/30 p-4">
       <div className="flex items-center gap-3">
         <Skeleton className="h-4 w-16" />
         <Skeleton className="h-4 w-20" />
@@ -50,16 +50,16 @@ export function ErrorBanner({
   retryLabel?: string;
 }) {
   return (
-    <div className="rounded-xl border border-red-900/40 bg-red-950/20 p-4">
-      {title && <p className="text-sm font-medium text-red-200">{title}</p>}
-      <p className={title ? 'mt-1 text-xs text-red-300/80' : 'text-sm text-red-300'}>
+    <div className="rounded-xl border border-danger/40 bg-danger/20 p-4">
+      {title && <p className="text-sm font-medium text-danger">{title}</p>}
+      <p className={title ? 'mt-1 text-xs text-danger/80' : 'text-sm text-danger'}>
         {message}
       </p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 rounded-md border border-red-800/60 px-3 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30"
+          className="mt-3 rounded-md border border-danger/60 px-3 py-1 text-xs font-medium text-danger hover:bg-danger/30"
         >
           {retryLabel}
         </button>

@@ -47,13 +47,13 @@ function NavLink({ href, label, active, badge = 0 }: { href: string; label: stri
       href={href}
       className={[
         'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition',
-        active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
+        active ? 'bg-surface text-fg' : 'text-muted hover:text-fg',
       ].join(' ')}
     >
       {label}
       {badge > 0 && (
         // Subtle pending-verifications counter - muted emerald, not the bell's red.
-        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/15 px-1 text-[10px] font-medium text-emerald-300" aria-label={`${badge} pending`}>
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-medium text-primary" aria-label={`${badge} pending`}>
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -75,7 +75,7 @@ function TradesMenu({ pathname }: { pathname: string }) {
         aria-expanded={open}
         className={[
           'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
-          active ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100',
+          active ? 'bg-surface text-fg' : 'text-muted hover:text-fg',
         ].join(' ')}
       >
         Trades
@@ -84,14 +84,14 @@ function TradesMenu({ pathname }: { pathname: string }) {
         </svg>
       </button>
       {open && (
-        <div role="menu" className="absolute left-0 top-full z-30 mt-1 min-w-44 rounded-lg border border-neutral-800 bg-neutral-950 p-1 shadow-xl">
+        <div role="menu" className="absolute left-0 top-full z-30 mt-1 min-w-44 rounded-lg border border-line bg-bg p-1 shadow-xl">
           {TRADE_LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
               role="menuitem"
               onClick={() => setOpen(false)}
-              className="block rounded-md px-3 py-2 text-sm text-neutral-300 transition hover:bg-neutral-900 hover:text-neutral-100"
+              className="block rounded-md px-3 py-2 text-sm text-fg transition hover:bg-surface hover:text-fg"
             >
               {l.label}
             </Link>
@@ -117,13 +117,13 @@ export function TopNav() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-neutral-800/80 bg-neutral-950/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-line/80 bg-bg/85 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
-              className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100 md:hidden"
+              className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-fg md:hidden"
               aria-label="Open menu"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -151,9 +151,9 @@ export function TopNav() {
               <button
                 type="button"
                 onClick={() => switchChain({ chainId: arcTestnet.id })}
-                className="hidden items-center gap-1.5 rounded-md border border-amber-700/50 bg-amber-950/40 px-2.5 py-1 text-[11px] font-medium text-amber-200 transition hover:bg-amber-950/60 sm:inline-flex"
+                className="hidden items-center gap-1.5 rounded-md border border-warn/50 bg-warn/12 px-2.5 py-1 text-[11px] font-medium text-warn transition hover:bg-warn/60 sm:inline-flex"
               >
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-warn" />
                 Switch to Arc →
               </button>
             )}
@@ -169,16 +169,16 @@ export function TopNav() {
         items={NAV_ITEMS}
         footer={
           signer.isConnected ? (
-            <div className="space-y-2 text-xs text-neutral-400">
-              <div className="font-mono text-neutral-300">{shortAddress(signer.address)}</div>
-              <div className="text-neutral-500">
+            <div className="space-y-2 text-xs text-muted">
+              <div className="font-mono text-fg">{shortAddress(signer.address)}</div>
+              <div className="text-muted">
                 Signed in via {signer.mode === 'external' ? 'wallet' : 'passkey'}
               </div>
               {showSwitchCTA && (
                 <button
                   type="button"
                   onClick={() => switchChain({ chainId: arcTestnet.id })}
-                  className="mt-1 w-full rounded-md border border-amber-700/50 bg-amber-950/40 px-2.5 py-1.5 text-[11px] font-medium text-amber-200 hover:bg-amber-950/60"
+                  className="mt-1 w-full rounded-md border border-warn/50 bg-warn/12 px-2.5 py-1.5 text-[11px] font-medium text-warn hover:bg-warn/60"
                 >
                   Switch to Arc →
                 </button>
@@ -186,7 +186,7 @@ export function TopNav() {
               <button
                 type="button"
                 onClick={() => signer.disconnect?.()}
-                className="w-full rounded-md border border-neutral-800 px-2.5 py-1.5 text-xs text-neutral-300 hover:text-neutral-100"
+                className="w-full rounded-md border border-line px-2.5 py-1.5 text-xs text-fg hover:text-fg"
               >
                 Disconnect
               </button>

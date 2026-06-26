@@ -22,9 +22,9 @@ export function PassportPanel({ address }: { address?: string }) {
   if (!address) return null;
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-4">
-      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Credit passport</div>
-      {err && <p className="mt-1 text-sm text-red-400">{err}</p>}
+    <div className="rounded-xl border border-line bg-bg/50 p-4">
+      <div className="text-[11px] uppercase tracking-wide text-muted">Credit passport</div>
+      {err && <p className="mt-1 text-sm text-danger">{err}</p>}
       {p && (
         <div className="mt-2 flex items-center gap-8 text-sm">
           <Stat value={`${p.depositPct}%`} label="next deposit" highlight />
@@ -33,7 +33,7 @@ export function PassportPanel({ address }: { address?: string }) {
         </div>
       )}
       {p && (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-muted">
           Deposit earns down with completed trades (40% floor at 30). You&apos;re at {p.completedTrades} clean
           {p.completedTrades === 1 ? ' trade' : ' trades'}.
         </p>
@@ -43,11 +43,11 @@ export function PassportPanel({ address }: { address?: string }) {
 }
 
 function Stat({ value, label, highlight, danger }: { value: string; label: string; highlight?: boolean; danger?: boolean }) {
-  const color = danger ? 'text-red-300' : highlight ? 'text-emerald-300' : 'text-neutral-100';
+  const color = danger ? 'text-danger' : highlight ? 'text-primary' : 'text-fg';
   return (
     <div>
       <div className={`text-2xl font-semibold ${color}`}>{value}</div>
-      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="text-xs text-muted">{label}</div>
     </div>
   );
 }

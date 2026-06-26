@@ -120,15 +120,15 @@ export function BridgeHistory({
   const empty = !liveVisible && visible.length === 0;
 
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">
-      <h2 className="text-lg font-medium text-neutral-100">Recent bridges</h2>
-      <p className="mt-1.5 text-sm text-neutral-500">
+    <section className="rounded-2xl border border-line bg-surface/40 p-6">
+      <h2 className="text-lg font-medium text-fg">Recent bridges</h2>
+      <p className="mt-1.5 text-sm text-muted">
         Inbound arrivals are indexed server-side and survive browser clears.
         Outbound runs are remembered locally.
       </p>
 
       {empty ? (
-        <p className="mt-5 text-sm text-neutral-500">No recent bridges yet.</p>
+        <p className="mt-5 text-sm text-muted">No recent bridges yet.</p>
       ) : (
         <ul className="mt-5 space-y-2.5">
           {liveVisible && <LiveRow run={run} onReset={onResetRun} />}
@@ -201,27 +201,27 @@ function mergeRows(local: BridgeHistoryEntry[], backend: BackendRow[]): MergedRo
 function LiveRow({ run, onReset }: { run: BridgeRun; onReset: () => void }) {
   const currentStep = currentRunningStep(run);
   return (
-    <li className="rounded-lg border border-emerald-900/40 bg-emerald-950/10 p-3.5">
+    <li className="rounded-lg border border-primary/40 bg-primary/10 p-3.5">
       <div className="flex items-start gap-3">
         {run.sourceKey && (
           <ChainLogo sourceKey={run.sourceKey} className="mt-0.5 h-8 w-8 flex-shrink-0" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="text-base text-neutral-100">
+          <div className="text-base text-fg">
             {run.amount} USDC · {run.sourceFullName} → {run.destinationFullName}
           </div>
-          <div className="mt-0.5 text-xs text-emerald-300">
+          <div className="mt-0.5 text-xs text-primary">
             {currentStep ? BRIDGE_STEP_LABELS[currentStep] : 'Starting…'}
           </div>
         </div>
-        <span className="shrink-0 rounded-md bg-emerald-950/40 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-emerald-300">
+        <span className="shrink-0 rounded-md bg-primary/12 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-primary">
           Live
         </span>
       </div>
 
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-neutral-900">
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface">
         <div
-          className="h-full bg-emerald-500 transition-all duration-500"
+          className="h-full bg-primary transition-all duration-500"
           style={{ width: `${computeProgress(run)}%` }}
         />
       </div>
@@ -231,12 +231,12 @@ function LiveRow({ run, onReset }: { run: BridgeRun; onReset: () => void }) {
           const step = run.steps[name];
           const color =
             step?.state === 'success'
-              ? 'text-emerald-400'
+              ? 'text-primary'
               : step?.state === 'error'
-                ? 'text-red-400'
+                ? 'text-danger'
                 : step?.state === 'pending'
-                  ? 'text-amber-300'
-                  : 'text-neutral-600';
+                  ? 'text-warn'
+                  : 'text-muted';
           return (
             <span key={name} className={color}>
               {dotFor(step?.state)} {BRIDGE_STEP_LABELS[name].toLowerCase()}
@@ -249,13 +249,13 @@ function LiveRow({ run, onReset }: { run: BridgeRun; onReset: () => void }) {
         <button
           type="button"
           onClick={onReset}
-          className="mt-2 text-xs text-neutral-500 hover:text-neutral-300"
+          className="mt-2 text-xs text-muted hover:text-fg"
         >
           Dismiss
         </button>
       )}
       {run.status === 'error' && run.errorMessage && (
-        <p className="mt-1 text-xs text-red-400">{run.errorMessage}</p>
+        <p className="mt-1 text-xs text-danger">{run.errorMessage}</p>
       )}
     </li>
   );
@@ -264,23 +264,23 @@ function LiveRow({ run, onReset }: { run: BridgeRun; onReset: () => void }) {
 function HistoryRow({ row }: { row: MergedRow }) {
   const ok = row.status === 'success';
   return (
-    <li className="rounded-lg border border-neutral-800 bg-neutral-950/40 p-3.5">
+    <li className="rounded-lg border border-line bg-bg/40 p-3.5">
       <div className="flex items-start gap-3">
         {row.sourceKey ? (
           <ChainLogo sourceKey={row.sourceKey} className="mt-0.5 h-8 w-8 flex-shrink-0" />
         ) : (
-          <div className="mt-0.5 h-8 w-8 flex-shrink-0 rounded-full border border-neutral-800" />
+          <div className="mt-0.5 h-8 w-8 flex-shrink-0 rounded-full border border-line" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="text-base text-neutral-100">
+          <div className="text-base text-fg">
             {row.amount} USDC · {row.sourceLabel} → {row.destinationLabel}
           </div>
-          <div className="mt-0.5 text-xs text-neutral-500">{relativeTime(row.timestampMs)}</div>
+          <div className="mt-0.5 text-xs text-muted">{relativeTime(row.timestampMs)}</div>
         </div>
         <span
           className={[
             'shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide',
-            ok ? 'bg-emerald-950/40 text-emerald-300' : 'bg-red-950/40 text-red-300',
+            ok ? 'bg-primary/12 text-primary' : 'bg-danger/12 text-danger',
           ].join(' ')}
         >
           {ok ? 'Success' : 'Failed'}
@@ -291,13 +291,13 @@ function HistoryRow({ row }: { row: MergedRow }) {
           href={row.mintExplorerUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1.5 inline-flex items-center gap-1 font-mono text-[11px] text-neutral-500 hover:text-neutral-300"
+          className="mt-1.5 inline-flex items-center gap-1 font-mono text-[11px] text-muted hover:text-fg"
         >
           Mint {shortHash(row.mintTxHash)} <ExternalLinkIcon />
         </a>
       )}
       {!ok && row.errorMessage && (
-        <p className="mt-1.5 text-xs text-red-400">{row.errorMessage}</p>
+        <p className="mt-1.5 text-xs text-danger">{row.errorMessage}</p>
       )}
     </li>
   );

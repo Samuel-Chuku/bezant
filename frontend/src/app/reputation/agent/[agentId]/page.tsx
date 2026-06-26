@@ -85,13 +85,13 @@ export default function ReputationPage({
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <header className="mb-6">
-        <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
+        <Link href="/" className="text-xs text-muted hover:text-fg">
           ← back
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-          Agent <span className="font-mono text-neutral-400">#{agentId}</span>
+          Agent <span className="font-mono text-muted">#{agentId}</span>
         </h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-muted">
           Portable ERC-8004 identity. Feedback below is this agent&apos;s reputation. It
           accrues to the ID, not a wallet, so trust history travels across apps.
         </p>
@@ -116,10 +116,10 @@ export default function ReputationPage({
 
       {data && (
         <>
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
-            <h2 className="text-sm font-medium text-neutral-300">Summary</h2>
+          <section className="rounded-2xl border border-line bg-surface/40 p-5">
+            <h2 className="text-sm font-medium text-fg">Summary</h2>
             {data.summary.count === 0 ? (
-              <p className="mt-3 text-sm text-neutral-400">
+              <p className="mt-3 text-sm text-muted">
                 No feedback yet. This agent hasn&apos;t received any ratings on the
                 ReputationRegistry.
               </p>
@@ -138,10 +138,10 @@ export default function ReputationPage({
           </section>
 
           {data.totalFeedback > 0 && (
-            <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+            <section className="mt-6 rounded-2xl border border-line bg-surface/40 p-5">
               <PaginationHeader data={data} page={page} pageSize={PAGE_SIZE} />
               {loading && (
-                <p className="mt-3 text-xs text-neutral-500">Loading page…</p>
+                <p className="mt-3 text-xs text-muted">Loading page…</p>
               )}
               <ul className="mt-3 space-y-2">
                 {data.feedback.map((f) => {
@@ -152,27 +152,27 @@ export default function ReputationPage({
                       key={`${f.clientAddress}-${f.feedbackIndex}`}
                       className={`rounded-lg border p-3 text-xs ${
                         f.isRevoked
-                          ? 'border-neutral-800 bg-neutral-950/40 text-neutral-500 line-through'
-                          : 'border-neutral-800 bg-neutral-950/40 text-neutral-200'
+                          ? 'border-line bg-bg/40 text-muted line-through'
+                          : 'border-line bg-bg/40 text-fg'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-neutral-100">{formatted}</span>
-                        <span className="text-neutral-500">
+                        <span className="font-mono text-fg">{formatted}</span>
+                        <span className="text-muted">
                           #{f.feedbackIndex}
-                          {f.isRevoked && <span className="ml-2 text-red-400">revoked</span>}
+                          {f.isRevoked && <span className="ml-2 text-danger">revoked</span>}
                         </span>
                       </div>
-                      <p className="mt-1 break-all font-mono text-neutral-500">
+                      <p className="mt-1 break-all font-mono text-muted">
                         from {f.clientAddress}
                         {handle && (
-                          <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 font-sans text-neutral-200">
+                          <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 font-sans text-fg">
                             @{handle}
                           </span>
                         )}
                       </p>
                       {(f.tag1 || f.tag2) && (
-                        <p className="mt-1 text-neutral-500">
+                        <p className="mt-1 text-muted">
                           {f.tag1 && <span className="mr-2">#{f.tag1}</span>}
                           {f.tag2 && <span>#{f.tag2}</span>}
                         </p>
@@ -211,8 +211,8 @@ function PaginationHeader({
   const end = Math.min(total, page * pageSize + data.feedback.length);
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <h2 className="text-sm font-medium text-neutral-300">Feedback</h2>
-      <p className="text-xs text-neutral-500">
+      <h2 className="text-sm font-medium text-fg">Feedback</h2>
+      <p className="text-xs text-muted">
         {total === 0
           ? '0 total'
           : `${start}-${end} of ${total} · page ${page + 1} of ${totalPages}`}
@@ -239,23 +239,23 @@ function PaginationControls({
   const prevDisabled = page === 0 || loading;
   const nextDisabled = page >= totalPages - 1 || loading;
   return (
-    <div className="mt-4 flex items-center justify-between border-t border-neutral-800/60 pt-3 text-xs">
+    <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-3 text-xs">
       <button
         type="button"
         onClick={() => onPageChange(Math.max(0, page - 1))}
         disabled={prevDisabled}
-        className="rounded-md border border-neutral-800 px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-md border border-line px-3 py-1.5 text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
       >
         ← Previous
       </button>
-      <span className="text-neutral-500">
+      <span className="text-muted">
         Page {page + 1} of {totalPages}
       </span>
       <button
         type="button"
         onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
         disabled={nextDisabled}
-        className="rounded-md border border-neutral-800 px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-md border border-line px-3 py-1.5 text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
       >
         Next →
       </button>
@@ -274,8 +274,8 @@ function Stat({
 }) {
   return (
     <div>
-      <dt className="text-xs text-neutral-500">{label}</dt>
-      <dd className={`mt-1 text-lg text-neutral-100 ${mono ? 'font-mono' : ''}`}>{value}</dd>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className={`mt-1 text-lg text-fg ${mono ? 'font-mono' : ''}`}>{value}</dd>
     </div>
   );
 }

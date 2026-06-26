@@ -18,6 +18,7 @@ import { ProfileSetupBanner } from '@/components/profile-setup-banner';
 import { SidebarSummary } from '@/components/sidebar-summary';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://bezant.trade'),
   title: 'Bezant',
   description: 'Trade finance for stablecoins. Escrow that releases on verified delivery.',
 };

@@ -9,28 +9,27 @@
 :root {
   color-scheme: dark;
 
-  --bg: #0a0c0e; /* app background — near-black slate */
-  --surface: #14181b; /* cards, modals */
-  --surface-2: #1b2125; /* inputs, insets, elevated rows */
-  --line: #232a2e; /* hairline borders */
-  --line-strong: #2e363b; /* stronger dividers */
+  /* Tokens are stored as space-separated RGB channels so Tailwind's
+     `<alpha-value>` opacity modifiers work everywhere (bg-surface/50,
+     border-primary/20, etc.). See tailwind.config.ts. */
+  --bg: 10 12 14; /* #0a0c0e — near-black slate */
+  --surface: 20 24 27; /* #14181b — cards, modals */
+  --surface-2: 27 33 37; /* #1b2125 — inputs, insets, elevated rows */
+  --line: 35 42 46; /* #232a2e — hairline borders */
+  --line-strong: 46 54 59; /* #2e363b — stronger dividers */
 
-  --fg: #e6eaed; /* primary text */
-  --muted: #8a949b; /* secondary text */
+  --fg: 230 234 237; /* #e6eaed — primary text */
+  --muted: 138 148 155; /* #8a949b — secondary text */
 
-  --primary: #2fbf87; /* mint — buttons, links, active */
-  --primary-hover: #38d198;
-  --primary-fg: #04140d; /* text on a mint surface */
-  --primary-soft: rgba(47, 191, 135, 0.12);
+  --primary: 47 191 135; /* #2fbf87 — mint; buttons, links, active */
+  --primary-hover: 56 209 152; /* #38d198 */
+  --primary-fg: 4 20 13; /* #04140d — text on a mint surface */
 
-  --warn: #e0a23a;
-  --warn-soft: rgba(224, 162, 58, 0.12);
-  --danger: #e5544b;
-  --danger-soft: rgba(229, 84, 75, 0.12);
-  --info: #5aa9e6;
+  --warn: 224 162 58; /* #e0a23a */
+  --danger: 229 84 75; /* #e5544b */
+  --info: 90 169 230; /* #5aa9e6 */
 
-  --brand: #e3cd97; /* champagne - the bezant coin nod; brand mark only, never UI action */
-  --brand-line: #4a4127; /* champagne-on-ink hairline (icon tile border) */
+  --brand: 227 205 151; /* #e3cd97 — champagne, the bezant coin nod; brand mark only */
 }
 
 body {

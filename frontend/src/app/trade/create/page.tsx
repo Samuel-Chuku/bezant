@@ -107,18 +107,18 @@ export default function CreateTradePage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
       <header className="mb-8">
-        <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-100">
+        <Link href="/" className="text-xs text-muted hover:text-fg">
           ← back
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a trade</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-muted">
           You&apos;re the <strong>buyer</strong>. The required deposit is priced by your credit passport,
           a verifier attests delivery, and funds release to the seller.
         </p>
       </header>
 
       {!signer.isConnected && (
-        <div className="mb-6 rounded-xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-amber-200">
+        <div className="mb-6 rounded-xl border border-warn/40 bg-warn/20 p-4 text-sm text-warn">
           Connect a wallet or sign in with a passkey first.{' '}
           <Link href="/" className="underline">
             Go to sign-in
@@ -134,49 +134,49 @@ export default function CreateTradePage() {
 
       <div className="space-y-5">
         <label className="block">
-          <span className="text-sm text-neutral-300">Seller (handle or 0x address)</span>
+          <span className="text-sm text-fg">Seller (handle or 0x address)</span>
           <input
             value={sellerInput}
             onChange={(e) => setSellerInput(e.target.value)}
             placeholder="seller-handle or 0x…"
-            className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
           />
         </label>
 
         <label className="block">
-          <span className="text-sm text-neutral-300">Trade amount (USDC)</span>
+          <span className="text-sm text-fg">Trade amount (USDC)</span>
           <input
             value={amountUsdc}
             onChange={(e) => setAmountUsdc(e.target.value)}
             inputMode="decimal"
             placeholder="0.5"
-            className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
           />
         </label>
 
         <label className="block">
-          <span className="text-sm text-neutral-300">Milestone / delivery terms</span>
+          <span className="text-sm text-fg">Milestone / delivery terms</span>
           <input
             value={milestone}
             onChange={(e) => setMilestone(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
           />
         </label>
 
         <label className="block">
-          <span className="text-sm text-neutral-300">Deadline</span>
+          <span className="text-sm text-fg">Deadline</span>
           <div className="mt-1 flex gap-2">
             <input
               type="number"
               min={1}
               value={deadlineValue}
               onChange={(e) => setDeadlineValue(Number(e.target.value))}
-              className="w-24 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+              className="w-24 rounded-lg border border-line bg-bg px-3 py-2 text-sm"
             />
             <select
               value={deadlineUnit}
               onChange={(e) => setDeadlineUnit(e.target.value as DeadlineUnit)}
-              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+              className="rounded-lg border border-line bg-bg px-3 py-2 text-sm"
             >
               <option value="minutes">minutes</option>
               <option value="hours">hours</option>
@@ -187,23 +187,23 @@ export default function CreateTradePage() {
 
         {verifier?.configured && (
           <div>
-            <span className="text-sm text-neutral-300">Delivery verification</span>
+            <span className="text-sm text-fg">Delivery verification</span>
             <div className="mt-1 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setVerifyMode('officer')}
-                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'officer' ? 'border-neutral-500 bg-neutral-900 text-neutral-100' : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'}`}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'officer' ? 'border-line-strong bg-surface text-fg' : 'border-line text-muted hover:border-line-strong'}`}
               >
                 <div className="font-medium">Trade Officer</div>
-                <div className="text-xs text-neutral-500">Fast - an automated agent attests.</div>
+                <div className="text-xs text-muted">Fast - an automated agent attests.</div>
               </button>
               <button
                 type="button"
                 onClick={() => setVerifyMode('panel')}
-                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'panel' ? 'border-neutral-500 bg-neutral-900 text-neutral-100' : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'}`}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${verifyMode === 'panel' ? 'border-line-strong bg-surface text-fg' : 'border-line text-muted hover:border-line-strong'}`}
               >
                 <div className="font-medium">Staked panel</div>
-                <div className="text-xs text-neutral-500">Decentralized - a {verifier.panelSize}-verifier panel votes. +{(verifier.feeBps ?? 0) / 100}% fee.</div>
+                <div className="text-xs text-muted">Decentralized - a {verifier.panelSize}-verifier panel votes. +{(verifier.feeBps ?? 0) / 100}% fee.</div>
               </button>
             </div>
           </div>
@@ -211,12 +211,12 @@ export default function CreateTradePage() {
 
         {signer.isConnected && (
           <div>
-            <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-sky-300 hover:underline">
+            <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-info hover:underline">
               {showBridge ? 'Hide bridge' : 'Fund this trade from another chain?'}
             </button>
             {showBridge && (
-              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
-                <p className="mb-2 text-xs text-neutral-500">
+              <div className="mt-3 rounded-xl border border-line bg-bg/40 p-3">
+                <p className="mb-2 text-xs text-muted">
                   Creating a trade locks nothing - your deposit is taken when you fund, after the seller agrees.
                   {amountUsdc && Number(amountUsdc) > 0
                     ? ` Bridge the ${amountUsdc} USDC to your Arc wallet now so it's ready the moment the trade is agreed.`
@@ -236,16 +236,16 @@ export default function CreateTradePage() {
         <button
           onClick={submit}
           disabled={isBusy || !signer.isConnected}
-          className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-40"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg disabled:opacity-40"
         >
           {isBusy ? 'Working…' : 'Create trade'}
         </button>
 
         {submission.status === 'waiting' && (
-          <p className="text-sm text-neutral-400">Waiting for confirmation… {submission.hash.slice(0, 10)}…</p>
+          <p className="text-sm text-muted">Waiting for confirmation… {submission.hash.slice(0, 10)}…</p>
         )}
         {submission.status === 'error' && (
-          <p className="text-sm text-red-400">{submission.message}</p>
+          <p className="text-sm text-danger">{submission.message}</p>
         )}
       </div>
     </main>

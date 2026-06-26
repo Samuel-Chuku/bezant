@@ -78,7 +78,7 @@ export function WalletPill() {
           type="button"
           onClick={() => setLoginOpen((o) => !o)}
           aria-expanded={loginOpen}
-          className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-950 transition hover:bg-white"
+          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:bg-primary-hover"
         >
           Log in
         </button>
@@ -117,7 +117,7 @@ export function WalletPill() {
       <button
         type="button"
         onClick={handleClick}
-        className="group flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 py-1 pl-1.5 pr-1 transition hover:border-neutral-700 hover:bg-neutral-900"
+        className="group flex items-center gap-2 rounded-full border border-line bg-surface/60 py-1 pl-1.5 pr-1 transition hover:border-line-strong hover:bg-surface"
         aria-label="Open wallet menu"
         aria-expanded={passkeyOpen}
       >
@@ -132,31 +132,31 @@ export function WalletPill() {
                 if (e.key === 'Enter' || e.key === ' ') copyHandleOwner(e as unknown as React.MouseEvent);
               }}
               title={handleCopied ? 'Copied!' : `Copy ${signer.address}`}
-              className="cursor-pointer text-[11px] font-medium text-emerald-300 hover:text-emerald-200"
+              className="cursor-pointer text-[11px] font-medium text-primary hover:text-primary"
             >
               {handleCopied ? 'Copied!' : `@${handle}`}
             </span>
             {/* Address row hides below md when a handle is present - the
                 handle becomes the primary identifier. Always visible at md+
                 or when no handle is set. */}
-            <span className="hidden text-neutral-700 md:inline" aria-hidden>
+            <span className="hidden text-muted md:inline" aria-hidden>
               ·
             </span>
-            <span className="hidden font-mono text-[11px] text-neutral-200 md:inline">
+            <span className="hidden font-mono text-[11px] text-fg md:inline">
               {shortAddress(signer.address)}
             </span>
           </>
         ) : (
-          <span className="font-mono text-[11px] text-neutral-200">
+          <span className="font-mono text-[11px] text-fg">
             {shortAddress(signer.address)}
           </span>
         )}
         {/* Balance hides below sm to keep the pill compact on phones; the
             drawer + balances panel surface it elsewhere when needed. */}
-        <span className="hidden text-neutral-600 sm:inline" aria-hidden>
+        <span className="hidden text-muted sm:inline" aria-hidden>
           ·
         </span>
-        <span className="hidden text-[11px] text-neutral-300 sm:inline">{balanceText}</span>
+        <span className="hidden text-[11px] text-fg sm:inline">{balanceText}</span>
         <span className="ml-1">
           <Avatar address={signer.address} size={26} />
         </span>
@@ -201,43 +201,43 @@ function LoginPopover({ onClose }: { onClose: () => void }) {
       <div
         role="dialog"
         aria-label="Sign in"
-        className="relative w-full max-w-sm rounded-xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl"
+        className="relative w-full max-w-sm rounded-xl border border-line bg-bg p-5 shadow-2xl"
       >
       <button
         type="button"
         onClick={onClose}
         aria-label="Close"
-        className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"
+        className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-fg"
       >
         ×
       </button>
 
       {step === 'choose' ? (
         <>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-400">Get on Arc</div>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight text-neutral-100">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-primary">Get on Arc</div>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-fg">
             How do you want to sign?
           </h3>
-          <p className="mt-1 text-xs text-neutral-500">
+          <p className="mt-1 text-xs text-muted">
             Either path lands you with an address on Arc Testnet.
           </p>
 
           <button
             type="button"
             onClick={() => setStep('email')}
-            className="mt-5 flex w-full items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-neutral-100 transition hover:border-neutral-700 hover:bg-neutral-900/80"
+            className="mt-5 flex w-full items-center justify-between rounded-lg border border-line bg-surface px-4 py-3 text-sm text-fg transition hover:border-line-strong hover:bg-surface/80"
           >
             <span className="flex items-center gap-2.5">
               <MailGlyph />
               <span>Use email + passkey</span>
             </span>
-            <span aria-hidden className="text-neutral-500">→</span>
+            <span aria-hidden className="text-muted">→</span>
           </button>
 
-          <div className="my-4 flex items-center gap-3 text-[10px] uppercase tracking-wider text-neutral-600">
-            <div className="h-px flex-1 bg-neutral-800" />
+          <div className="my-4 flex items-center gap-3 text-[10px] uppercase tracking-wider text-muted">
+            <div className="h-px flex-1 bg-surface-2" />
             <span>or</span>
-            <div className="h-px flex-1 bg-neutral-800" />
+            <div className="h-px flex-1 bg-surface-2" />
           </div>
 
           <button
@@ -253,13 +253,13 @@ function LoginPopover({ onClose }: { onClose: () => void }) {
               openConnectModal();
               onClose();
             }}
-            className="flex w-full items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-neutral-100 transition hover:border-neutral-700 hover:bg-neutral-900/80 disabled:cursor-wait disabled:opacity-60"
+            className="flex w-full items-center justify-between rounded-lg border border-line bg-surface px-4 py-3 text-sm text-fg transition hover:border-line-strong hover:bg-surface/80 disabled:cursor-wait disabled:opacity-60"
           >
             <span className="flex items-center gap-2.5">
               <WalletGlyph />
               <span>{openConnectModal ? 'Connect a browser wallet' : 'Preparing wallets…'}</span>
             </span>
-            <span aria-hidden className="text-neutral-500">→</span>
+            <span aria-hidden className="text-muted">→</span>
           </button>
         </>
       ) : (
@@ -267,12 +267,12 @@ function LoginPopover({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={() => setStep('choose')}
-            className="mb-3 inline-flex items-center gap-1 text-[11px] text-neutral-500 hover:text-neutral-200"
+            className="mb-3 inline-flex items-center gap-1 text-[11px] text-muted hover:text-fg"
           >
             ← Back
           </button>
-          <h3 className="text-base font-medium text-neutral-100">Email + passkey</h3>
-          <p className="mt-1 text-xs text-neutral-500">
+          <h3 className="text-base font-medium text-fg">Email + passkey</h3>
+          <p className="mt-1 text-xs text-muted">
             New here? Create one. Already have a passkey for Bezant? Sign in.
           </p>
           <div className="mt-4">
@@ -313,22 +313,22 @@ function PasskeyPopover({
     <div
       role="dialog"
       aria-label="Wallet menu"
-      className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl"
+      className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-line bg-bg p-4 shadow-2xl"
     >
       <button
         type="button"
         onClick={onClose}
         aria-label="Close"
-        className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"
+        className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-fg"
       >
         ×
       </button>
 
       <div className="flex flex-col items-center pt-1">
         <Avatar address={address} size={48} />
-        <div className="mt-3 font-mono text-sm text-neutral-100">{shortAddress(address)}</div>
-        <div className="mt-0.5 text-xs text-neutral-400">{balanceText}</div>
-        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
+        <div className="mt-3 font-mono text-sm text-fg">{shortAddress(address)}</div>
+        <div className="mt-0.5 text-xs text-muted">{balanceText}</div>
+        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">
           on Arc · passkey
         </div>
       </div>
@@ -337,14 +337,14 @@ function PasskeyPopover({
         <button
           type="button"
           onClick={handleCopy}
-          className="rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-neutral-200 transition hover:border-neutral-700 hover:bg-neutral-900/80"
+          className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[11px] font-medium text-fg transition hover:border-line-strong hover:bg-surface/80"
         >
           {copied ? 'Copied!' : 'Copy'}
         </button>
         <button
           type="button"
           onClick={onDisconnect}
-          className="rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-neutral-200 transition hover:border-red-700/60 hover:bg-red-950/30 hover:text-red-200"
+          className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[11px] font-medium text-fg transition hover:border-danger/60 hover:bg-danger/30 hover:text-danger"
         >
           Disconnect
         </button>
@@ -388,7 +388,7 @@ function WalletGlyph() {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-neutral-300"
+      className="text-fg"
       aria-hidden
     >
       <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2" />
@@ -408,7 +408,7 @@ function MailGlyph() {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-neutral-300"
+      className="text-fg"
       aria-hidden
     >
       <rect x="3" y="5" width="18" height="14" rx="2" />

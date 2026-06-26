@@ -34,20 +34,20 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
     : labels.map((label, i) => ({ label, state: i < reached ? 'done' : i === active ? 'active' : 'todo' }));
 
   const dot: Record<Node['state'], string> = {
-    done: 'bg-emerald-500 border-emerald-500',
+    done: 'bg-primary border-primary',
     active: 'border-violet-400 bg-violet-400/20 ring-2 ring-violet-500/30',
-    todo: 'border-neutral-700 bg-neutral-900',
-    red: 'bg-red-500 border-red-500',
-    amber: 'bg-amber-500 border-amber-500',
-    neutral: 'bg-neutral-500 border-neutral-500',
+    todo: 'border-line-strong bg-surface',
+    red: 'bg-danger border-danger',
+    amber: 'bg-warn border-warn',
+    neutral: 'bg-muted border-line-strong',
   };
   const text: Record<Node['state'], string> = {
-    done: 'text-emerald-300',
+    done: 'text-primary',
     active: 'text-violet-200',
-    todo: 'text-neutral-600',
-    red: 'text-red-300',
-    amber: 'text-amber-300',
-    neutral: 'text-neutral-400',
+    todo: 'text-muted',
+    red: 'text-danger',
+    amber: 'text-warn',
+    neutral: 'text-muted',
   };
 
   return (
@@ -61,7 +61,7 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
             <span className={`whitespace-nowrap text-[11px] ${text[n.state]}`}>{n.label}</span>
           </div>
           {i < nodes.length - 1 && (
-            <span className={`mx-2 mb-5 h-px flex-1 ${n.state === 'done' ? 'bg-emerald-700/60' : 'bg-neutral-800'}`} />
+            <span className={`mx-2 mb-5 h-px flex-1 ${n.state === 'done' ? 'bg-primary' : 'bg-surface-2'}`} />
           )}
         </li>
       ))}
