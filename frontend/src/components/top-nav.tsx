@@ -110,6 +110,9 @@ export function TopNav() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { count: verifyPending } = useVerifierPending();
 
+  // The marketing landing has its own nav; suppress the app header there.
+  if (pathname === '/landing') return null;
+
   // External-mode users can drift off Arc via the bridge widget; passkey
   // users stay on Arc by construction so we don't pester them.
   const showSwitchCTA =

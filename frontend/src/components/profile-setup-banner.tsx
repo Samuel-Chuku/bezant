@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
@@ -17,6 +18,7 @@ export function ProfileSetupBanner() {
   const [dismissed, setDismissed] = useState(true); // hidden until we read storage (no flash)
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     setMounted(true);
@@ -27,6 +29,7 @@ export function ProfileSetupBanner() {
   const needsHandle = state.status === 'ready' && (user === null || user.handle === null);
 
   if (!mounted || !signer.isConnected || !needsHandle || dismissed) return null;
+  if (pathname === '/landing') return null; // marketing landing has its own chrome
 
   const dismiss = () => {
     window.localStorage.setItem(DISMISS_KEY, '1');

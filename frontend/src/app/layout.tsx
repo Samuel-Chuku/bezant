@@ -1,14 +1,27 @@
 import type { Metadata } from 'next';
-import { Fraunces } from 'next/font/google';
+import { Fraunces, Bricolage_Grotesque, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
-// Brand serif for the "bezant" wordmark. Exposed as the --font-brand CSS var
-// (used by Tailwind's font-brand). Only the wordmark uses it; the rest of the
-// UI stays on the system sans.
+// The Bezant type trio (design system "Ink & Mint"):
+// Fraunces  - brand serif: wordmark, display, headings (--font-brand / --font-display)
+// Bricolage - body + UI (--font-body)
+// JetBrains Mono - all data: USDC amounts, addresses, hashes (--font-mono, tabular)
 const fraunces = Fraunces({
   subsets: ['latin'],
   weight: ['500', '600'],
   variable: '--font-brand',
+  display: 'swap',
+});
+const bricolage = Bricolage_Grotesque({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-body',
+  display: 'swap',
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-mono',
   display: 'swap',
 });
 import { Providers } from '@/components/providers';
@@ -29,7 +42,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={fraunces.variable}>
+    <html lang="en" className={`${fraunces.variable} ${bricolage.variable} ${jetbrainsMono.variable}`}>
       <body>
         <Providers>
           <ToastProvider>

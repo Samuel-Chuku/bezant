@@ -37,7 +37,12 @@ const config: Config = {
         brand: 'rgb(var(--brand) / <alpha-value>)',
       },
       fontFamily: {
+        // Bezant type trio. `brand`/`display` are the Fraunces serif; `sans` is
+        // Bricolage (the default body); `mono` is JetBrains Mono for all data.
         brand: ['var(--font-brand)', 'Fraunces', 'serif'],
+        display: ['var(--font-brand)', 'Fraunces', 'serif'],
+        sans: ['var(--font-body)', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
     },
   },

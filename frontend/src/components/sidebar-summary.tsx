@@ -92,6 +92,7 @@ export function SidebarSummary() {
 
   if (!signer.isConnected) return null;
   if (onBridgePage) return null;
+  if (pathname === '/landing') return null; // marketing landing has its own chrome
 
   // Inline style only takes effect when `position: fixed` is active (lg+).
   // Below lg the static layout ignores left/top and the widget renders
