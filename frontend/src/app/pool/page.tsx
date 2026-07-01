@@ -8,7 +8,7 @@ import { RecentPoolStakes } from '@/components/recent-pool-stakes';
 // funds, who can deposit, the risk) plus the deposit/withdraw panel.
 export default function PoolPage() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
+    <main className="mx-auto max-w-[1440px] px-6 py-16">
       <header>
         <div className="text-[11px] uppercase tracking-[0.18em] text-brand">Liquidity</div>
         <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight">Financing pool</h1>

@@ -45,6 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${fraunces.variable} ${bricolage.variable} ${jetbrainsMono.variable}`}>
       <body>
+        {/* Fixed background grid + crosshair canvas behind all app content. */}
+        <div className="app-canvas" aria-hidden />
         {/* Apply the saved theme before paint (dark is default, so only light needs setting). */}
         <script
           dangerouslySetInnerHTML={{

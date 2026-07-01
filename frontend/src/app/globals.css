@@ -12,7 +12,7 @@
   /* Tokens are stored as space-separated RGB channels so Tailwind's
      `<alpha-value>` opacity modifiers work everywhere (bg-surface/50,
      border-primary/20, etc.). See tailwind.config.ts. */
-  --bg: 10 12 14; /* #0a0c0e — near-black slate */
+  --bg: 8 9 11; /* #08090b — flat, neutral near-black */
   --surface: 20 24 27; /* #14181b — cards, modals */
   --surface-2: 27 33 37; /* #1b2125 — inputs, insets, elevated rows */
   --line: 35 42 46; /* #232a2e — hairline borders */
@@ -31,6 +31,11 @@
 
   --brand: 227 205 151; /* #e3cd97 — champagne, the bezant coin nod; brand mark only */
   --champ-edge: rgba(227, 205, 151, 0.32); /* 2px champagne left edge on brand/verified cards */
+
+  /* Background grid canvas (see .app-canvas) */
+  --grid-cell: 56px;
+  --grid-line: rgb(255 255 255 / 0.022);
+  --grid-cross-opacity: 0.05;
 
   /* ── Struck-coin button (dark) — the signature action. Mint cap, coin face. ── */
   --coin-face: #2c343b; --coin-edge: #525d67;
@@ -92,6 +97,10 @@
 
   --brand: 138 111 74; /* #8a6f4a — darker champagne for AA on light */
   --champ-edge: rgba(138, 111, 74, 0.4);
+
+  /* Grid canvas: faint dark lines on light, crosshair off (its stroke is white). */
+  --grid-line: rgb(10 12 14 / 0.035);
+  --grid-cross-opacity: 0;
 
   --coin-face: #ffffff; --coin-edge: #d8dde2;
   --coin-label-mint: #1a8a5e; --coin-label-danger: #c0392c; --coin-label-neutral: #161a1d;
@@ -158,6 +167,18 @@ body {
 @keyframes bz-rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 @keyframes bz-fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .bz-fadein { animation: bz-fadein 0.18s var(--ease-standard); }
+
+/* App background canvas: a faint structural grid with crosshair marks at the
+   intersections (Firecrawl-style), fixed behind all content. Dark by default;
+   near-invisible in light. --grid-* tokens live in :root / the light override. */
+.app-canvas { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-cell) var(--grid-cell); }
+.app-canvas::before { content: ""; position: absolute; inset: 0; opacity: var(--grid-cross-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='112'%20height='112'%3E%3Cpath%20d='M56%2051v10M51%2056h10'%20stroke='%23ffffff'%20stroke-width='1'/%3E%3C/svg%3E");
+  background-size: calc(var(--grid-cell) * 2) calc(var(--grid-cell) * 2); }
 
 /* Reveal-on-scroll: hidden until JS adds .in-view (IntersectionObserver). */
 .reveal { opacity: 0; transform: translateY(16px); transition: opacity var(--dur-slow) var(--ease-standard), transform var(--dur-slow) var(--ease-standard); }

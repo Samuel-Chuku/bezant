@@ -55,7 +55,7 @@ export default function TradesPage() {
   const shown = useMemo(() => (trades ?? []).filter((t) => inFilter(t.status, filter)), [trades, filter]);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
+    <main className="mx-auto max-w-[1440px] px-6 py-16">
       <div className="flex items-center justify-between gap-4">
         <h1 className="t-h1">Bonds</h1>
         <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>

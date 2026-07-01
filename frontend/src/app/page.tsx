@@ -21,7 +21,7 @@ export default function Home() {
   const displayName = user?.handle ?? (signer.isConnected ? shortAddress(signer.address) : null);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
+    <main className="mx-auto max-w-[1440px] px-6 py-16">
       <header className="mb-12">
         <h1>
           <BezantWordmark markSize={44} textClassName="text-5xl" className="gap-3" />

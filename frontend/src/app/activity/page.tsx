@@ -44,7 +44,7 @@ export default function ActivityPage() {
   const shown = useMemo(() => items.filter((it) => matches(it, filter)), [items, filter]);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
+    <main className="mx-auto max-w-[1440px] px-6 py-12">
       <header className="mb-6 flex items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight">Activities</h1>

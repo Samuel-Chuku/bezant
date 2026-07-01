@@ -109,7 +109,7 @@ export default function VerifyPage() {
   };
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
+    <main className="mx-auto max-w-[1440px] px-6 py-16">
       <h1 className="font-display text-3xl font-semibold tracking-tight">Verify</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted">
         Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.

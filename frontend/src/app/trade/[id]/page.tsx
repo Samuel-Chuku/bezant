@@ -355,7 +355,7 @@ export default function TradeDetailPage() {
   const offerBy = trade && trade.lastProposer.toLowerCase() === trade.buyer.toLowerCase() ? 'buyer' : 'seller';
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
+    <main className="mx-auto max-w-[1440px] px-6 py-16">
       <Link href="/trade" className="text-xs text-muted hover:text-fg">
         ← your bonds
       </Link>

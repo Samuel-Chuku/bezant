@@ -11,14 +11,13 @@ import { AgentLinkCard } from '@/components/agent-link-card';
 import { SendPanel } from '@/components/send-panel';
 import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
-import { StatCard } from '@/components/ui';
+import { StruckButton } from '@/components/ui';
 import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { timeAgo } from '@/lib/relative-time';
 
-// Profile hub: identity (handle / address / signing mode / agent ID), credit
-// passport, and the user's LP position in the financing pool. Agent linking
-// lives here too; the handle claim is offered via the global setup banner.
+// Profile dashboard: greeting, at-a-glance metrics, a standing gauge, the credit
+// passport, LP + verifier positions, identity/agent, and recent activity.
 export default function ProfilePage() {
   const signer = useSigner();
   const { state: userState, linkAgentId, registerAgent } = useUserRecord();
@@ -42,7 +41,7 @@ export default function ProfilePage() {
 
   if (!signer.isConnected) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-16">
+      <main className="mx-auto max-w-[1440px] px-6 py-16">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Profile</h1>
         <p className="mt-6 text-sm text-muted">
           Connect a wallet or sign in to see your profile.{' '}
@@ -54,119 +53,188 @@ export default function ProfilePage() {
     );
   }
 
+  const rep = stats?.reputation;
+
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
-      <h1 className="font-display text-3xl font-semibold tracking-tight">Profile</h1>
-
-      <div className="mt-6 space-y-6">
-        {/* Identity + agent linking (compact, on the right) */}
-        <section className="rounded-xl border border-line border-l-2 border-l-brand/40 bg-bg/50 p-5">
-          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-4">
-                <Avatar address={signer.address} size={48} />
-                <div className="min-w-0">
-                  <div className="truncate text-lg font-medium text-fg">
-                    {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
-                  </div>
-                  <div className="font-mono text-xs text-muted">{signer.address}</div>
-                </div>
-              </div>
-
-              <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
-                <Field label="Signing">
-                  {signer.mode === 'external' ? 'Browser wallet' : 'Email + passkey'}
-                </Field>
-                {user?.createdAt && (
-                  <Field label="Member since">
-                    {new Date(user.createdAt).toLocaleDateString(undefined, {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </Field>
-                )}
-              </dl>
-
-              {userState.status === 'loading' && (
-                <p className="mt-3 text-xs text-muted">Looking up your account…</p>
-              )}
-              {userState.status === 'error' && (
-                <p className="mt-3 text-xs text-danger">Couldn&apos;t reach the backend: {userState.message}</p>
-              )}
-            </div>
-
-            {userState.status === 'ready' && (
-              <div className="md:w-72 md:shrink-0">
-                {user ? (
-                  <AgentLinkCard
-                    variant="compact"
-                    currentAgentId={user.agentId}
-                    onLink={(agentId) => linkAgentId(agentId)}
-                    onRegister={() => registerAgent()}
-                  />
-                ) : (
-                  // No backend record yet - agentId links to your user row, so a
-                  // profile must exist first (claim a handle via the top banner).
-                  <div className="rounded-xl border border-info/30 bg-info/10 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-info">ERC-8004 agent</div>
-                    <p className="mt-1 text-[11px] leading-snug text-info/70">
-                      Set up a profile (claim a handle) to link or mint an agent and carry your reputation.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* At-a-glance stats */}
-        <StatsStrip stats={stats} />
-
-        {/* Send USDC - passkey (Circle Modular) wallets only; renders null otherwise */}
-        <SendPanel />
-
-        {/* Cards flow into balanced columns and only render what the wallet has,
-            so non-verifiers / non-depositors don't get an empty column slot. */}
-        <div className="lg:columns-2 [column-gap:1.5rem]">
-          <div className="mb-6 break-inside-avoid">
-            <PassportPanel address={signer.address} />
-          </div>
-          {stats?.verifier && (
-            <div className="mb-6 break-inside-avoid">
-              <VerifierBlock v={stats.verifier} />
-            </div>
-          )}
-          <div className="mb-6 break-inside-avoid">
-            <LpPositionCard address={signer.address} />
-          </div>
-          <div className="mb-6 break-inside-avoid">
-            <RecentActivity />
+    <main className="mx-auto max-w-[1440px] px-6 py-12">
+      {/* Greeting */}
+      <header className="flex flex-wrap items-center justify-between gap-5">
+        <div className="flex items-center gap-4">
+          <Avatar address={signer.address} size={56} />
+          <div className="min-w-0">
+            <h1 className="font-display text-3xl font-semibold tracking-tight">
+              Hello, {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
+            </h1>
+            <p className="mt-1 text-sm text-muted">Your bonds, standing and reputation at a glance.</p>
           </div>
         </div>
+        <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
+      </header>
+
+      {userState.status === 'error' && (
+        <p className="mt-6 text-sm text-danger">Couldn&apos;t reach the backend: {userState.message}</p>
+      )}
+
+      {/* At-a-glance metrics */}
+      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <MetricCard label="Bonds" glyph={<VaultGlyph />} value={stats ? String(stats.tradesTotal) : '-'} hint={stats ? `${stats.settled} settled · ${stats.active} active` : undefined} />
+        <MetricCard label="Volume" glyph={<StackGlyph />} value={stats ? Number(stats.volumeUsdc).toLocaleString() : '-'} unit="USDC" hint="settled" />
+        <MetricCard label="Success rate" glyph={<CheckGlyph />} featured value={stats?.successRate != null ? String(Math.round(stats.successRate * 100)) : '-'} unit="%" hint="settled vs resolved" />
+        <MetricCard label="Reputation" glyph={<SealGlyph />} value={rep ? Number(rep.value).toFixed(2) : '-'} hint={rep ? `${rep.count} ratings${rep.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked'} />
+      </div>
+
+      {/* Dashboard grid */}
+      <div className="mt-4 grid grid-flow-row-dense gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <PassportPanel address={signer.address} />
+        </div>
+
+        {/* Standing gauge */}
+        <div className="rounded-2xl border border-line bg-surface p-6">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Standing</div>
+          <StandingGauge value={stats?.successRate != null ? stats.successRate * 100 : 0} known={stats?.successRate != null} />
+          <div className="mt-2 grid grid-cols-2 gap-3 text-center text-xs">
+            <div><div className="font-mono text-lg font-semibold tabular-nums text-fg">{stats?.settled ?? '-'}</div><div className="text-muted">settled</div></div>
+            <div><div className="font-mono text-lg font-semibold tabular-nums text-danger">{stats ? Math.max(0, stats.tradesTotal - stats.settled - stats.active) : '-'}</div><div className="text-muted">contested</div></div>
+          </div>
+        </div>
+
+        {/* Identity + agent */}
+        <div className="rounded-2xl border border-line border-l-2 border-l-brand/40 bg-surface p-6">
+          <div className="flex items-center gap-3">
+            <Avatar address={signer.address} size={40} />
+            <div className="min-w-0">
+              <div className="truncate font-medium text-fg">
+                {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
+              </div>
+              <div className="truncate font-mono text-xs text-muted">{signer.address}</div>
+            </div>
+          </div>
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <Field label="Signing">{signer.mode === 'external' ? 'Wallet' : 'Email + passkey'}</Field>
+            {user?.createdAt && (
+              <Field label="Member since">
+                {new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+              </Field>
+            )}
+          </dl>
+          {userState.status === 'ready' && (
+            <div className="mt-4 border-t border-line pt-4">
+              {user ? (
+                <AgentLinkCard variant="compact" currentAgentId={user.agentId} onLink={(agentId) => linkAgentId(agentId)} onRegister={() => registerAgent()} />
+              ) : (
+                <div className="rounded-xl border border-info/30 bg-info/10 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-info">ERC-8004 agent</div>
+                  <p className="mt-1 text-[11px] leading-snug text-info/70">
+                    Claim a handle to link or mint an agent and carry your reputation.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <LpPositionCard address={signer.address} />
+        {stats?.verifier && <VerifierBlock v={stats.verifier} />}
+
+        <div className="lg:col-span-2">
+          <RecentActivity />
+        </div>
+        {signer.mode !== 'external' && <SendPanel />}
       </div>
     </main>
   );
 }
 
-// At-a-glance identity stats: trade history, volume, success rate, reputation.
-function StatsStrip({ stats }: { stats: UserStats | null }) {
-  const cards: { label: string; value: string; hint?: string }[] = [
-    { label: 'Bonds', value: stats ? String(stats.tradesTotal) : '-', hint: stats ? `${stats.settled} settled · ${stats.active} active` : undefined },
-    { label: 'Volume', value: stats ? `${Number(stats.volumeUsdc).toLocaleString()} USDC` : '-', hint: 'settled' },
-    { label: 'Success rate', value: stats?.successRate != null ? `${Math.round(stats.successRate * 100)}%` : '-', hint: 'settled vs resolved' },
-    {
-      label: 'Reputation',
-      value: stats?.reputation ? Number(stats.reputation.value).toFixed(2) : '-',
-      hint: stats?.reputation ? `${stats.reputation.count} ratings${stats.reputation.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked',
-    },
-  ];
+// ── Metric card: glyph + label + big mono value + hint. `featured` tints mint. ──
+function MetricCard({
+  label,
+  value,
+  unit,
+  hint,
+  glyph,
+  featured,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  hint?: string;
+  glyph: React.ReactNode;
+  featured?: boolean;
+}) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {cards.map((c) => (
-        <StatCard key={c.label} label={c.label} value={c.value} hint={c.hint} />
-      ))}
+    <div className={`rounded-2xl border p-5 ${featured ? 'border-primary/40 bg-primary/10' : 'border-line bg-surface'}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted">{label}</span>
+        <span className={featured ? 'text-primary' : 'text-brand'}>{glyph}</span>
+      </div>
+      <div className="mt-3 font-mono text-2xl font-semibold tabular-nums text-fg">
+        {value}
+        {unit && <span className="ml-1 text-sm font-normal text-muted">{unit}</span>}
+      </div>
+      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </div>
+  );
+}
+
+// Semicircular gauge (0-100). Track + mint value arc, normalized via pathLength.
+function StandingGauge({ value, known }: { value: number; known: boolean }) {
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div className="relative mt-2">
+      <svg viewBox="0 0 200 116" className="mx-auto block w-full max-w-[240px]">
+        <path d="M18 100 A82 82 0 0 1 182 100" fill="none" className="stroke-surface-2" strokeWidth="14" strokeLinecap="round" />
+        <path
+          d="M18 100 A82 82 0 0 1 182 100"
+          fill="none"
+          className="stroke-primary"
+          strokeWidth="14"
+          strokeLinecap="round"
+          pathLength={100}
+          strokeDasharray={`${known ? pct : 0} 100`}
+        />
+      </svg>
+      <div className="absolute inset-x-0 bottom-0 text-center">
+        <div className="font-mono text-3xl font-semibold tabular-nums text-fg">{known ? `${Math.round(pct)}%` : '-'}</div>
+        <div className="text-[11px] text-muted">bonds in good standing</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Small stroke glyphs (18px, currentColor) ──
+function VaultGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M12 9V5M12 19v-4M15 12h4M5 12h4" />
+    </svg>
+  );
+}
+function StackGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+    </svg>
+  );
+}
+function CheckGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" /><path d="m8.5 12 2.5 2.5L16 9" />
+    </svg>
+  );
+}
+function SealGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.1 1.4" />
+      <path d="M9 12.2l2.1 2.1L15.2 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
   );
 }
 
@@ -174,9 +242,9 @@ function StatsStrip({ stats }: { stats: UserStats | null }) {
 function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
   const pnl = Number(v.netPnlUsdc);
   return (
-    <div className="rounded-xl border border-info/30 bg-info/15 p-5">
+    <div className="rounded-2xl border border-info/30 bg-info/10 p-6">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-wide text-info">Verifier</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-info">Verifier</div>
         <Link href="/verify" className="text-xs text-info/80 hover:text-info">
           Open ›
         </Link>
@@ -195,8 +263,7 @@ function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
   );
 }
 
-// Compact read-only view of the user's stake in the financing pool. Deposits
-// and withdrawals happen on the /pool page; this just surfaces the position.
+// Compact read-only view of the user's stake in the financing pool.
 function LpPositionCard({ address }: { address: string }) {
   const [stats, setStats] = useState<PoolStats | null>(null);
 
@@ -215,9 +282,9 @@ function LpPositionCard({ address }: { address: string }) {
   const hasPosition = stats?.myShares && stats.myShares !== '0';
 
   return (
-    <div className="rounded-xl border border-line bg-bg/50 p-5">
+    <div className="rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-wide text-muted">Financing pool (LP)</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Financing pool</div>
         <Link href="/pool" className="text-xs text-muted hover:text-fg">
           Manage ›
         </Link>
@@ -228,7 +295,7 @@ function LpPositionCard({ address }: { address: string }) {
       ) : hasPosition ? (
         <>
           <div className="mt-3">
-            <div className="text-2xl font-semibold text-primary">{stats.myValueUsdc} USDC</div>
+            <div className="font-mono text-2xl font-semibold tabular-nums text-primary">{stats.myValueUsdc} USDC</div>
             <div className="text-xs text-muted">your position</div>
           </div>
           <div className="mt-3">
@@ -248,33 +315,23 @@ function LpPositionCard({ address }: { address: string }) {
   );
 }
 
-// Five most-recent items from the unified feed, with anything needing the
-// user's action pulled to the top and flagged. Full history lives on /activity.
+// Five most-recent items from the unified feed, action items pulled to the top.
 function RecentActivity() {
   const { items, isLoading } = useNotifications();
   const router = useRouter();
 
-  // Drop parked pact-era items (the standalone trade flow is the live product;
-  // the pact system is unlinked) so the feed tracks current trade/pool/verifier
-  // activity instead of stale "Pact #… " wordings.
   const live = items.filter((it) => it.category !== 'pact');
-
-  // Pending actions carry a deadline-based timestamp (often in the future), so
-  // a naive "5 most recent" lets them crowd out genuinely-recent pool/trade
-  // events. Reserve up to 2 slots for the most urgent pending actions, then
-  // fill the rest with the latest actual events - so a fresh deposit/withdrawal
-  // always shows here. Full history + "Needs action" filter live on /activity.
   const needsAction = (it: NotificationItem) => it.kind === 'action' || it.kind === 'deadline';
   const actions = live.filter(needsAction).slice(0, 2);
   const events = live.filter((it) => !needsAction(it)).slice(0, 5 - actions.length);
   const recent = [...actions, ...events];
 
   return (
-    <div className="rounded-xl border border-line bg-bg/50 p-5">
+    <div className="rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-wide text-muted">Recent activity</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Recent activity</div>
         <Link href="/activity" className="text-xs text-muted hover:text-fg">
-          See all Activities ›
+          See all ›
         </Link>
       </div>
 
@@ -312,9 +369,7 @@ function ActivityRow({ item, onClick }: { item: NotificationItem; onClick: () =>
         }`}
       >
         <span
-          className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
-            needsAction ? 'bg-primary' : 'bg-muted'
-          }`}
+          className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${needsAction ? 'bg-primary' : 'bg-muted'}`}
           aria-hidden
         />
         <span className="min-w-0 flex-1">
