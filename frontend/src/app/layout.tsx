@@ -8,7 +8,7 @@ import './globals.css';
 // JetBrains Mono - all data: USDC amounts, addresses, hashes (--font-mono, tabular)
 const fraunces = Fraunces({
   subsets: ['latin'],
-  weight: ['500', '600'],
+  axes: ['opsz'], // variable wght + opsz, so display type can use the high optical size
   variable: '--font-brand',
   display: 'swap',
 });

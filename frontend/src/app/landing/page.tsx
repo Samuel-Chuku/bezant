@@ -1,384 +1,184 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { BezantMark } from '@/components/bezant-logo';
 import { useReveal } from '@/hooks/use-reveal';
+import './landing.css';
 
-// Bezant marketing landing. Self-contained (the app chrome is suppressed on
-// /landing): own nav + footer. Built on the Ink & Mint tokens, the type scale
-// (.t-* utilities), and the bz-* keyframes. Composition + scroll language are
-// adapted from the patterns harvested in Arc/SKILL.md. Mint = action,
-// champagne (text-brand) = brand/verification - never swapped.
+// Bezant marketing landing. Self-contained + token-scoped (.bezant-landing);
+// the app chrome is suppressed on /landing (top-nav / sidebar / banner guards).
+// Light default with a dark toggle. Mint = action, champagne = brand.
 
-const PILL_MINT =
-  'inline-flex h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-[15px] font-semibold text-primary-fg transition hover:bg-primary-hover';
-const PILL_GHOST =
-  'inline-flex h-12 items-center justify-center gap-2 rounded-full border border-line px-6 text-[15px] font-semibold text-fg transition hover:bg-surface';
-const PILL_SM_MINT =
-  'inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-fg transition hover:bg-primary-hover';
-const PILL_SM_GHOST =
-  'inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line px-4 text-sm font-semibold text-fg transition hover:bg-surface';
-const ICON_BTN =
-  'inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface-2 text-fg';
+const ArrowIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+);
+const PlusIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+);
+const CheckRing = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 12 2 2 4-4" /><circle cx="12" cy="12" r="9" /></svg>
+);
+const Tick = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5L20 6" /></svg>
+);
+const Sigil = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.1 1.4" /><path d="M9 12.2l2.1 2.1L15.2 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+);
 
-const CHIP = 'rounded-full border border-line bg-surface-2 px-3 py-1.5 text-xs text-muted';
+function Seal() {
+  return (
+    <svg className="seal" viewBox="0 0 120 120" aria-hidden>
+      <g className="ring" fill="none" stroke="currentColor"><circle cx="60" cy="60" r="55" strokeWidth="1" strokeDasharray="1.3 2.3" /></g>
+      <path id="bz-sealpath" d="M60,60 m-42,0 a42,42 0 1,1 84,0 a42,42 0 1,1 -84,0" fill="none" />
+      <g className="ring"><text fontFamily="var(--font-mono)" fontSize="8" letterSpacing="2.2" fill="currentColor"><textPath href="#bz-sealpath" startOffset="0">ATTESTED ON CHAIN · IN GOOD STANDING · </textPath></text></g>
+      <g transform="translate(46,42)" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5 H22 M9 5 V31 M9 18 H19 a6.5 6.5 0 0 1 0 13 H9 M21 6 L11 24" /></g>
+    </svg>
+  );
+}
+
+const CoinMintArrow = ({ label }: { label: string }) => (
+  <button className="coin mint sm" type="button"><span className="cap"><ArrowIcon /></span><span className="face">{label}</span></button>
+);
 
 export default function LandingPage() {
   useReveal();
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   return (
-    <div className="min-h-svh bg-bg text-fg">
-      <Nav />
+    <div className="bezant-landing" data-theme={theme}>
+      <header className="nav"><div className="wrap nav-row">
+        <span className="wordmark">bezant<span className="dot">.</span></span>
+        <nav className="nav-links"><a href="#">Product</a><a href="#">Protocol</a><a href="#">Pricing</a><a href="#">Docs</a></nav>
+        <div className="nav-right">
+          <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>◐</button>
+          <Link href="/" className="ghost sm">Sign in</Link>
+          <Link href="/" className="solid sm">Open the app</Link>
+        </div>
+      </div></header>
+
       <main>
-        <Hero />
-        <Marquee />
-        <Pillars />
-        <HowItWorks />
-        <Stats />
-      </main>
-      <Footer />
-    </div>
-  );
-}
-
-function Wordmark({ className = '' }: { className?: string }) {
-  return (
-    <span className={`font-display font-medium tracking-tight text-brand ${className}`}>
-      bezant<span className="text-primary">.</span>
-    </span>
-  );
-}
-
-function Nav() {
-  return (
-    <header className="sticky top-0 z-50 border-b border-line bg-bg/80 backdrop-blur">
-      <div className="mx-auto flex h-[68px] max-w-6xl items-center gap-7 px-6">
-        <Link href="/landing" aria-label="Bezant">
-          <Wordmark className="text-[22px]" />
-        </Link>
-        <nav className="ml-2 hidden gap-1 md:flex">
-          {['Product', 'Protocol', 'Pricing', 'Docs'].map((l) => (
-            <a key={l} href="#" className="rounded-lg px-3 py-2 text-sm text-muted transition hover:text-fg">
-              {l}
-            </a>
-          ))}
-        </nav>
-        <div className="ml-auto flex items-center gap-3">
-          <Link href="/" className={`${PILL_SM_GHOST} hidden sm:inline-flex`}>Sign in</Link>
-          <Link href="/" className={PILL_SM_MINT}>Open the app</Link>
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function Hero() {
-  return (
-    <section className="relative mx-auto max-w-6xl px-6 pb-10 pt-16 sm:pt-20">
-      <Seal className="absolute right-6 top-16 hidden h-32 w-32 lg:block" />
-      <div className="reveal flex flex-wrap gap-2">
-        {['Web3', 'SaaS', 'Fintech', 'Trade finance'].map((c) => (
-          <span key={c} className={CHIP}>{c}</span>
-        ))}
-      </div>
-      <h1 className="reveal t-display-1 mt-6 max-w-[16ch]">Trade, settled.</h1>
-      <p className="reveal t-body-lg mt-5 max-w-[54ch]">
-        Credit-priced USDC escrow that releases on verified delivery. Bonds struck between
-        counterparties, attested on chain, redeemed in good standing.
-      </p>
-      <div className="reveal mt-8 flex flex-wrap gap-3">
-        <Link href="/trade/create" className={PILL_MINT}>Strike a bond</Link>
-        <a href="#how" className={PILL_GHOST}>Read the protocol</a>
-      </div>
-
-      {/* full-bleed product band */}
-      <div className="reveal mt-14 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Shot eyebrow="Escrow ledger" badge="Settled" tone="settled">
-          <LedgerRow label="#4192 · Meridian Foods" value="48,000.00" />
-          <LedgerRow label="#4188 · Kestrel" value="12,500.00" />
-          <LedgerRow label="#4181 · Aster" value="92,000.00" />
-        </Shot>
-        <Shot eyebrow="Bond #4192" badge="Verified" tone="verified">
-          <div className="mt-auto t-data-lg text-fg">
-            48,000.00 <span className="text-sm text-muted">USDC</span>
-          </div>
-          <p className="t-body-sm text-muted">Released to the seller on verified delivery.</p>
-        </Shot>
-        <Shot eyebrow="Verify panel" badge="Pending" tone="pending">
-          <LedgerRow label="Manifest" value="attested" />
-          <LedgerRow label="Panel · 4 verifiers" value="3 / 4" />
-          <LedgerRow label="Window" value="06h 04m" />
-        </Shot>
-      </div>
-    </section>
-  );
-}
-
-function Shot({
-  eyebrow,
-  badge,
-  tone,
-  children,
-}: {
-  eyebrow: string;
-  badge: string;
-  tone: BadgeTone;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-[188px] flex-col gap-3 rounded-2xl border border-line bg-surface p-5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="t-eyebrow text-brand">{eyebrow}</span>
-        <Badge tone={tone}>{badge}</Badge>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function LedgerRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between border-t border-line/60 py-2.5">
-      <span className="text-sm text-muted">{label}</span>
-      <span className="t-data-sm text-fg">{value}</span>
-    </div>
-  );
-}
-
-type BadgeTone = 'verified' | 'settled' | 'pending';
-function Badge({ tone, children }: { tone: BadgeTone; children: React.ReactNode }) {
-  const cls = {
-    verified: 'border-brand text-brand',
-    settled: 'border-primary text-primary',
-    pending: 'border-warn text-warn',
-  }[tone];
-  return (
-    <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${cls}`}>
-      {children}
-    </span>
-  );
-}
-
-function Marquee() {
-  const items = [
-    'Built on Circle USDC', 'Arc network', 'CCTP cross-chain',
-    'ERC-8004 reputation', 'USYC yield', 'Gateway settlement',
-  ];
-  const track = [...items, ...items];
-  return (
-    <div className="mt-16 overflow-hidden border-y border-line py-5 [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
-      <div className="flex w-max gap-14 animate-[bz-marquee_28s_linear_infinite] hover:[animation-play-state:paused]">
-        {track.map((t, i) => (
-          <span key={i} className="t-data-sm whitespace-nowrap text-muted">{t}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const PILLARS = [
-  {
-    n: '01 · Credit passport',
-    h: 'History rewrites your next trade.',
-    b: "Every settled bond accrues to a portable on-chain passport. It sets the next trade's deposit, terms, and financing automatically. Executable policy, not a score.",
-    cta: 'See a passport',
-    media: (
-      <>
-        <Panel edge>
-          <span className="t-eyebrow text-brand">Passport · 0xab12…77c4</span>
-          <div className="mt-3.5 t-data-lg text-fg">Tier 4 · 40% deposit</div>
-          <p className="mt-2 t-body-sm text-muted">23 settled · 0 contested · in good standing</p>
-        </Panel>
-        <Panel>
-          <p className="t-body-sm text-muted">Next bond</p>
-          <LedgerRow label="Deposit required" value="40%" />
-          <LedgerRow label="Financing" value="up to 80%" />
-          <LedgerRow label="Terms" value="net-30" />
-        </Panel>
-      </>
-    ),
-  },
-  {
-    n: '02 · Verified delivery',
-    h: 'Release on proof, not promises.',
-    b: 'A decentralized panel weighs the delivery against the manifest, or an automated officer attests. Funds release only when delivery is attested on chain.',
-    cta: 'How verification works',
-    media: (
-      <>
-        <Panel>
-          <div className="flex items-center justify-between">
-            <span className="t-eyebrow text-brand">Panel vote</span>
-            <Badge tone="pending">3 / 4</Badge>
-          </div>
-          <LedgerRow label="Confirmed" value="2" />
-          <LedgerRow label="Rejected" value="1" />
-          <LedgerRow label="Awaiting" value="1" />
-        </Panel>
-        <Panel edge>
-          <span className="t-eyebrow text-brand">Attested</span>
-          <p className="mt-2.5 t-body-sm text-muted">Delivery weighed against the manifest. Stake bonded; minority slashed.</p>
-        </Panel>
-      </>
-    ),
-  },
-  {
-    n: '03 · Embedded financing',
-    h: 'Working capital while goods ship.',
-    b: 'A USDC reserve fronts the seller against the bonded deposit, repaid at settlement. LPs earn the fee plus idle USYC yield. No bank in the loop.',
-    cta: 'Open the pool',
-    media: (
-      <>
-        <Panel>
-          <div className="flex items-center justify-between">
-            <span className="t-eyebrow text-brand">Financing pool</span>
-            <Badge tone="settled">Live</Badge>
-          </div>
-          <div className="mt-3.5 t-data-lg text-fg">NAV 50.012</div>
-          <p className="mt-1.5 t-body-sm text-muted">Fee yield + USYC on idle</p>
-        </Panel>
-        <Panel>
-          <LedgerRow label="Advance" value="80%" />
-          <LedgerRow label="Repaid at settle" value="on chain" />
-        </Panel>
-      </>
-    ),
-  },
-];
-
-function Pillars() {
-  return (
-    <section className="mx-auto max-w-6xl px-6">
-      <div className="flex flex-wrap items-end justify-between gap-5 pb-9 pt-24">
-        <div>
-          <div className="reveal t-eyebrow text-brand">What holds it up</div>
-          <h2 className="reveal t-h1 mt-3 max-w-[18ch]">Three things no bank product can price together.</h2>
-        </div>
-        <a href="#how" className={`reveal ${PILL_SM_GHOST}`}>Read the protocol</a>
-      </div>
-      {PILLARS.map((p) => (
-        <div key={p.n} className="grid grid-cols-1 gap-12 border-t border-line py-16 lg:grid-cols-[0.85fr_1.15fr]">
-          <div className="reveal lg:sticky lg:top-[104px] lg:self-start">
-            <div className="t-eyebrow text-brand">{p.n}</div>
-            <h2 className="t-h2 mb-4 mt-3.5">{p.h}</h2>
-            <p className="t-body-lg">{p.b}</p>
-            <div className="mt-5 flex items-center gap-2.5">
-              <a href="#" className={PILL_SM_MINT}>{p.cta}</a>
-              <span className={ICON_BTN} aria-hidden>→</span>
-            </div>
-          </div>
-          <div className="reveal flex flex-col gap-4">{p.media}</div>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function Panel({ edge = false, children }: { edge?: boolean; children: React.ReactNode }) {
-  return (
-    <div className={`min-h-[120px] rounded-[18px] border border-line bg-surface p-5 ${edge ? 'border-l-2 border-l-brand/30' : ''}`}>
-      {children}
-    </div>
-  );
-}
-
-function HowItWorks() {
-  const steps = [
-    { e: 'Struck', t: 'A bond is struck', d: 'Buyer and seller agree terms. USDC is bonded into credit-priced escrow on Arc.', edge: false },
-    { e: 'Attested', t: 'Delivery is attested', d: 'A verifier panel confirms delivery against the manifest, on chain.', edge: false },
-    { e: 'Settled', t: 'The bond settles', d: 'Funds redeem to the seller. Reputation accrues to both parties in good standing.', edge: true },
-  ];
-  return (
-    <section id="how" className="mx-auto max-w-6xl px-6 py-24">
-      <div className="mb-9">
-        <div className="reveal t-eyebrow text-brand">How it works</div>
-        <h2 className="reveal t-h1 mt-3">Struck, attested, settled.</h2>
-      </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {steps.map((s) => (
-          <div key={s.e} className={`reveal rounded-2xl border border-line bg-surface p-6 ${s.edge ? 'border-l-2 border-l-brand/30' : ''}`}>
-            <div className="t-eyebrow text-brand">{s.e}</div>
-            <h3 className="mb-2 mt-3.5 font-sans text-xl font-semibold">{s.t}</h3>
-            <p className="t-body-sm text-muted">{s.d}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Stats() {
-  const stats = [
-    { v: '$48.2M', l: 'Settled to date' },
-    { v: '1,204', l: 'Bonds in good standing' },
-    { v: '0.4%', l: 'Contested' },
-  ];
-  return (
-    <section className="mx-auto max-w-6xl px-6 pb-24">
-      <div className="reveal flex flex-wrap items-center justify-center gap-12 text-center">
-        {stats.map((s) => (
-          <div key={s.l}>
-            <div className="t-data-lg text-fg">{s.v}</div>
-            <div className="mt-1.5 t-body-sm text-muted">{s.l}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="border-t border-line bg-bg pb-10 pt-20">
-      <div className="mx-auto max-w-6xl px-6">
-        <p className="reveal t-display-2 mb-7 max-w-[14ch]">Strike your first bond.</p>
-        <Link href="/trade/create" className={`reveal ${PILL_MINT}`}>Open the app</Link>
-        <div className="mt-16 grid grid-cols-2 gap-8 border-t border-line pt-10 md:grid-cols-[1.5fr_repeat(3,1fr)]">
+        {/* HERO */}
+        <section className="hero"><div className="wrap hero-grid">
           <div>
-            <Wordmark className="text-2xl" />
-            <p className="mt-3.5 max-w-[30ch] t-body-sm text-muted">
-              Trust infrastructure for stablecoin trade. Settlement you can weigh.
-            </p>
+            <div className="chips reveal"><span className="chip">Web3</span><span className="chip">SaaS</span><span className="chip">Fintech</span><span className="chip">Trade finance</span></div>
+            <h1 className="serif reveal">Settle on <span className="accent">proof</span>.<br />Price on <span className="accent">history</span>.</h1>
+            <p className="lead reveal">Credit-priced USDC escrow that releases on verified delivery, and rewrites your terms as your settled history grows. Bonds struck between counterparties, attested on chain, redeemed in good standing.</p>
+            <div className="hero-cta reveal">
+              <Link href="/trade/create" className="coin mint"><span className="cap"><PlusIcon /></span><span className="face">Strike a bond</span></Link>
+              <a href="#how" className="ghost">Read the protocol</a>
+            </div>
+            <div className="trust reveal"><span className="sigil"><Sigil /></span><span className="mono">Built on Circle USDC</span><span className="dotsep" /><span className="mono">Arc network</span></div>
           </div>
-          <FootCol title="Product" links={['Bonds', 'Verify', 'Pool', 'Bridge']} />
-          <FootCol title="Protocol" links={['Passport', 'Verification', 'Financing', 'Reputation']} />
-          <FootCol title="Company" links={['Docs', 'Careers', 'Blog', 'Contact']} />
-        </div>
-        <div className="mt-10 flex flex-wrap items-center gap-5 border-t border-line pt-6">
-          {['X.com', 'LinkedIn', 'GitHub', 'Farcaster', 'Arc'].map((s) => (
-            <a key={s} href="#" className="text-xs uppercase tracking-[0.14em] text-muted transition hover:text-brand">{s}</a>
-          ))}
-          <span className="ml-auto text-xs text-muted">Built on Circle USDC + Arc · testnet</span>
-        </div>
-      </div>
-    </footer>
-  );
-}
 
-function FootCol({ title, links }: { title: string; links: string[] }) {
-  return (
-    <div>
-      <h4 className="mb-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-muted">{title}</h4>
-      {links.map((l) => (
-        <a key={l} href="#" className="block py-1.5 text-sm text-fg/90 transition hover:text-primary">{l}</a>
-      ))}
+          <div className="visual reveal">
+            <Seal />
+            <div className="card v-main edge">
+              <div className="v-row"><span className="eyebrow">Bond #4192</span></div>
+              <div className="amount">48,000.00 <span className="u">USDC</span></div>
+              <div className="sub">Meridian Foods Ltd. · released on verified delivery</div>
+              <div className="v-tracker"><span className="node done" /><span className="seg done" /><span className="node done" /><span className="seg done" /><span className="node now" /><span className="seg" /><span className="node" /></div>
+              <div className="tracklabels"><span>Struck</span><span>Funded</span><span className="at">Attested</span><span>Settled</span></div>
+            </div>
+            <div className="card v-float v-badge"><span className="sigil"><Sigil size={18} /></span><div><div className="t1">Delivery attested</div><div className="t2">panel 4 / 4</div></div></div>
+            <button className="coin ink v-float v-coin" type="button"><span className="cap"><CheckRing /></span><span className="face">Settle now<span className="meta">48,000</span></span></button>
+          </div>
+        </div></section>
+
+        {/* LIFECYCLE SPINE */}
+        <section className="spine"><div className="wrap"><div className="spine-grid">
+          <div className="stage reveal"><div className="dot" /><h4>Struck</h4><div className="v">terms agreed</div><div className="l">bonded into escrow</div></div>
+          <div className="stage reveal"><div className="dot" /><h4>Funded</h4><div className="v">100% &rarr; 40%</div><div className="l">deposit, priced on history</div></div>
+          <div className="stage brand reveal"><div className="dot" /><h4>Attested</h4><div className="v">panel 4 / 4</div><div className="l">delivery verified on chain</div></div>
+          <div className="stage reveal"><div className="dot" /><h4>Settled</h4><div className="v">repaid · on chain</div><div className="l">redeemed in good standing</div></div>
+        </div></div></section>
+
+        {/* MARQUEE */}
+        <div className="marquee"><div className="track">
+          {[0, 1].flatMap((k) =>
+            ['Built on Circle USDC', 'Arc network', 'CCTP cross-chain', 'ERC-8004 reputation', 'USYC yield', 'Gateway settlement'].map((t) => (
+              <span key={`${k}-${t}`}>{t} ·</span>
+            )),
+          )}
+        </div></div>
+
+        {/* PILLARS */}
+        <section id="how" className="wrap"><div className="case">
+          <div className="case-left reveal">
+            <div className="eyebrow">Credit passport</div>
+            <h3>Your history prices the next trade.</h3>
+            <p className="lead">Every bond you settle is recorded to a portable on-chain passport. When you fund the next one, Bezant reads it and sets your deposit, financing limit and terms automatically.</p>
+            <div className="case-point"><span className="tick"><Tick /></span><span>Post <b>40%</b> after 30 settled bonds, not a bank&apos;s flat 100% every time.</span></div>
+            <div className="case-point"><span className="tick"><Tick /></span><span>The passport travels with you across counterparties and apps.</span></div>
+            <div className="case-cta"><CoinMintArrow label="See a passport" /></div>
+          </div>
+          <div className="case-media reveal">
+            <div className="panel edge"><div className="v-row"><span className="eyebrow">Passport · 0xab12…77c4</span><span className="sigil"><Sigil /></span></div><div className="big">Tier 4 · 40% deposit</div><div className="sub">23 settled · 0 contested · in good standing</div></div>
+            <div className="panel"><div className="lr top"><span className="k">Deposit required</span><span className="val">40%</span></div><div className="lr"><span className="k">Financing</span><span className="val">up to 80%</span></div><div className="lr"><span className="k">Terms</span><span className="val">net-30</span></div></div>
+          </div>
+        </div>
+
+        <div className="case flip">
+          <div className="case-left reveal">
+            <div className="eyebrow">Verified delivery</div>
+            <h3>Release on proof, not promises.</h3>
+            <p className="lead">Funds stay bonded until delivery is proven. The seller uploads the manifest; a four-person panel, or an automated officer, checks it and signs on chain. Money moves only when they agree.</p>
+            <div className="case-point"><span className="tick"><Tick /></span><span>Disagree with the outcome? <b>Contest it</b> before the window closes.</span></div>
+            <div className="case-point"><span className="tick"><Tick /></span><span>Honest verifiers split the bonded stake; no-shows and the wrong side are slashed.</span></div>
+            <div className="case-cta"><CoinMintArrow label="How verification works" /></div>
+          </div>
+          <div className="case-media reveal">
+            <div className="panel"><div className="v-row"><span className="eyebrow">Panel vote</span><span className="mono voted">3 / 4 voted</span></div><div className="lr"><span className="k">Confirmed</span><span className="val">2</span></div><div className="lr"><span className="k">Rejected</span><span className="val">1</span></div><div className="lr"><span className="k">Awaiting</span><span className="val">1</span></div></div>
+            <div className="panel edge"><span className="eyebrow">Attested</span><p className="noteline">Once the panel agrees, the attestation is written on chain and the bond can settle. No party can move funds before it lands.</p></div>
+          </div>
+        </div></section>
+
+        {/* CENTERPIECE */}
+        <section className="center"><div className="wrap">
+          <div className="center-top">
+            <div><div className="eyebrow reveal">Priced on credit</div><h2 className="reveal">Collateral you earn back.</h2></div>
+            <p className="lead reveal">Banks ask for the same deposit every time. Bezant lowers yours each time you settle, until you post less than half.</p>
+          </div>
+          <div className="curve">
+            <div className="bar reveal" style={{ height: '100%' }}><span className="pct">100%</span><span className="lab">0-2</span></div>
+            <div className="bar reveal" style={{ height: '80%' }}><span className="pct">80%</span><span className="lab">6-10</span></div>
+            <div className="bar reveal" style={{ height: '60%' }}><span className="pct">60%</span><span className="lab">17-22</span></div>
+            <div className="bar reveal" style={{ height: '40%' }}><span className="pct">40%</span><span className="lab">30+</span></div>
+          </div>
+          <div className="curve-foot reveal"><span>Deposit required, by settled-trade count</span><span className="mono">floor 40%</span></div>
+        </div></section>
+
+        {/* PILLAR 3 */}
+        <section className="wrap"><div className="case">
+          <div className="case-left reveal">
+            <div className="eyebrow">Embedded financing</div>
+            <h3>Working capital while goods ship.</h3>
+            <p className="lead">Draw up to 80% of the bonded deposit the day you fund, then repay it automatically when the bond settles. The financing pool earns the fee; you skip the invoice factor.</p>
+            <div className="case-point"><span className="tick"><Tick /></span><span>Repaid on settlement, on chain. No collections, no chasing.</span></div>
+            <div className="case-point"><span className="tick"><Tick /></span><span>Anyone can fund the pool and earn the fee plus idle <b>USYC</b> yield.</span></div>
+            <div className="case-cta"><CoinMintArrow label="Open the pool" /></div>
+          </div>
+          <div className="case-media reveal">
+            <div className="panel edge"><div className="eyebrow">Financing pool</div><div className="big">NAV 50.012</div><div className="sub">Fee yield + USYC on idle reserve</div></div>
+            <div className="panel"><div className="lr top"><span className="k">Advance</span><span className="val">up to 80%</span></div><div className="lr"><span className="k">Repaid at settle</span><span className="val">on chain</span></div></div>
+          </div>
+        </div></section>
+
+        {/* MANIFESTO */}
+        <section className="wrap manifesto"><p className="reveal">Most trade still settles on trust it cannot verify. Bezant settles on <span className="accent">proof you can weigh</span>.</p></section>
+      </main>
+
+      {/* FOOTER */}
+      <footer><div className="wrap">
+        <p className="foot-cta reveal">Strike your first bond.</p>
+        <Link href="/trade/create" className="coin mint reveal"><span className="cap"><ArrowIcon /></span><span className="face">Open the app</span></Link>
+        <div className="foot-grid">
+          <div><span className="wordmark">bezant<span className="dot">.</span></span><p className="foot-desc">Trust infrastructure for stablecoin trade. Settlement you can weigh.</p></div>
+          <div className="foot-col"><h5>Product</h5><a href="#">Bonds</a><a href="#">Verify</a><a href="#">Pool</a><a href="#">Bridge</a></div>
+          <div className="foot-col"><h5>Protocol</h5><a href="#">Passport</a><a href="#">Verification</a><a href="#">Financing</a><a href="#">Reputation</a></div>
+          <div className="foot-col"><h5>Company</h5><a href="#">Docs</a><a href="#">Careers</a><a href="#">Blog</a><a href="#">Contact</a></div>
+        </div>
+        <div className="socials"><a href="#">X.com</a><a href="#">LinkedIn</a><a href="#">GitHub</a><a href="#">Farcaster</a><a href="#">Arc</a><span className="meta mono">Built on Circle USDC + Arc · testnet</span></div>
+        <div className="foot-brand reveal" aria-hidden>bezant<span className="dot">.</span></div>
+      </div></footer>
     </div>
-  );
-}
-
-// Rotating champagne assay seal wrapping the B+Z mark. Champagne = brand, so it
-// never carries an action. Rotation pauses under prefers-reduced-motion (global).
-function Seal({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 120 120" className={className} aria-hidden="true">
-      <defs>
-        <path id="sealpath" d="M60,60 m-42,0 a42,42 0 1,1 84,0 a42,42 0 1,1 -84,0" fill="none" />
-      </defs>
-      <g className="origin-center animate-[bz-rotate_24s_linear_infinite] [transform-box:fill-box]">
-        <circle cx="60" cy="60" r="55" fill="none" stroke="rgb(var(--brand))" strokeWidth="1" strokeDasharray="1.4 2.4" />
-        <text className="font-mono" fontSize="8.5" letterSpacing="2.4" fill="rgb(var(--brand))">
-          <textPath href="#sealpath" startOffset="0">$48.2M SETTLED · IN GOOD STANDING · </textPath>
-        </text>
-      </g>
-      <BezantMark size={34} decorative className="text-brand [transform:translate(43px,43px)]" />
-    </svg>
   );
 }
