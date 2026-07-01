@@ -47,7 +47,7 @@ export default function LandingPage() {
     <div className="bezant-landing" data-theme={theme}>
       <header className="nav"><div className="wrap nav-row">
         <span className="wordmark">bezant<span className="dot">.</span></span>
-        <nav className="nav-links"><a href="#">Product</a><a href="#">Protocol</a><a href="#">Pricing</a><a href="#">Docs</a></nav>
+        <nav className="nav-links"><a href="#product">Product</a><a href="#protocol">Protocol</a><a href="https://github.com/Samuel-Chuku/bezant" target="_blank" rel="noopener">Docs</a></nav>
         <div className="nav-right">
           <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>◐</button>
           <Link href="/" className="ghost sm">Sign in</Link>
@@ -64,15 +64,20 @@ export default function LandingPage() {
             <p className="lead reveal">Credit-priced USDC escrow that releases on verified delivery, and rewrites your terms as your settled history grows. Bonds struck between counterparties, attested on chain, redeemed in good standing.</p>
             <div className="hero-cta reveal">
               <Link href="/trade/create" className="coin mint"><span className="cap"><PlusIcon /></span><span className="face">Strike a bond</span></Link>
-              <a href="#how" className="ghost">Read the protocol</a>
+              <a href="#protocol" className="ghost">Read the protocol</a>
             </div>
             <div className="trust reveal"><span className="sigil"><Sigil /></span><span className="mono">Built on Circle USDC</span><span className="dotsep" /><span className="mono">Arc network</span></div>
           </div>
 
           <div className="visual reveal">
+            <span className="v-glow" aria-hidden />
             <Seal />
+            <div className="card v-ghost" aria-hidden>
+              <div className="v-row"><span className="eyebrow">Bond #4191</span><span className="mono settled">Settled</span></div>
+              <div className="amount">31,500.00 <span className="u">USDC</span></div>
+            </div>
             <div className="card v-main edge">
-              <div className="v-row"><span className="eyebrow">Bond #4192</span></div>
+              <div className="v-row"><span className="eyebrow">Bond #4192</span><span className="live"><i />LIVE</span></div>
               <div className="amount">48,000.00 <span className="u">USDC</span></div>
               <div className="sub">Meridian Foods Ltd. · released on verified delivery</div>
               <div className="v-tracker"><span className="node done" /><span className="seg done" /><span className="node done" /><span className="seg done" /><span className="node now" /><span className="seg" /><span className="node" /></div>
@@ -84,7 +89,7 @@ export default function LandingPage() {
         </div></section>
 
         {/* LIFECYCLE SPINE */}
-        <section className="spine"><div className="wrap"><div className="spine-grid">
+        <section id="protocol" className="spine"><div className="wrap"><div className="spine-grid">
           <div className="stage reveal"><div className="dot" /><h4>Struck</h4><div className="v">terms agreed</div><div className="l">bonded into escrow</div></div>
           <div className="stage reveal"><div className="dot" /><h4>Funded</h4><div className="v">100% &rarr; 40%</div><div className="l">deposit, priced on history</div></div>
           <div className="stage brand reveal"><div className="dot" /><h4>Attested</h4><div className="v">panel 4 / 4</div><div className="l">delivery verified on chain</div></div>
@@ -101,7 +106,7 @@ export default function LandingPage() {
         </div></div>
 
         {/* PILLARS */}
-        <section id="how" className="wrap"><div className="case">
+        <section id="product" className="wrap"><div className="case">
           <div className="case-left reveal">
             <div className="eyebrow">Credit passport</div>
             <h3>Your history prices the next trade.</h3>

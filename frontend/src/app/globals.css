@@ -60,6 +60,10 @@
   --dur-slow: 240ms;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   @apply bg-bg text-fg antialiased min-h-screen;
   font-family: var(--font-sans);

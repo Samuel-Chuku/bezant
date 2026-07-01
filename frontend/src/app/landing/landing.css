@@ -12,7 +12,7 @@
   --coin-cap-ink:#2a3138; --coin-cap-on:#fff; --coin-meta-bg:#eef0f2; --coin-meta-fg:#5a6571;
   --shadow-md:0 6px 24px rgba(20,30,40,.08); --shadow-lg:0 24px 60px rgba(20,30,40,.13);
   --block-bg:#0b0e10; --block-fg:#eef1f3; --block-muted:#9aa3aa; --block-bar:#2fbf87; --block-line:rgba(255,255,255,.10);
-  --paper-top:#faf8f4; --paper-bot:#eef1f4; --bloom-a:rgba(138,111,74,.11); --bloom-b:rgba(26,138,94,.06);
+  --paper-top:#faf8f4; --paper-bot:#eef1f4; --bloom-a:rgba(138,111,74,.11); --bloom-b:rgba(26,138,94,.06); --grid-line:rgba(10,12,14,.05);
   --nav-bg:#f7f8f9;
   --lease:cubic-bezier(.2,0,0,1);
 
@@ -34,7 +34,7 @@
   --coin-cap-ink:#515d67; --coin-cap-on:#f2f5f7; --coin-meta-bg:#171d22; --coin-meta-fg:#aeb6bd;
   --shadow-md:0 4px 16px rgba(0,0,0,.35); --shadow-lg:0 16px 48px rgba(0,0,0,.45);
   --block-bg:#0f1417; --block-fg:#e6eaed; --block-muted:#8a949b; --block-line:rgba(255,255,255,.08);
-  --paper-top:#0c1013; --paper-bot:#090b0d; --bloom-a:rgba(227,205,151,.05); --bloom-b:rgba(47,191,135,.05);
+  --paper-top:#0c1013; --paper-bot:#090b0d; --bloom-a:rgba(227,205,151,.05); --bloom-b:rgba(47,191,135,.05); --grid-line:rgba(255,255,255,.04);
   --nav-bg:#0a0c0e;
 }
 
@@ -83,6 +83,16 @@
 
 /* hero */
 .bezant-landing .hero{position:relative;padding:60px 0 28px}
+.bezant-landing section[id]{scroll-margin-top:90px}
+.bezant-landing .hero::before{content:"";position:absolute;inset:0;z-index:0;background:radial-gradient(680px 380px at 88% -10%,var(--champ-soft),transparent 62%);pointer-events:none}
+.bezant-landing .hero::after{content:"";position:absolute;inset:0;z-index:0;background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);background-size:46px 46px;-webkit-mask-image:radial-gradient(720px 520px at 80% 38%,#000,transparent 72%);mask-image:radial-gradient(720px 520px at 80% 38%,#000,transparent 72%);pointer-events:none}
+.bezant-landing .hero-grid{z-index:1}
+.bezant-landing .v-glow{position:absolute;top:-46px;right:-24px;width:min(540px,92%);height:460px;background:radial-gradient(closest-side,color-mix(in srgb,var(--champ) 16%,transparent),transparent);z-index:0;pointer-events:none}
+.bezant-landing .v-ghost{position:absolute;top:0;right:104px;width:min(300px,70%);z-index:1;opacity:.5;transform:scale(.93);padding:20px}
+.bezant-landing .v-ghost .amount{font-size:22px;margin-top:12px}
+.bezant-landing .v-ghost .settled{color:var(--mint);font-weight:600;font-size:12px}
+.bezant-landing .live{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono,monospace);font-size:11px;letter-spacing:.12em;color:var(--muted)}
+.bezant-landing .live i{width:6px;height:6px;border-radius:999px;background:var(--mint);animation:bz-pulse 1.9s var(--lease) infinite;display:inline-block}
 .bezant-landing .hero-grid{position:relative;display:grid;grid-template-columns:1.06fr .94fr;gap:48px;align-items:center}
 @media(max-width:940px){.bezant-landing .hero-grid{grid-template-columns:minmax(0,1fr);gap:36px}}
 .bezant-landing .hero h1{font-size:clamp(48px,7vw,104px);margin-top:22px}
