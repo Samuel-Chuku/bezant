@@ -126,17 +126,46 @@
 .bezant-landing .v-float .t2{font-family:var(--font-mono,monospace);font-size:11px;color:var(--muted)}
 @media(max-width:940px){.bezant-landing .v-main{margin:34px auto 0}.bezant-landing .v-badge{left:0}.bezant-landing .v-coin{right:0}}
 
-/* lifecycle spine */
-.bezant-landing .spine{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--s1)}
-.bezant-landing .spine-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
-@media(max-width:720px){.bezant-landing .spine-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.bezant-landing .stage{padding:30px 26px;border-left:1px solid var(--border)}
-.bezant-landing .stage:first-child{border-left:none}
-.bezant-landing .stage .dot{width:11px;height:11px;border-radius:999px;background:var(--mint);margin-bottom:16px}
-.bezant-landing .stage.brand .dot{background:var(--champ)}
-.bezant-landing .stage h4{font-family:var(--font-brand,serif);font-weight:600;font-size:23px;margin:0;letter-spacing:-.01em}
-.bezant-landing .stage .v{font-family:var(--font-mono,monospace);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:11px;color:var(--text)}
-.bezant-landing .stage .l{font-size:13px;color:var(--muted);margin-top:4px}
+/* split-flap settlement board (Railway departures-board motif; honest content) */
+.bezant-landing .board{background:var(--block-bg);border-top:1px solid var(--block-line);border-bottom:1px solid var(--block-line)}
+.bezant-landing .board .wrap{padding:76px 40px}
+.bezant-landing .board .eyebrow{color:var(--champ)}
+.bezant-landing .board h2{font-family:var(--font-brand,serif);font-weight:600;font-size:clamp(30px,4vw,52px);letter-spacing:-.018em;line-height:1.04;margin:12px 0 0;color:var(--block-fg)}
+.bezant-landing .board .lead{color:var(--block-muted);max-width:52ch;margin-top:14px}
+.bezant-landing .board-rows{margin-top:44px;display:flex;flex-direction:column;gap:12px}
+.bezant-landing .board-row{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:20px}
+@media(max-width:640px){.bezant-landing .board-row{grid-template-columns:96px 1fr;gap:12px}}
+.bezant-landing .board-label{font-family:var(--font-mono,monospace);font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--block-muted)}
+.bezant-landing .flaps{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.bezant-landing .flap{width:28px;height:38px;border-radius:5px;background:#15191d;color:#eef1f3;font-family:var(--font-mono,monospace);font-weight:700;font-size:19px;display:flex;align-items:center;justify-content:center;position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);transform-origin:center top}
+.bezant-landing .flap::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.6)}
+.bezant-landing .flap.gap{width:12px;background:transparent;box-shadow:none}
+.bezant-landing .flap.gap::after{display:none}
+.bezant-landing .board-row.on .flap:not(.gap){color:var(--block-bar)}
+.bezant-landing .board .flap:not(.gap){transform:rotateX(-90deg);opacity:0}
+.bezant-landing .board.in-view .flap:not(.gap){animation:bz-flip .55s cubic-bezier(.2,0,0,1) both}
+.bezant-landing .board.in-view .board-row:nth-child(1) .flap{animation-delay:.06s}
+.bezant-landing .board.in-view .board-row:nth-child(2) .flap{animation-delay:.16s}
+.bezant-landing .board.in-view .board-row:nth-child(3) .flap{animation-delay:.26s}
+.bezant-landing .board.in-view .board-row:nth-child(4) .flap{animation-delay:.36s}
+@keyframes bz-flip{from{transform:rotateX(-90deg);opacity:0}to{transform:rotateX(0);opacity:1}}
+
+/* per-section ambient washes on pillars */
+.bezant-landing .case{position:relative}
+.bezant-landing .case::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0}
+.bezant-landing .case.w-champ::before{background:radial-gradient(760px 440px at 82% -6%,var(--champ-soft),transparent 62%)}
+.bezant-landing .case.w-mint::before{background:radial-gradient(760px 440px at 18% -6%,var(--mint-soft),transparent 62%)}
+.bezant-landing .case-left,.bezant-landing .case-media{position:relative;z-index:1}
+
+/* glow orb behind the closing CTA */
+.bezant-landing .orb{position:absolute;left:8%;top:-40px;width:560px;height:560px;max-width:80%;border-radius:50%;pointer-events:none;z-index:0;background:radial-gradient(closest-side,color-mix(in srgb,var(--champ) 22%,transparent),color-mix(in srgb,var(--mint) 12%,transparent) 55%,transparent 72%);filter:blur(26px);animation:bz-orb 7s ease-in-out infinite}
+.bezant-landing footer > .wrap{position:relative;z-index:1}
+@keyframes bz-orb{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.08);opacity:.95}}
+
+/* hand-drawn keyword underline */
+.bezant-landing .uline{position:relative;display:inline-block;white-space:nowrap}
+.bezant-landing .uline svg{position:absolute;left:0;bottom:-.14em;width:100%;height:.22em;color:var(--champ);overflow:visible}
+@media(prefers-reduced-motion:reduce){.bezant-landing .board .flap:not(.gap){opacity:1;transform:none;animation:none}.bezant-landing .orb{animation:none}}
 
 /* marquee */
 .bezant-landing .marquee{padding:20px 0;overflow:hidden;border-bottom:1px solid var(--border);-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}

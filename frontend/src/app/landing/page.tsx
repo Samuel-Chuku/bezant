@@ -40,6 +40,18 @@ const CoinMintArrow = ({ label }: { label: string }) => (
   <button className="coin mint sm" type="button"><span className="cap"><ArrowIcon /></span><span className="face">{label}</span></button>
 );
 
+// A split-flap board row: label + value rendered as flap character cells.
+function BoardRow({ label, value, on }: { label: string; value: string; on?: boolean }) {
+  return (
+    <div className={`board-row${on ? ' on' : ''}`}>
+      <span className="board-label">{label}</span>
+      <span className="flaps">
+        {value.split('').map((ch, i) => (ch === ' ' ? <span key={i} className="flap gap" /> : <span key={i} className="flap">{ch}</span>))}
+      </span>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   useReveal();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -60,7 +72,7 @@ export default function LandingPage() {
         <section className="hero"><div className="wrap hero-grid">
           <div>
             <div className="chips reveal"><span className="chip">Web3</span><span className="chip">SaaS</span><span className="chip">Fintech</span><span className="chip">Trade finance</span></div>
-            <h1 className="serif reveal">Settle on <span className="accent">proof</span>.<br />Price on <span className="accent">history</span>.</h1>
+            <h1 className="serif reveal">Settle on <span className="accent">proof</span>.<br />Price on <span className="accent uline">history<svg viewBox="0 0 100 10" preserveAspectRatio="none" fill="none" aria-hidden><path d="M1 7 Q 26 1 50 6 T 99 5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg></span>.</h1>
             <p className="lead reveal">Credit-priced USDC escrow that releases on verified delivery, and rewrites your terms as your settled history grows. Bonds struck between counterparties, attested on chain, redeemed in good standing.</p>
             <div className="hero-cta reveal">
               <Link href="/trade/create" className="coin mint"><span className="cap"><PlusIcon /></span><span className="face">Strike a bond</span></Link>
@@ -89,12 +101,17 @@ export default function LandingPage() {
         </div></section>
 
         {/* LIFECYCLE SPINE */}
-        <section id="protocol" className="spine"><div className="wrap"><div className="spine-grid">
-          <div className="stage reveal"><div className="dot" /><h4>Struck</h4><div className="v">terms agreed</div><div className="l">bonded into escrow</div></div>
-          <div className="stage reveal"><div className="dot" /><h4>Funded</h4><div className="v">100% &rarr; 40%</div><div className="l">deposit, priced on history</div></div>
-          <div className="stage brand reveal"><div className="dot" /><h4>Attested</h4><div className="v">panel 4 / 4</div><div className="l">delivery verified on chain</div></div>
-          <div className="stage reveal"><div className="dot" /><h4>Settled</h4><div className="v">repaid · on chain</div><div className="l">redeemed in good standing</div></div>
-        </div></div></section>
+        <section id="protocol" className="board reveal"><div className="wrap">
+          <div className="eyebrow">The lifecycle</div>
+          <h2>Every bond, weighed and settled.</h2>
+          <p className="lead">Struck between counterparties, funded at a passport-priced deposit, attested by panel, repaid on chain. The whole journey, in the open.</p>
+          <div className="board-rows">
+            <BoardRow label="Struck" value="TERMS SET" />
+            <BoardRow label="Funded" value="100→40%" />
+            <BoardRow label="Attested" value="PANEL 4 / 4" />
+            <BoardRow label="Settled" value="ON CHAIN" on />
+          </div>
+        </div></section>
 
         {/* MARQUEE */}
         <div className="marquee"><div className="track">
@@ -106,7 +123,7 @@ export default function LandingPage() {
         </div></div>
 
         {/* PILLARS */}
-        <section id="product" className="wrap"><div className="case">
+        <section id="product" className="wrap"><div className="case w-champ">
           <div className="case-left reveal">
             <div className="eyebrow">Credit passport</div>
             <h3>Your history prices the next trade.</h3>
@@ -121,7 +138,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <div className="case flip">
+        <div className="case flip w-mint">
           <div className="case-left reveal">
             <div className="eyebrow">Verified delivery</div>
             <h3>Release on proof, not promises.</h3>
@@ -152,7 +169,7 @@ export default function LandingPage() {
         </div></section>
 
         {/* PILLAR 3 */}
-        <section className="wrap"><div className="case">
+        <section className="wrap"><div className="case w-champ">
           <div className="case-left reveal">
             <div className="eyebrow">Embedded financing</div>
             <h3>Working capital while goods ship.</h3>
@@ -172,7 +189,7 @@ export default function LandingPage() {
       </main>
 
       {/* FOOTER */}
-      <footer><div className="wrap">
+      <footer><span className="orb" aria-hidden /><div className="wrap">
         <p className="foot-cta reveal">Strike your first bond.</p>
         <Link href="/trade/create" className="coin mint reveal"><span className="cap"><ArrowIcon /></span><span className="face">Open the app</span></Link>
         <div className="foot-grid">
