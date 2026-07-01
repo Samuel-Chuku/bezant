@@ -37,6 +37,7 @@
   --coin-label-mint: #4cd6a0; --coin-label-danger: #f4766e; --coin-label-neutral: #f2f5f7;
   --coin-cap-on: #f2f5f7; --coin-cap-ink: #515d67;
   --coin-meta-bg: #171d22; --coin-meta-fg: #aeb6bd;
+  --coin-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); --coin-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.42);
 
   /* ── Type families (loaded via next/font in layout.tsx) ──
      Fraunces = display/brand, Bricolage = body/UI, JetBrains Mono = data. */
@@ -65,6 +66,38 @@
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --dur-slow: 240ms;
+}
+
+/* ── Light mode (opt-in via data-theme="light" on <html>). Dark is the default
+   brand experience; light is parity. Same Ink & Mint families, tuned for AA. ── */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: 247 248 249; /* #f7f8f9 */
+  --surface: 255 255 255; /* #ffffff */
+  --surface-2: 240 242 244; /* #f0f2f4 */
+  --line: 216 221 226; /* #d8dde2 */
+  --line-strong: 196 204 211; /* #c4ccd3 */
+
+  --fg: 10 12 14; /* #0a0c0e */
+  --muted: 90 101 113; /* #5a6571 */
+
+  --primary: 26 138 94; /* #1a8a5e — darker mint for AA on light */
+  --primary-hover: 21 112 73; /* #157049 */
+  --primary-fg: 255 255 255; /* #ffffff */
+
+  --warn: 181 128 32; /* #b58020 */
+  --danger: 196 62 53; /* #c43e35 */
+  --info: 44 124 196; /* #2c7cc4 */
+
+  --brand: 138 111 74; /* #8a6f4a — darker champagne for AA on light */
+  --champ-edge: rgba(138, 111, 74, 0.4);
+
+  --coin-face: #ffffff; --coin-edge: #d8dde2;
+  --coin-label-mint: #1a8a5e; --coin-label-danger: #c0392c; --coin-label-neutral: #161a1d;
+  --coin-cap-on: #ffffff; --coin-cap-ink: #2a3138;
+  --coin-meta-bg: #eef0f2; --coin-meta-fg: #5a6571;
+  --coin-shadow: 0 6px 20px rgba(20, 30, 40, 0.12); --coin-shadow-hover: 0 12px 30px rgba(20, 30, 40, 0.18);
 }
 
 html {
@@ -97,8 +130,8 @@ body {
 /* ── Struck-coin button — the signature action (mint = action). ─────────────
    Colored cap + white icon, split by a diagonal cut (echoing the B/Z), joined
    to a coin face whose bold label is the action color. Champagne never here. */
-.bz-coin { display: inline-flex; align-items: stretch; height: 48px; border-radius: 999px; overflow: hidden; background: var(--coin-face); border: 1px solid var(--coin-edge); box-shadow: 0 4px 16px rgba(0,0,0,0.35); cursor: pointer; font-family: var(--font-sans); transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard); }
-.bz-coin:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.42); }
+.bz-coin { display: inline-flex; align-items: stretch; height: 48px; border-radius: 999px; overflow: hidden; background: var(--coin-face); border: 1px solid var(--coin-edge); box-shadow: var(--coin-shadow); cursor: pointer; font-family: var(--font-sans); transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard); }
+.bz-coin:hover { transform: translateY(-1px); box-shadow: var(--coin-shadow-hover); }
 .bz-coin:active { transform: translateY(0.5px) scale(0.99); }
 .bz-coin:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .bz-coin .cap { display: flex; align-items: center; justify-content: center; padding: 0 26px 0 18px; margin-right: -16px; color: var(--coin-cap-on); clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%); }

@@ -11,6 +11,7 @@ import { shortAddress } from '@/lib/format';
 import { BezantWordmark } from './bezant-logo';
 import { MobileDrawer, type NavItem } from './mobile-drawer';
 import { NotificationsBell } from './notifications-bell';
+import { ThemeToggle } from './theme-toggle';
 import { WalletPill } from './wallet-pill';
 
 // "Trades" is a dropdown housing both sub-actions, so there's no separate
@@ -160,6 +161,7 @@ export function TopNav() {
                 Switch to Arc →
               </button>
             )}
+            <ThemeToggle />
             <NotificationsBell />
             <WalletPill />
           </div>

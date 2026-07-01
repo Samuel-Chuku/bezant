@@ -44,6 +44,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${fraunces.variable} ${bricolage.variable} ${jetbrainsMono.variable}`}>
       <body>
+        {/* Apply the saved theme before paint (dark is default, so only light needs setting). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('bezant-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}`,
+          }}
+        />
         <Providers>
           <ToastProvider>
             <TopNav />
