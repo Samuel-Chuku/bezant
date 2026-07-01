@@ -139,7 +139,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
 
   if (!v) return null;
 
-  const card = 'space-y-3 rounded-lg border border-violet-900/40 bg-violet-950/15 p-4';
+  const card = 'space-y-3 rounded-lg border border-info/40 bg-info/15 p-4';
   const onPanel = !!me && v.panel.some((p) => p.toLowerCase() === me);
   const expired = v.deadline > 0 && Date.now() / 1000 > v.deadline;
 
@@ -148,11 +148,11 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
     if (!v.prepaid) {
       return (
         <div className={card}>
-          <p className="text-sm text-violet-100">Decentralized verification (staked panel)</p>
+          <p className="text-sm text-info">Decentralized verification (staked panel)</p>
           {isBuyer ? (
             <>
               <p className="text-xs text-muted">Pay the verification fee to start - a staked panel will review delivery instead of the Trade Officer.</p>
-              <button onClick={payFee} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500">Pay verification fee</button>
+              <button onClick={payFee} className="rounded-md bg-info px-3 py-1.5 text-sm font-medium text-white hover:bg-info">Pay verification fee</button>
             </>
           ) : (
             <p className="text-xs text-muted">Waiting for the buyer to pay the verification fee.</p>
@@ -162,12 +162,12 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
     }
     return (
       <div className={card}>
-        <p className="text-sm text-violet-100">Decentralized verification (staked panel)</p>
+        <p className="text-sm text-info">Decentralized verification (staked panel)</p>
         {isSeller ? (
           <div className="space-y-2">
             <p className="text-xs text-muted">Submit your delivery document - a staked panel will review it and vote.</p>
             <textarea value={doc} onChange={(e) => setDoc(e.target.value)} rows={3} placeholder="Paste your bill of lading / tracking / customs document…" className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm" />
-            <button onClick={submitToPanel} disabled={busy} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Submitting…' : 'Submit to the panel'}</button>
+            <button onClick={submitToPanel} disabled={busy} className="rounded-md bg-info px-3 py-1.5 text-sm font-medium text-white hover:bg-info disabled:opacity-50">{busy ? 'Submitting…' : 'Submit to the panel'}</button>
           </div>
         ) : (
           <p className="text-xs text-muted">Verification fee paid. Waiting for the seller to submit delivery.</p>
@@ -180,7 +180,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
   return (
     <div className={card}>
       <div className="flex items-center justify-between">
-        <p className="text-sm text-violet-100">Staked panel - verifying delivery</p>
+        <p className="text-sm text-info">Staked panel - verifying delivery</p>
         {!expired && !v.resolved && <CountdownChip unix={v.deadline} label="Voting closes" />}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -194,7 +194,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
           <span className="text-muted">verdicts hidden until voting closes</span>
         )}
         <span>· {v.cast}/{v.panel.length} voted</span>
-        <button onClick={() => setShowPanel(true)} className="ml-auto rounded-md border border-violet-800/60 px-2 py-0.5 text-[11px] text-violet-200 hover:bg-violet-900/30">
+        <button onClick={() => setShowPanel(true)} className="ml-auto rounded-md border border-info/60 px-2 py-0.5 text-[11px] text-info hover:bg-info/30">
           View panel &amp; decisions
         </button>
       </div>
@@ -277,7 +277,7 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div role="dialog" aria-label="Panel decision" className="relative w-full max-w-md rounded-2xl border border-violet-900/50 bg-bg p-5 shadow-2xl">
+      <div role="dialog" aria-label="Panel decision" className="relative w-full max-w-md rounded-2xl border border-info/50 bg-bg p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold tracking-tight text-fg">Panel decision</h3>
@@ -303,7 +303,7 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
               <div key={d.address} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg/60 px-3 py-2 text-sm">
                 <span className="truncate text-fg">
                   {d.handle ? `@${d.handle}` : shortAddress(d.address)}
-                  {mine && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-violet-400">you</span>}
+                  {mine && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-info">you</span>}
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-xs font-medium">
                   {v.resolved && (
@@ -327,7 +327,7 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
         <div className="mt-4 rounded-lg border border-line bg-bg/40 p-3 text-xs leading-relaxed text-muted">
           <span className="font-medium text-muted">How this panel was chosen:</span> verifiers were drawn at
           random, weighted by each one&apos;s free stake × reputation, seeded by the block&apos;s randomness at
-          assignment. The trade&apos;s buyer and seller are always excluded, and a majority decides the outcome.
+          assignment. The bond&apos;s buyer and seller are always excluded, and a majority decides the outcome.
         </div>
 
         <button onClick={onClose} className="mt-4 w-full rounded-lg border border-line px-4 py-2 text-sm text-fg hover:border-line-strong">Close</button>

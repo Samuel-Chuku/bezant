@@ -14,7 +14,7 @@ export default function BridgePage() {
   return (
     <main className="mx-auto max-w-[1400px] px-6 py-12">
       <header className="mb-10">
-        <h1 className="text-4xl font-semibold tracking-tight">Bridge to Arc</h1>
+        <h1 className="font-display text-4xl font-semibold tracking-tight">Bridge to Arc</h1>
         <p className="mt-3 text-base text-muted">
           Move USDC across CCTP V2 testnets. Arc is the default destination.
           Flip the chips to bridge any direction.

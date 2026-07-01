@@ -137,7 +137,7 @@ function NotificationRow({
     deadline: 'bg-warn',
     event: 'bg-muted',
     status: 'bg-info',
-    pool: 'bg-violet-400',
+    pool: 'bg-info',
   };
   const kindLabels: Record<NotificationItem['kind'], string> = {
     action: 'Action',

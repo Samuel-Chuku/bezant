@@ -105,7 +105,7 @@ export default function VerifyPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Verify</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight">Verify</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted">
         Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
       </p>
@@ -144,7 +144,7 @@ export default function VerifyPage() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-fg">Trade #{a.tradeId}</span>
+                        <span className="font-medium text-fg">Bond #{a.tradeId}</span>
                         <StatusPill status={a.status} />
                       </div>
                     </div>
@@ -178,7 +178,7 @@ export default function VerifyPage() {
             <div className="text-[11px] uppercase tracking-wide text-muted">Panel economics</div>
             <dl className="mt-3 space-y-2 text-sm">
               <Row label="Panel size">{info.panelSize}</Row>
-              <Row label="Buyer fee">{(info.feeBps ?? 0) / 100}% of trade</Row>
+              <Row label="Buyer fee">{(info.feeBps ?? 0) / 100}% of bond</Row>
               <Row label="Bond / assignment">{(info.bondBps ?? 0) / 100}% of your stake</Row>
               <Row label="Slash on bad vote">{(info.slashBps ?? 0) / 100}% of bond</Row>
               <Row label="Min stake">{info.minStakeUsdc} USDC</Row>

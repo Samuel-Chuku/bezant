@@ -93,7 +93,7 @@ export function SendPanel() {
     <section className="rounded-xl border border-line bg-bg/50 p-5">
       <div className="flex items-center justify-between">
         <div className="text-[11px] uppercase tracking-wide text-muted">Send USDC</div>
-        <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">passkey wallet</span>
+        <span className="rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-medium text-info">passkey wallet</span>
       </div>
 
       <div className="mt-1 text-sm text-muted">
@@ -137,7 +137,7 @@ export function SendPanel() {
         <button
           onClick={review}
           disabled={busy || !to || !amount}
-          className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+          className="rounded-md bg-info px-4 py-2 text-sm font-medium text-white hover:bg-info disabled:opacity-50"
         >
           {busy ? 'Checking…' : 'Send'}
         </button>
@@ -180,7 +180,7 @@ export function SendPanel() {
               <button
                 onClick={confirmSend}
                 disabled={busy}
-                className="flex-1 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                className="flex-1 rounded-lg bg-info px-4 py-2 text-sm font-medium text-white hover:bg-info disabled:opacity-50"
               >
                 Confirm &amp; send
               </button>

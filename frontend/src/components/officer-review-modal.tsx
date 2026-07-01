@@ -28,7 +28,7 @@ export function OfficerReviewModal({ review, onClose }: { review: OfficerReview;
           The Trade Officer is an <strong>automated agent</strong>. It checks the delivery document is well-formed and
           plausible - the right document type with a real reference. This validates the delivery <strong>information</strong>;
           it is <strong>not</strong> an independent, multi-party verification of the goods. For that, the buyer can choose
-          the <strong>Staked panel</strong> at trade creation.
+          the <strong>Staked panel</strong> at bond creation.
         </div>
 
         {review.reasons && review.reasons.length > 0 && (

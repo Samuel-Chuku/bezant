@@ -391,7 +391,7 @@ export default function TradeDetailPage() {
           <div className="mt-6 rounded-xl border border-line bg-bg/40 px-4 py-4">
             <TradeStatusTracker status={trade.status} isPanelTrade={isPanelTrade} />
             {isPanelTrade && verification?.assigned && (
-              <button onClick={() => setShowPanelModal(true)} className="mt-3 text-xs text-violet-300 hover:text-violet-200">
+              <button onClick={() => setShowPanelModal(true)} className="mt-3 text-xs text-info hover:text-info">
                 View panel decision →
               </button>
             )}

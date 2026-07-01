@@ -163,7 +163,7 @@ function AgentIdTooltip() {
       tabIndex={0}
       role="button"
       aria-label="What is an Agent ID?"
-      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets Bezant surface your reputation badge next to your name on every trade."
+      title="An ERC-8004 agentId is your portable, ERC-721-backed identity. Reputation accrues to the ID, not your wallet, so your trust history travels with you across apps and wallet rotations. Linking it lets Bezant surface your reputation badge next to your name on every bond."
     >
       <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-line-strong text-[10px] text-muted group-hover:text-fg">
         ?
@@ -177,7 +177,7 @@ function AgentIdTooltip() {
         </span>
         <span className="mt-2 block text-muted">
           Linking it surfaces your <span className="text-warn">★ score</span>{' '}
-          next to your name on every trade in Bezant.
+          next to your name on every bond in Bezant.
         </span>
       </span>
     </span>

@@ -34,8 +34,8 @@ export function PassportPanel({ address }: { address?: string }) {
       )}
       {p && (
         <p className="mt-3 text-xs text-muted">
-          Deposit earns down with completed trades (40% floor at 30). You&apos;re at {p.completedTrades} clean
-          {p.completedTrades === 1 ? ' trade' : ' trades'}.
+          Deposit earns down with settled bonds (40% floor at 30). You&apos;re at {p.completedTrades} clean
+          {p.completedTrades === 1 ? ' bond' : ' bonds'}.
         </p>
       )}
     </div>

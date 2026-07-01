@@ -14,7 +14,7 @@ type Filter = 'all' | 'action' | 'trade' | 'pool' | 'verifier';
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'action', label: 'Needs action' },
-  { id: 'trade', label: 'Trades' },
+  { id: 'trade', label: 'Bonds' },
   { id: 'pool', label: 'Pool' },
   { id: 'verifier', label: 'Verifier' },
 ];
@@ -47,9 +47,9 @@ export default function ActivityPage() {
     <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-6 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Activities</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Activities</h1>
           <p className="mt-2 text-sm text-muted">
-            Your trades and pool moves, things waiting on you, and deadlines closing in.
+            Your bonds and pool moves, things waiting on you, and deadlines closing in.
           </p>
         </div>
         {unreadCount > 0 && (
@@ -111,14 +111,14 @@ export default function ActivityPage() {
         <section className="rounded-2xl border border-line bg-surface/40 p-6 text-center">
           <p className="text-sm text-fg">No activity yet.</p>
           <p className="mt-2 text-xs text-muted">
-            Start a trade or deposit into the pool and it&apos;ll show up here.
+            Strike a bond or deposit into the pool and it&apos;ll show up here.
           </p>
           <div className="mt-4 flex justify-center gap-2">
             <Link
               href="/trade/create"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
             >
-              New trade
+              Strike a bond
             </Link>
             <Link
               href="/pool"
@@ -157,7 +157,7 @@ const KIND_BADGE: Record<NotificationItem['kind'], { label: string; className: s
   deadline: { label: 'Deadline', className: 'bg-warn/15 text-warn' },
   event: { label: 'Event', className: 'bg-muted/40 text-fg' },
   status: { label: 'Status', className: 'bg-info/15 text-info' },
-  pool: { label: 'Pool', className: 'bg-violet-500/15 text-violet-300' },
+  pool: { label: 'Pool', className: 'bg-info/15 text-info' },
 };
 
 function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => void }) {

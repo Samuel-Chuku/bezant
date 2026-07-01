@@ -36,7 +36,7 @@ export function HandlePrompt({ onClaim, onSkip }: HandlePromptProps) {
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted">
         <li>Other users can post pacts to you by handle instead of a 0x address.</li>
         <li>Your reputation accrues against a stable identity, not an opaque address.</li>
-        <li>You&apos;re easier to recognize in trade history and on-chain logs.</li>
+        <li>You&apos;re easier to recognize in bond history and on-chain logs.</li>
       </ul>
       <p className="mt-3 text-xs text-warn/80">
         Handles are <strong>permanent once claimed</strong>. Choose carefully. You can&apos;t rename or

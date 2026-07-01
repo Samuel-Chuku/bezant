@@ -81,14 +81,14 @@ export function AgentLinkCard({
   if (variant === 'compact') {
     if (currentAgentId !== null) {
       return (
-        <div className="rounded-xl border border-violet-800/50 bg-violet-950/25 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-300">Agent linked</div>
-          <p className="mt-1 font-mono text-sm text-violet-100">#{currentAgentId}</p>
+        <div className="rounded-xl border border-info/50 bg-info/25 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-info">Agent linked</div>
+          <p className="mt-1 font-mono text-sm text-info">#{currentAgentId}</p>
           <div className="mt-2 flex items-center gap-3 text-[11px]">
-            <Link href={`/reputation/agent/${encodeURIComponent(currentAgentId)}`} className="text-violet-300 underline hover:text-violet-200">
+            <Link href={`/reputation/agent/${encodeURIComponent(currentAgentId)}`} className="text-info underline hover:text-info">
               View reputation
             </Link>
-            <button type="button" onClick={doUnlink} disabled={busy} className="text-violet-300/70 hover:text-violet-200 disabled:opacity-50">
+            <button type="button" onClick={doUnlink} disabled={busy} className="text-info/70 hover:text-info disabled:opacity-50">
               {busy ? 'Unlinking…' : 'Unlink'}
             </button>
           </div>
@@ -97,9 +97,9 @@ export function AgentLinkCard({
       );
     }
     return (
-      <div className="rounded-xl border border-violet-800/50 bg-violet-950/25 p-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-300">ERC-8004 agent</div>
-        <p className="mt-1 text-[11px] leading-snug text-violet-300/70">Optional - link or mint an agent to carry your reputation across Bezant.</p>
+      <div className="rounded-xl border border-info/50 bg-info/25 p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-info">ERC-8004 agent</div>
+        <p className="mt-1 text-[11px] leading-snug text-info/70">Optional - link or mint an agent to carry your reputation across Bezant.</p>
         <div className="mt-2 flex gap-1.5">
           <input
             type="text"
@@ -108,13 +108,13 @@ export function AgentLinkCard({
             onChange={(e) => setInput(e.target.value)}
             placeholder="agentId"
             disabled={registering !== null}
-            className="w-full min-w-0 rounded-md border border-violet-800/50 bg-violet-950/40 px-2 py-1.5 font-mono text-xs text-violet-100 placeholder:text-violet-300/40 focus:border-violet-600 focus:outline-none disabled:opacity-50"
+            className="w-full min-w-0 rounded-md border border-info/50 bg-info/40 px-2 py-1.5 font-mono text-xs text-info placeholder:text-info/40 focus:border-info focus:outline-none disabled:opacity-50"
           />
           <button
             type="button"
             onClick={doLink}
             disabled={busy || registering !== null || !input.trim()}
-            className="shrink-0 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            className="shrink-0 rounded-md bg-info px-3 py-1.5 text-xs font-medium text-white hover:bg-info disabled:opacity-50"
           >
             {busy ? '…' : 'Link'}
           </button>
@@ -123,7 +123,7 @@ export function AgentLinkCard({
           type="button"
           onClick={doRegister}
           disabled={busy || registering !== null}
-          className="mt-2 w-full rounded-md border border-violet-700/60 px-3 py-1.5 text-xs font-medium text-violet-200 transition hover:bg-violet-900/40 disabled:opacity-50"
+          className="mt-2 w-full rounded-md border border-info/60 px-3 py-1.5 text-xs font-medium text-info transition hover:bg-info/40 disabled:opacity-50"
         >
           {registering ? registerLabel : 'Register a new agent'}
         </button>

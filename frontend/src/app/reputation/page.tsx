@@ -28,7 +28,7 @@ export default function ReputationIndexPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-12">
       <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Reputation</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Reputation</h1>
         <p className="mt-2 text-sm text-muted">
           ERC-8004 reputation feedback for any agent on Arc. Link your own
           agent to surface your record here and on every pact page.

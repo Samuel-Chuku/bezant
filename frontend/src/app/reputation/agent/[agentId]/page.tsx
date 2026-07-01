@@ -88,7 +88,7 @@ export default function ReputationPage({
         <Link href="/" className="text-xs text-muted hover:text-fg">
           ← back
         </Link>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+        <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight">
           Agent <span className="font-mono text-muted">#{agentId}</span>
         </h1>
         <p className="mt-2 text-sm text-muted">
