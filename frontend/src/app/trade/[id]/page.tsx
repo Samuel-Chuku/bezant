@@ -742,10 +742,24 @@ function Action({
   variant?: 'solid' | 'ghost';
   children: React.ReactNode;
 }) {
-  const base = 'rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40';
-  const style = variant === 'solid' ? 'bg-primary text-primary-fg' : 'border border-line-strong text-fg';
+  // Primary actions are the signature struck-coin; secondary stays a quiet outline.
+  if (variant === 'solid') {
+    return (
+      <button type="button" onClick={onClick} disabled={busy || disabled} className="bz-coin mint">
+        <span className="cap" aria-hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </span>
+        <span className="face">{busy ? 'Working…' : children}</span>
+      </button>
+    );
+  }
   return (
-    <button onClick={onClick} disabled={busy || disabled} className={`${base} ${style}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy || disabled}
+      className="rounded-lg border border-line-strong px-4 py-2 text-sm font-medium text-fg disabled:opacity-40"
+    >
       {busy ? 'Working…' : children}
     </button>
   );

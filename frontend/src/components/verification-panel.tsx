@@ -139,7 +139,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
 
   if (!v) return null;
 
-  const card = 'space-y-3 rounded-lg border border-info/40 bg-info/15 p-4';
+  const card = 'space-y-3 rounded-lg border border-info/30 bg-info/15 p-4';
   const onPanel = !!me && v.panel.some((p) => p.toLowerCase() === me);
   const expired = v.deadline > 0 && Date.now() / 1000 > v.deadline;
 
@@ -194,7 +194,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
           <span className="text-muted">verdicts hidden until voting closes</span>
         )}
         <span>· {v.cast}/{v.panel.length} voted</span>
-        <button onClick={() => setShowPanel(true)} className="ml-auto rounded-md border border-info/60 px-2 py-0.5 text-[11px] text-info hover:bg-info/30">
+        <button onClick={() => setShowPanel(true)} className="ml-auto rounded-md border border-info/30 px-2 py-0.5 text-[11px] text-info hover:bg-info/12">
           View panel &amp; decisions
         </button>
       </div>
@@ -277,7 +277,7 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div role="dialog" aria-label="Panel decision" className="relative w-full max-w-md rounded-2xl border border-info/50 bg-bg p-5 shadow-2xl">
+      <div role="dialog" aria-label="Panel decision" className="relative w-full max-w-md rounded-2xl border border-info/30 bg-bg p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold tracking-tight text-fg">Panel decision</h3>

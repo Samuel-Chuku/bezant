@@ -108,7 +108,7 @@ export default function ProfilePage() {
                 ) : (
                   // No backend record yet - agentId links to your user row, so a
                   // profile must exist first (claim a handle via the top banner).
-                  <div className="rounded-xl border border-info/50 bg-info/25 p-4">
+                  <div className="rounded-xl border border-info/30 bg-info/10 p-4">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-info">ERC-8004 agent</div>
                     <p className="mt-1 text-[11px] leading-snug text-info/70">
                       Set up a profile (claim a handle) to link or mint an agent and carry your reputation.
@@ -174,7 +174,7 @@ function StatsStrip({ stats }: { stats: UserStats | null }) {
 function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
   const pnl = Number(v.netPnlUsdc);
   return (
-    <div className="rounded-xl border border-info/40 bg-info/15 p-5">
+    <div className="rounded-xl border border-info/30 bg-info/15 p-5">
       <div className="flex items-center justify-between">
         <div className="text-[11px] uppercase tracking-wide text-info">Verifier</div>
         <Link href="/verify" className="text-xs text-info/80 hover:text-info">
