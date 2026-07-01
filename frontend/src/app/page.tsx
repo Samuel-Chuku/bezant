@@ -6,8 +6,12 @@ import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { EmailSignIn } from '@/components/email-sign-in';
 import { BezantWordmark } from '@/components/bezant-logo';
-import { buttonClass } from '@/components/ui';
+import { buttonClass, StruckButton } from '@/components/ui';
 import { shortAddress } from '@/lib/format';
+
+const PlusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+);
 
 export default function Home() {
   const signer = useSigner();
@@ -128,10 +132,8 @@ export default function Home() {
             </p>
           )}
 
-          <div className="mt-6 flex flex-wrap gap-2 border-t border-primary/30 pt-4">
-            <Link href="/trade/create" className={buttonClass('primary')}>
-              Strike a bond
-            </Link>
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-primary/30 pt-4">
+            <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
             <Link href="/trade" className={buttonClass('secondary')}>
               Your bonds
             </Link>

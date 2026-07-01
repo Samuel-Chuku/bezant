@@ -18,37 +18,55 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => (running ? undefined : onClose())} />
       <div className="relative w-full max-w-sm rounded-2xl border border-line bg-bg shadow-2xl">
         <div className="border-b border-line px-5 py-3.5">
-          <p className="text-sm font-medium text-fg">Bridging {run.amount} USDC</p>
+          <p className="text-sm font-medium text-fg">
+            {run.status === 'success' ? 'Bridge complete' : run.status === 'error' ? 'Bridge failed' : `Bridging ${run.amount} USDC`}
+          </p>
           <p className="mt-0.5 text-xs text-muted">
             {run.sourceFullName} → {run.destinationFullName}
           </p>
         </div>
 
-        <ol className="space-y-2.5 px-5 py-4">
-          {BRIDGE_STEP_ORDER.map((name) => {
-            const step = run.steps[name];
-            const state: StepState | 'upcoming' = step?.state ?? 'upcoming';
-            return (
-              <li key={name} className="flex items-center justify-between gap-3 text-sm">
-                <span className="flex items-center gap-2.5">
-                  <StepIcon state={state} />
-                  <span className={LABEL_COLOR[state]}>{BRIDGE_STEP_LABELS[name]}</span>
-                </span>
-                {step?.explorerUrl && (
-                  <a href={step.explorerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-info hover:text-info">
-                    tx <ExternalLinkIcon />
-                  </a>
-                )}
-              </li>
-            );
-          })}
-        </ol>
+        {run.status === 'success' ? (
+          <div className="px-5 py-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="font-mono text-3xl font-semibold tabular-nums text-fg">
+              {run.amount} <span className="text-base font-normal text-muted">USDC</span>
+            </p>
+            <p className="mt-1.5 text-sm text-muted">arrived on {run.destinationFullName}</p>
+            {tail && <div className="mt-4 text-sm text-primary">{tail}</div>}
+          </div>
+        ) : (
+          <>
+            <ol className="space-y-2.5 px-5 py-4">
+              {BRIDGE_STEP_ORDER.map((name) => {
+                const step = run.steps[name];
+                const state: StepState | 'upcoming' = step?.state ?? 'upcoming';
+                return (
+                  <li key={name} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="flex items-center gap-2.5">
+                      <StepIcon state={state} />
+                      <span className={LABEL_COLOR[state]}>{BRIDGE_STEP_LABELS[name]}</span>
+                    </span>
+                    {step?.explorerUrl && (
+                      <a href={step.explorerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-info hover:text-info">
+                        tx <ExternalLinkIcon />
+                      </a>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
 
-        <div className="px-5 pb-2 text-center text-xs">
-          {running && <span className="text-muted">This can take a couple of minutes - keep this open.</span>}
-          {run.status === 'success' && (tail ?? <span className="text-primary">Bridged ✓</span>)}
-          {run.status === 'error' && <span className="text-danger">{run.errorMessage ?? 'Bridge failed.'}</span>}
-        </div>
+            <div className="px-5 pb-2 text-center text-xs">
+              {running && <span className="text-muted">This can take a couple of minutes - keep this open.</span>}
+              {run.status === 'error' && <span className="text-danger">{run.errorMessage ?? 'Bridge failed.'}</span>}
+            </div>
+          </>
+        )}
 
         <div className="border-t border-line px-5 py-3.5">
           <button

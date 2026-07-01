@@ -12,7 +12,18 @@ import { useToast } from '@/components/toast';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { PassportPanel } from '@/components/passport-panel';
 import { BridgeWidget } from '@/components/bridge-widget';
+import { StruckButton } from '@/components/ui';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
+
+const PlusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+);
+
+const STRIKE_STEPS: [string, string][] = [
+  ['Struck', 'You set the amount, terms and deadline. Nothing is locked yet.'],
+  ['Funded', 'Once the seller agrees, you fund the passport-priced deposit.'],
+  ['Attested & settled', 'A verifier confirms delivery on chain; the bond settles to the seller.'],
+];
 
 // Mirrors TradeEscrow's TradeProposed event - used to pull the tradeId from the receipt.
 const tradeProposedEventAbi = [
@@ -66,7 +77,7 @@ export default function CreateTradePage() {
       return;
     }
     if (!amountUsdc || Number(amountUsdc) <= 0) {
-      setSubmission({ status: 'error', message: 'Enter a positive trade amount.' });
+      setSubmission({ status: 'error', message: 'Enter a positive bond amount.' });
       return;
     }
     try {
@@ -95,7 +106,7 @@ export default function CreateTradePage() {
       if (!created) throw new Error('TradeProposed event missing from receipt');
 
       const tradeId = created.args.id.toString();
-      toast.success(`Trade #${tradeId} created`, { href: arcExplorerTxUrl(txHash), hrefLabel: 'view tx' });
+      toast.success(`Bond #${tradeId} struck`, { href: arcExplorerTxUrl(txHash), hrefLabel: 'view tx' });
       router.push(`/trade/${tradeId}`);
     } catch (err) {
       setSubmission({ status: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -107,15 +118,25 @@ export default function CreateTradePage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
       <header className="mb-8">
-        <Link href="/" className="text-xs text-muted hover:text-fg">
-          ← back
+        <Link href="/trade" className="text-xs text-muted hover:text-fg">
+          ← your bonds
         </Link>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create a trade</h1>
-        <p className="mt-2 text-sm text-muted">
-          You&apos;re the <strong>buyer</strong>. The required deposit is priced by your credit passport,
-          a verifier attests delivery, and funds release to the seller.
+        <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight">Strike a bond</h1>
+        <p className="mt-2 max-w-xl text-sm text-muted">
+          You&apos;re the <strong className="text-fg">buyer</strong>. Propose terms; the deposit is priced
+          by your credit passport, a verifier attests delivery, and the bonded USDC releases to the seller
+          on proof.
         </p>
       </header>
+
+      <div className="mb-6 grid gap-4 rounded-xl border border-line bg-surface p-5 sm:grid-cols-3">
+        {STRIKE_STEPS.map(([t, d]) => (
+          <div key={t}>
+            <div className="text-xs font-semibold uppercase tracking-wider text-brand">{t}</div>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted">{d}</p>
+          </div>
+        ))}
+      </div>
 
       {!signer.isConnected && (
         <div className="mb-6 rounded-xl border border-warn/40 bg-warn/20 p-4 text-sm text-warn">
@@ -139,18 +160,18 @@ export default function CreateTradePage() {
             value={sellerInput}
             onChange={(e) => setSellerInput(e.target.value)}
             placeholder="seller-handle or 0x…"
-            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
           />
         </label>
 
         <label className="block">
-          <span className="text-sm text-fg">Trade amount (USDC)</span>
+          <span className="text-sm text-fg">Bond amount (USDC)</span>
           <input
             value={amountUsdc}
             onChange={(e) => setAmountUsdc(e.target.value)}
             inputMode="decimal"
             placeholder="0.5"
-            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
           />
         </label>
 
@@ -159,7 +180,7 @@ export default function CreateTradePage() {
           <input
             value={milestone}
             onChange={(e) => setMilestone(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
           />
         </label>
 
@@ -171,12 +192,12 @@ export default function CreateTradePage() {
               min={1}
               value={deadlineValue}
               onChange={(e) => setDeadlineValue(Number(e.target.value))}
-              className="w-24 rounded-lg border border-line bg-bg px-3 py-2 text-sm"
+              className="w-24 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
             />
             <select
               value={deadlineUnit}
               onChange={(e) => setDeadlineUnit(e.target.value as DeadlineUnit)}
-              className="rounded-lg border border-line bg-bg px-3 py-2 text-sm"
+              className="rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none"
             >
               <option value="minutes">minutes</option>
               <option value="hours">hours</option>
@@ -212,15 +233,15 @@ export default function CreateTradePage() {
         {signer.isConnected && (
           <div>
             <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-info hover:underline">
-              {showBridge ? 'Hide bridge' : 'Fund this trade from another chain?'}
+              {showBridge ? 'Hide bridge' : 'Fund this bond from another chain?'}
             </button>
             {showBridge && (
               <div className="mt-3 rounded-xl border border-line bg-bg/40 p-3">
                 <p className="mb-2 text-xs text-muted">
-                  Creating a trade locks nothing - your deposit is taken when you fund, after the seller agrees.
+                  Striking a bond locks nothing - your deposit is taken when you fund, after the seller agrees.
                   {amountUsdc && Number(amountUsdc) > 0
-                    ? ` Bridge the ${amountUsdc} USDC to your Arc wallet now so it's ready the moment the trade is agreed.`
-                    : ` Bridge USDC to your Arc wallet now so it's ready the moment the trade is agreed.`}
+                    ? ` Bridge the ${amountUsdc} USDC to your Arc wallet now so it's ready the moment the bond is agreed.`
+                    : ` Bridge USDC to your Arc wallet now so it's ready the moment the bond is agreed.`}
                 </p>
                 <BridgeWidget
                   run={bridgeRun}
@@ -233,13 +254,9 @@ export default function CreateTradePage() {
           </div>
         )}
 
-        <button
-          onClick={submit}
-          disabled={isBusy || !signer.isConnected}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg disabled:opacity-40"
-        >
-          {isBusy ? 'Working…' : 'Create trade'}
-        </button>
+        <StruckButton onClick={submit} disabled={isBusy || !signer.isConnected} icon={<PlusIcon />}>
+          {isBusy ? 'Striking…' : 'Strike the bond'}
+        </StruckButton>
 
         {submission.status === 'waiting' && (
           <p className="text-sm text-muted">Waiting for confirmation… {submission.hash.slice(0, 10)}…</p>

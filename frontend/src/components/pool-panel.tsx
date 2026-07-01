@@ -6,6 +6,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
 import { PoolYieldStrip } from '@/components/pool-yield';
+import { StruckButton } from '@/components/ui';
 import {
   getPoolStats,
   buildPoolApproveUnsigned,
@@ -106,13 +107,16 @@ export function PoolPanel() {
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
             <div className="flex gap-2">
-              <button
+              <StruckButton
+                size="sm"
                 onClick={() => setAction('deposit')}
                 disabled={!signer.isConnected}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg disabled:opacity-40"
+                icon={
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+                }
               >
                 Deposit
-              </button>
+              </StruckButton>
               <button
                 onClick={() => setAction('withdraw')}
                 disabled={!signer.isConnected}

@@ -8,7 +8,12 @@ import { useTxFlow } from '@/components/tx-flow';
 import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
 import { RecentVerifierStakes } from '@/components/recent-verifier-stakes';
 import { CountdownChip } from '@/components/countdown';
+import { StruckButton } from '@/components/ui';
 import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx, type VerifierAssignment } from '@/lib/api';
+
+const PlusIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+);
 
 type Filter = 'pending' | 'voted' | 'done' | 'all';
 const FILTERS: { key: Filter; label: string }[] = [
@@ -207,7 +212,7 @@ export default function VerifyPage() {
                     Stake (USDC)
                     <input value={stakeAmt} onChange={(e) => setStakeAmt(e.target.value)} inputMode="decimal" placeholder={info.minStakeUsdc} className="rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-line-strong focus:outline-none" />
                   </label>
-                  <button onClick={doStake} disabled={!stakeAmt} className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg transition hover:bg-primary-hover disabled:opacity-50">Stake</button>
+                  <StruckButton size="sm" onClick={doStake} disabled={!stakeAmt} icon={<PlusIcon />}>Stake</StruckButton>
                 </div>
                 <div>
                   <div className="flex items-end gap-2">

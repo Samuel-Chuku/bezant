@@ -60,7 +60,7 @@ export default function ProfilePage() {
 
       <div className="mt-6 space-y-6">
         {/* Identity + agent linking (compact, on the right) */}
-        <section className="rounded-xl border border-line bg-bg/50 p-5">
+        <section className="rounded-xl border border-line border-l-2 border-l-brand/40 bg-bg/50 p-5">
           <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-4">

@@ -29,6 +29,7 @@ import { ToastProvider } from '@/components/toast';
 import { TopNav } from '@/components/top-nav';
 import { ProfileSetupBanner } from '@/components/profile-setup-banner';
 import { SidebarSummary } from '@/components/sidebar-summary';
+import { AppFooter } from '@/components/app-footer';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://bezant.trade'),
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <TopNav />
             <ProfileSetupBanner />
             {children}
+            <AppFooter />
             {/* SidebarSummary self-positions: fixed + draggable at lg+,
                 inline panel below content under lg. */}
             <SidebarSummary />
