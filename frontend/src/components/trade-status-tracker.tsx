@@ -1,17 +1,17 @@
 'use client';
 
-// Horizontal lifecycle tracker for a trade. Happy path:
-//   Proposed → Agreed → Funded → Verify → Settled
-// Terminal alternates (Disputed / Refunded / Cancelled) show how far the trade
+// Horizontal lifecycle tracker for a bond. Happy path:
+//   Proposed → Struck → Funded → Attested → Settled
+// Terminal alternates (Contested / Refunded / Cancelled) show how far the bond
 // got, then a single coloured outcome node instead of the remaining steps.
 
-const HAPPY = ['Proposed', 'Agreed', 'Funded', 'Verify', 'Settled'] as const;
+const HAPPY = ['Proposed', 'Struck', 'Funded', 'Attested', 'Settled'] as const;
 
 type Alt = { label: string; tone: 'red' | 'amber' | 'neutral' } | null;
 
 export function TradeStatusTracker({ status, isPanelTrade }: { status: string; isPanelTrade?: boolean }) {
   const labels: string[] = [...HAPPY];
-  labels[3] = isPanelTrade ? 'Panel' : 'Verify';
+  labels[3] = isPanelTrade ? 'Panel' : 'Attested';
 
   let reached = 0; // happy steps fully complete
   let active = -1; // index currently in progress (happy path only)
@@ -21,7 +21,7 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
     case 'Agreed': reached = 1; active = 1; break;
     case 'Funded': reached = 3; active = 3; break; // funded done, verification active
     case 'Released': reached = 5; break;
-    case 'Disputed': reached = 3; alt = { label: 'Disputed', tone: 'red' }; break;
+    case 'Disputed': reached = 3; alt = { label: 'Contested', tone: 'red' }; break;
     case 'Refunded': reached = 3; alt = { label: 'Refunded', tone: 'amber' }; break;
     case 'Cancelled': reached = 1; alt = { label: 'Cancelled', tone: 'neutral' }; break;
   }
@@ -35,7 +35,7 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
 
   const dot: Record<Node['state'], string> = {
     done: 'bg-primary border-primary',
-    active: 'border-violet-400 bg-violet-400/20 ring-2 ring-violet-500/30',
+    active: 'border-brand bg-brand/20 ring-2 ring-brand/30',
     todo: 'border-line-strong bg-surface',
     red: 'bg-danger border-danger',
     amber: 'bg-warn border-warn',
@@ -43,7 +43,7 @@ export function TradeStatusTracker({ status, isPanelTrade }: { status: string; i
   };
   const text: Record<Node['state'], string> = {
     done: 'text-primary',
-    active: 'text-violet-200',
+    active: 'text-brand',
     todo: 'text-muted',
     red: 'text-danger',
     amber: 'text-warn',

@@ -3,3 +3,5 @@ export { Button, buttonClass, type ButtonVariant, type ButtonSize } from './butt
 export { Pill, type PillTone } from './pill';
 export { StatCard } from './stat-card';
 export { Input, inputClass } from './input';
+export { StruckButton } from './struck-button';
+export { Badge, type BadgeTone } from './badge';

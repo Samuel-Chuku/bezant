@@ -30,6 +30,13 @@
   --info: 90 169 230; /* #5aa9e6 */
 
   --brand: 227 205 151; /* #e3cd97 — champagne, the bezant coin nod; brand mark only */
+  --champ-edge: rgba(227, 205, 151, 0.32); /* 2px champagne left edge on brand/verified cards */
+
+  /* ── Struck-coin button (dark) — the signature action. Mint cap, coin face. ── */
+  --coin-face: #2c343b; --coin-edge: #525d67;
+  --coin-label-mint: #4cd6a0; --coin-label-danger: #f4766e; --coin-label-neutral: #f2f5f7;
+  --coin-cap-on: #f2f5f7; --coin-cap-ink: #515d67;
+  --coin-meta-bg: #171d22; --coin-meta-fg: #aeb6bd;
 
   /* ── Type families (loaded via next/font in layout.tsx) ──
      Fraunces = display/brand, Bricolage = body/UI, JetBrains Mono = data. */
@@ -86,6 +93,22 @@ body {
 .t-data-sm { font-family: var(--font-data); font-size: var(--fs-data-sm); font-weight: 500; line-height: 1.4; font-variant-numeric: tabular-nums; }
 
 [class*="t-data"] { font-variant-numeric: tabular-nums; }
+
+/* ── Struck-coin button — the signature action (mint = action). ─────────────
+   Colored cap + white icon, split by a diagonal cut (echoing the B/Z), joined
+   to a coin face whose bold label is the action color. Champagne never here. */
+.bz-coin { display: inline-flex; align-items: stretch; height: 48px; border-radius: 999px; overflow: hidden; background: var(--coin-face); border: 1px solid var(--coin-edge); box-shadow: 0 4px 16px rgba(0,0,0,0.35); cursor: pointer; font-family: var(--font-sans); transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard); }
+.bz-coin:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.42); }
+.bz-coin:active { transform: translateY(0.5px) scale(0.99); }
+.bz-coin:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.bz-coin .cap { display: flex; align-items: center; justify-content: center; padding: 0 26px 0 18px; margin-right: -16px; color: var(--coin-cap-on); clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%); }
+.bz-coin .face { display: flex; align-items: center; gap: 8px; padding: 0 20px; font-weight: 700; font-size: 14px; line-height: 1; white-space: nowrap; }
+.bz-coin .meta { font-family: var(--font-data); font-size: var(--fs-data-sm); font-weight: 600; color: var(--coin-meta-fg); background: var(--coin-meta-bg); border-radius: 999px; padding: 2px 8px; }
+.bz-coin.mint .cap { background: rgb(var(--primary)); } .bz-coin.mint .face { color: var(--coin-label-mint); }
+.bz-coin.danger .cap { background: rgb(var(--danger)); } .bz-coin.danger .face { color: var(--coin-label-danger); }
+.bz-coin.neutral .cap { background: var(--coin-cap-ink); } .bz-coin.neutral .face { color: var(--coin-label-neutral); }
+.bz-coin.sm { height: 40px; } .bz-coin.sm .face { font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .bz-coin { transition: none; } }
 
 /* ── Brand motion rhythms (transform/opacity only) ────────────────────────── */
 @keyframes bz-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }

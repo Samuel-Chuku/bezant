@@ -16,8 +16,8 @@ import { WalletPill } from './wallet-pill';
 // "Trades" is a dropdown housing both sub-actions, so there's no separate
 // top-level "New trade" item.
 const TRADE_LINKS: NavItem[] = [
-  { href: '/trade/create', label: 'New trade' },
-  { href: '/trade', label: 'My trades' },
+  { href: '/trade/create', label: 'Strike a bond' },
+  { href: '/trade', label: 'Your bonds' },
 ];
 
 // Desktop destinations that flank the Trades dropdown.
@@ -78,7 +78,7 @@ function TradesMenu({ pathname }: { pathname: string }) {
           active ? 'bg-surface text-fg' : 'text-muted hover:text-fg',
         ].join(' ')}
       >
-        Trades
+        Bonds
         <svg className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
         </svg>

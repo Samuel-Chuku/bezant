@@ -20,6 +20,8 @@ import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { VerificationPanel, PanelModal } from '@/components/verification-panel';
 import { OfficerReviewModal } from '@/components/officer-review-modal';
 import { TradeStatusTracker } from '@/components/trade-status-tracker';
+import { Badge } from '@/components/ui';
+import { labelForStatus, toneForStatus } from '@/lib/bond-language';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
@@ -52,16 +54,6 @@ import {
   type UnsignedTx,
 } from '@/lib/api';
 
-const STATUS_COLOR: Record<string, string> = {
-  Proposing: 'text-info',
-  Agreed: 'text-warn',
-  Funded: 'text-violet-300',
-  Released: 'text-primary',
-  Disputed: 'text-danger',
-  Refunded: 'text-fg',
-  Cancelled: 'text-muted',
-};
-
 const EVENT_LABEL: Record<string, string> = {
   TradeProposed: 'Proposed',
   TradeCountered: 'Counter-offer',
@@ -79,7 +71,7 @@ const EVENT_LABEL: Record<string, string> = {
 // One-line plain-English explanation shown under each event. The Released row is
 // handled separately because its wording depends on whether the trade was financed.
 const EVENT_HINT: Record<string, string> = {
-  TradeProposed: 'Buyer proposed the trade.',
+  TradeProposed: 'Buyer proposed the bond.',
   TradeCountered: 'A new amount was proposed.',
   TradeAgreed: 'Both sides agreed the terms.',
   TradeFunded: 'Buyer locked the deposit in escrow.',
@@ -364,10 +356,10 @@ export default function TradeDetailPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
       <Link href="/trade" className="text-xs text-muted hover:text-fg">
-        ← my trades
+        ← your bonds
       </Link>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight">Trade #{id}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Bond #{id}</h1>
         {myRole && (
           <span className="rounded-full border border-line-strong px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted">
             you: {myRole}
@@ -391,7 +383,7 @@ export default function TradeDetailPage() {
 
           {!isParticipant ? (
             <p className="mt-8 rounded-lg border border-line bg-bg/40 p-4 text-sm text-muted">
-              Only the buyer and seller can view this trade&apos;s details.
+              Only the buyer and seller can view this bond&apos;s details.
               {!signer.isConnected && ' Connect the buyer or seller wallet to see it.'}
             </p>
           ) : (
@@ -420,7 +412,7 @@ export default function TradeDetailPage() {
 
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
             <Field label="Status">
-              <span className={STATUS_COLOR[trade.status] ?? 'text-fg'}>{trade.status}</span>
+              <Badge tone={toneForStatus(trade.status)}>{labelForStatus(trade.status)}</Badge>
             </Field>
             <Field label="Amount">{trade.amountUsdc} USDC</Field>
             <Field label={trade.status === 'Funded' || trade.status === 'Released' ? 'Deposit (locked)' : 'Deposit if funded now'}>
@@ -488,7 +480,7 @@ export default function TradeDetailPage() {
                 </Action>
                 <div>
                   <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-info hover:underline">
-                    {showBridge ? 'Hide bridge' : 'Fund this trade from another chain?'}
+                    {showBridge ? 'Hide bridge' : 'Fund this bond from another chain?'}
                   </button>
                   {showBridge && (
                     <div className="mt-3 rounded-xl border border-line bg-bg/40 p-3">
@@ -529,7 +521,7 @@ export default function TradeDetailPage() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm text-fg">
-                    Submit your delivery document - the Trade Officer reviews it and, on a pass, the trade settles to you automatically.
+                    Submit your delivery document - the Trade Officer reviews it and, on a pass, the bond settles to you automatically.
                   </p>
                   <textarea
                     value={doc}
@@ -650,11 +642,11 @@ export default function TradeDetailPage() {
             )}
             {trade.status === 'Disputed' && !isArbitrator && (
               <OutcomeCard tone="red" title="Under dispute" tx={events.find((e) => e.kind === 'Disputed')?.txHash}>
-                An arbitrator is reviewing this trade and will decide the outcome - funds stay locked until then.
+                An arbitrator is reviewing this bond and will decide the outcome - funds stay locked until then.
               </OutcomeCard>
             )}
 
-            {!signer.isConnected && <p className="text-sm text-warn">Connect a wallet to act on this trade.</p>}
+            {!signer.isConnected && <p className="text-sm text-warn">Connect a wallet to act on this bond.</p>}
           </div>
 
           {/* Event timeline */}
@@ -713,7 +705,7 @@ export default function TradeDetailPage() {
       <BridgeProgressModal
         run={bridgeRun}
         onClose={() => setBridgeRun(INITIAL_RUN)}
-        tail={busy === 'fund' ? <span className="text-info">Bridged ✓ - funding your trade…</span> : undefined}
+        tail={busy === 'fund' ? <span className="text-info">Bridged ✓ - funding your bond…</span> : undefined}
       />
     </main>
   );

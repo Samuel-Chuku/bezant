@@ -130,10 +130,10 @@ export default function Home() {
 
           <div className="mt-6 flex flex-wrap gap-2 border-t border-primary/30 pt-4">
             <Link href="/trade/create" className={buttonClass('primary')}>
-              Create a trade
+              Strike a bond
             </Link>
             <Link href="/trade" className={buttonClass('secondary')}>
-              My trades
+              Your bonds
             </Link>
           </div>
         </section>

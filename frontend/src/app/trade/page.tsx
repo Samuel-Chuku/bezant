@@ -8,17 +8,12 @@ import { HandleAddr } from '@/components/handle-addr';
 import { CountdownChip } from '@/components/countdown';
 import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
+import { Badge, StruckButton } from '@/components/ui';
+import { labelForStatus, toneForStatus } from '@/lib/bond-language';
 
-// Status → coloured pill (full class strings; Tailwind can't see interpolated names).
-const STATUS_PILL: Record<string, string> = {
-  Proposing: 'bg-info/15 text-info',
-  Agreed: 'bg-warn/15 text-warn',
-  Funded: 'bg-violet-500/15 text-violet-300',
-  Released: 'bg-primary/15 text-primary',
-  Disputed: 'bg-danger/15 text-danger',
-  Refunded: 'bg-muted/15 text-fg',
-  Cancelled: 'bg-muted/15 text-muted',
-};
+const PlusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+);
 
 const TERMINAL = new Set(['Released', 'Cancelled', 'Refunded']);
 const ACTIVE = new Set(['Proposing', 'Agreed', 'Funded']);
@@ -29,7 +24,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'active', label: 'Active' },
   { id: 'closed', label: 'Closed' },
-  { id: 'disputed', label: 'Disputed' },
+  { id: 'disputed', label: 'Contested' },
 ];
 function inFilter(status: string, f: Filter): boolean {
   if (f === 'all') return true;
@@ -61,16 +56,14 @@ export default function TradesPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold tracking-tight">Trades</h1>
-        <Link href="/trade/create" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg">
-          New trade
-        </Link>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="t-h1">Bonds</h1>
+        <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
       </div>
 
       {!signer.isConnected && (
         <p className="mt-6 text-sm text-muted">
-          Connect a wallet or sign in to see your trades.{' '}
+          Connect a wallet or sign in to see your bonds.{' '}
           <Link href="/" className="underline">
             Sign in
           </Link>
@@ -99,9 +92,9 @@ export default function TradesPage() {
             </div>
           )}
 
-          {trades && trades.length === 0 && <p className="text-sm text-muted">No trades yet - create one.</p>}
+          {trades && trades.length === 0 && <p className="text-sm text-muted">No bonds yet. Strike one.</p>}
           {trades && trades.length > 0 && shown.length === 0 && (
-            <p className="rounded-xl border border-line bg-bg/40 px-3 py-8 text-center text-sm text-muted">No {filter} trades.</p>
+            <p className="rounded-xl border border-line bg-bg/40 px-3 py-8 text-center text-sm text-muted">No {filter === 'disputed' ? 'contested' : filter} bonds.</p>
           )}
 
           <div className="space-y-2">
@@ -117,8 +110,8 @@ export default function TradesPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-fg">Trade #{t.tradeId}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${t.role === 'buyer' ? 'bg-info/15 text-info' : 'bg-violet-500/15 text-violet-300'}`}>
+                        <span className="font-display text-base font-semibold text-fg">Bond #{t.tradeId}</span>
+                        <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
                           {t.role}
                         </span>
                       </div>
@@ -127,17 +120,17 @@ export default function TradesPage() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_PILL[t.status] ?? 'bg-muted/15 text-fg'}`}>{t.status}</span>
+                      <Badge tone={toneForStatus(t.status)}>{labelForStatus(t.status)}</Badge>
                       {live && <CountdownChip unix={t.deadline} />}
                     </div>
                   </div>
 
                   <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
                     <span className="text-muted">
-                      Amount <span className="font-medium text-fg">{t.amountUsdc} USDC</span>
+                      Amount <span className="t-data-sm text-fg">{t.amountUsdc} USDC</span>
                     </span>
                     <span className="text-muted">
-                      Deposit <span className="text-fg">{t.depositUsdc} USDC</span>
+                      Deposit <span className="t-data-sm text-fg">{t.depositUsdc} USDC</span>
                     </span>
                   </div>
 
