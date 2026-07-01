@@ -5,3 +5,4 @@ export { StatCard } from './stat-card';
 export { Input, inputClass } from './input';
 export { StruckButton } from './struck-button';
 export { Badge, type BadgeTone } from './badge';
+export { ContextTabs, type ContextTab } from './context-tabs';

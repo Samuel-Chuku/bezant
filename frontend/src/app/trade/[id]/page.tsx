@@ -20,7 +20,7 @@ import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { VerificationPanel, PanelModal } from '@/components/verification-panel';
 import { OfficerReviewModal } from '@/components/officer-review-modal';
 import { TradeStatusTracker } from '@/components/trade-status-tracker';
-import { Badge } from '@/components/ui';
+import { Badge, ContextTabs } from '@/components/ui';
 import { labelForStatus, toneForStatus } from '@/lib/bond-language';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
@@ -112,6 +112,7 @@ export default function TradeDetailPage() {
   const [showPanelModal, setShowPanelModal] = useState(false);
   const [officerReview, setOfficerReview] = useState<OfficerReview | null>(null);
   const [showOfficerModal, setShowOfficerModal] = useState(false);
+  const [tab, setTab] = useState<'overview' | 'activity'>('overview');
   const autoFundedRef = useRef(false);
 
   useEffect(() => {
@@ -360,6 +361,7 @@ export default function TradeDetailPage() {
       </Link>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Bond #{id}</h1>
+        {trade && <Badge tone={toneForStatus(trade.status)}>{labelForStatus(trade.status)}</Badge>}
         {myRole && (
           <span className="rounded-full border border-line-strong px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted">
             you: {myRole}
@@ -388,6 +390,16 @@ export default function TradeDetailPage() {
             </p>
           ) : (
           <>
+          <div className="mt-6">
+            <ContextTabs
+              tabs={[{ key: 'overview', label: 'Overview' }, { key: 'activity', label: 'Activity', badge: events.length }]}
+              active={tab}
+              onChange={(k) => setTab(k as 'overview' | 'activity')}
+            />
+          </div>
+
+          {tab === 'overview' && (
+          <div className="bz-fadein">
           <div className="mt-6 rounded-xl border border-line bg-bg/40 px-4 py-4">
             <TradeStatusTracker status={trade.status} isPanelTrade={isPanelTrade} />
             {isPanelTrade && verification?.assigned && (
@@ -648,12 +660,16 @@ export default function TradeDetailPage() {
 
             {!signer.isConnected && <p className="text-sm text-warn">Connect a wallet to act on this bond.</p>}
           </div>
+          </div>
+          )}
 
           {/* Event timeline */}
-          {events.length > 0 && (
-            <div className="mt-10">
-              <h2 className="text-xs uppercase tracking-wide text-muted">Activity</h2>
-              <ol className="mt-3 space-y-2">
+          {tab === 'activity' && (
+            <div className="bz-fadein mt-6">
+              {events.length === 0 && (
+                <p className="rounded-lg border border-line bg-bg/40 px-4 py-6 text-sm text-muted">No on-chain activity yet.</p>
+              )}
+              <ol className="space-y-2">
                 {(() => {
                   // If the seller drew financing, the Settled amount is only the
                   // remaining balance - explain that so it doesn't read as the
