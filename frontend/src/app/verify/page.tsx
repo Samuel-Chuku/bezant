@@ -8,7 +8,7 @@ import { useTxFlow } from '@/components/tx-flow';
 import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
 import { RecentVerifierStakes } from '@/components/recent-verifier-stakes';
 import { CountdownChip } from '@/components/countdown';
-import { StruckButton } from '@/components/ui';
+import { StruckButton, ContextTabs } from '@/components/ui';
 import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx, type VerifierAssignment } from '@/lib/api';
 
 const PlusIcon = () => (
@@ -45,6 +45,7 @@ export default function VerifyPage() {
   const [stakeAmt, setStakeAmt] = useState('');
   const [unstakeAmt, setUnstakeAmt] = useState('');
   const [filter, setFilter] = useState<Filter>('pending');
+  const [tab, setTab] = useState<'queue' | 'stake' | 'activity'>('queue');
   const { items: assignments, loaded: assignmentsLoaded } = useVerifierAssignments();
 
   const refresh = useCallback(async () => {
@@ -115,8 +116,22 @@ export default function VerifyPage() {
         Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
       </p>
 
-      {signer.isConnected && info?.configured && (
-        <section className="mt-8 rounded-xl border border-line bg-surface p-5">
+      {info?.configured && (
+        <div className="mt-8">
+          <ContextTabs
+            tabs={[
+              { key: 'queue', label: 'My verifications', badge: assignments.filter((a) => a.status === 'pending').length },
+              { key: 'stake', label: 'Stake' },
+              { key: 'activity', label: 'Activity' },
+            ]}
+            active={tab}
+            onChange={(k) => setTab(k as typeof tab)}
+          />
+        </div>
+      )}
+
+      {info?.configured && tab === 'queue' && (signer.isConnected ? (
+        <section className="bz-fadein mt-6 rounded-xl border border-line bg-surface p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-medium text-fg">My verifications</h2>
             <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
@@ -170,14 +185,16 @@ export default function VerifyPage() {
             );
           })()}
         </section>
-      )}
+      ) : (
+        <p className="bz-fadein mt-6 rounded-xl border border-line bg-surface p-5 text-sm text-muted">Connect a wallet to see the panels you&apos;ve been drawn onto.</p>
+      ))}
 
       {!info?.configured ? (
         <p className="mt-8 rounded-xl border border-line bg-surface p-5 text-sm text-muted">
           The staked verifier isn&apos;t deployed on this network yet.
         </p>
-      ) : (
-        <div className="mt-8 grid gap-5 sm:grid-cols-2">
+      ) : tab === 'stake' ? (
+        <div className="bz-fadein mt-6 grid gap-5 sm:grid-cols-2">
           {/* Economics */}
           <section className="rounded-xl border border-line bg-surface p-5">
             <div className="text-[11px] uppercase tracking-wide text-muted">Panel economics</div>
@@ -238,9 +255,11 @@ export default function VerifyPage() {
             )}
           </section>
         </div>
-      )}
+      ) : null}
 
-      {info?.configured && <RecentVerifierStakes />}
+      {info?.configured && tab === 'activity' && (
+        <div className="bz-fadein mt-6"><RecentVerifierStakes /></div>
+      )}
     </main>
   );
 }

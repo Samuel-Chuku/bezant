@@ -44,6 +44,22 @@ const config: Config = {
         sans: ['var(--font-body)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
+      // Type scale bumped ~1-2px per step for readability on the wider (1440px)
+      // layout. `xs` stays 12px so dense chips/badges/meta don't overflow;
+      // arbitrary sizes (text-[10px] etc.) are unaffected by design.
+      fontSize: {
+        xs: ['0.75rem', { lineHeight: '1rem' }], // 12 - unchanged
+        sm: ['0.9375rem', { lineHeight: '1.4rem' }], // 15
+        base: ['1.0625rem', { lineHeight: '1.65rem' }], // 17
+        lg: ['1.1875rem', { lineHeight: '1.75rem' }], // 19
+        xl: ['1.3125rem', { lineHeight: '1.85rem' }], // 21
+        '2xl': ['1.5625rem', { lineHeight: '2rem' }], // 25
+        '3xl': ['1.9375rem', { lineHeight: '2.35rem' }], // 31
+        '4xl': ['2.375rem', { lineHeight: '2.6rem' }], // 38
+        '5xl': ['3.125rem', { lineHeight: '1.05' }], // 50
+        '6xl': ['3.875rem', { lineHeight: '1.05' }], // 62
+        '7xl': ['4.75rem', { lineHeight: '1' }], // 76
+      },
     },
   },
   plugins: [],

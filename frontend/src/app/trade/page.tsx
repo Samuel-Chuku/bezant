@@ -8,8 +8,7 @@ import { HandleAddr } from '@/components/handle-addr';
 import { CountdownChip } from '@/components/countdown';
 import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
-import { Badge, StruckButton } from '@/components/ui';
-import { labelForStatus, toneForStatus } from '@/lib/bond-language';
+import { StruckButton, StatePill } from '@/components/ui';
 
 const PlusIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
@@ -120,7 +119,7 @@ export default function TradesPage() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
-                      <Badge tone={toneForStatus(t.status)}>{labelForStatus(t.status)}</Badge>
+                      <StatePill status={t.status} />
                       {live && <CountdownChip unix={t.deadline} />}
                     </div>
                   </div>

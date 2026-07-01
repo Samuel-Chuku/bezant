@@ -20,8 +20,7 @@ import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { VerificationPanel, PanelModal } from '@/components/verification-panel';
 import { OfficerReviewModal } from '@/components/officer-review-modal';
 import { TradeStatusTracker } from '@/components/trade-status-tracker';
-import { Badge, ContextTabs } from '@/components/ui';
-import { labelForStatus, toneForStatus } from '@/lib/bond-language';
+import { ContextTabs, StatePill } from '@/components/ui';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 import {
@@ -361,7 +360,7 @@ export default function TradeDetailPage() {
       </Link>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Bond #{id}</h1>
-        {trade && <Badge tone={toneForStatus(trade.status)}>{labelForStatus(trade.status)}</Badge>}
+        {trade && <StatePill status={trade.status} />}
         {myRole && (
           <span className="rounded-full border border-line-strong px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted">
             you: {myRole}
@@ -424,7 +423,7 @@ export default function TradeDetailPage() {
 
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
             <Field label="Status">
-              <Badge tone={toneForStatus(trade.status)}>{labelForStatus(trade.status)}</Badge>
+              <StatePill status={trade.status} />
             </Field>
             <Field label="Amount">{trade.amountUsdc} USDC</Field>
             <Field label={trade.status === 'Funded' || trade.status === 'Released' ? 'Deposit (locked)' : 'Deposit if funded now'}>

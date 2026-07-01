@@ -6,3 +6,4 @@ export { Input, inputClass } from './input';
 export { StruckButton } from './struck-button';
 export { Badge, type BadgeTone } from './badge';
 export { ContextTabs, type ContextTab } from './context-tabs';
+export { StatePill } from './state-pill';
