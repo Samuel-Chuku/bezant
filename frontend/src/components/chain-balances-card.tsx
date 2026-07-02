@@ -11,7 +11,7 @@ import { ChainLogo } from '@/components/chain-logo';
 // (Arc + the CCTP sources), with chain logos. Polled every 15s.
 export function ChainBalancesCard({ address }: { address: Address }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">USDC across chains</div>
         <Link href="/bridge" className="text-xs text-muted hover:text-fg">

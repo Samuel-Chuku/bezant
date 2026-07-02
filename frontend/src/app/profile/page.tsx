@@ -91,7 +91,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Standing gauge */}
-        <div className="rounded-2xl border border-line bg-surface p-6">
+        <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Standing</div>
           <StandingGauge value={stats?.successRate != null ? stats.successRate * 100 : 0} known={stats?.successRate != null} />
           <div className="mt-2 grid grid-cols-2 gap-3 text-center text-xs">
@@ -101,7 +101,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Identity + agent */}
-        <div className="rounded-2xl border border-line border-l-2 border-l-brand/40 bg-surface p-6">
+        <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
           <div className="flex items-center gap-3">
             <Avatar address={signer.address} size={40} />
             <div className="min-w-0">
@@ -165,7 +165,7 @@ function MetricCard({
   featured?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border p-5 ${featured ? 'border-primary/40 bg-primary/10' : 'border-line bg-surface'}`}>
+    <div className={`bz-frame rounded-2xl border p-5 ${featured ? 'border-primary/40 bg-primary/10' : 'border-line bg-surface'}`}>
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted">{label}</span>
         <span className={featured ? 'text-primary' : 'text-brand'}>{glyph}</span>
@@ -244,7 +244,7 @@ function PlusIcon() {
 function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
   const pnl = Number(v.netPnlUsdc);
   return (
-    <div className="rounded-2xl border border-info/30 bg-info/10 p-6">
+    <div className="bz-frame rounded-2xl border border-info/30 bg-info/10 p-6">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-info">Verifier</div>
         <Link href="/verify" className="text-xs text-info/80 hover:text-info">
@@ -284,7 +284,7 @@ function LpPositionCard({ address }: { address: string }) {
   const hasPosition = stats?.myShares && stats.myShares !== '0';
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Financing pool</div>
         <Link href="/pool" className="text-xs text-muted hover:text-fg">
@@ -329,7 +329,7 @@ function RecentActivity() {
   const recent = [...actions, ...events];
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Recent activity</div>
         <Link href="/activity" className="text-xs text-muted hover:text-fg">

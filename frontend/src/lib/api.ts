@@ -1192,6 +1192,7 @@ export type ProtocolStats = {
   blockRange: { from: number; to: number };
   series: { t: number; funded: number; settled: number; disputed: number }[];
   recent: { tradeId: string; kind: string; amountUsdc: string | null; whenMs: number | null; txHash: string }[];
+  financedRecent: { tradeId: string; amountUsdc: string | null; whenMs: number | null; txHash: string }[];
 };
 
 export async function getProtocolStats(): Promise<ProtocolStats> {

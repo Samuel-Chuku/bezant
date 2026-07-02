@@ -109,7 +109,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-line bg-surface p-6">
+          <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
             <div className="flex items-center justify-between">
               <Eyebrow>Your standing</Eyebrow>
               <Link href="/profile" className="text-xs text-muted transition hover:text-fg">Profile ›</Link>
@@ -138,12 +138,12 @@ export default function Home() {
             </p>
           </div>
           <div className="space-y-3">
-            <div className="rounded-2xl border border-line bg-surface p-5">
+            <div className="bz-frame rounded-2xl border border-line bg-surface p-5">
               <h3 className="font-medium text-fg">Connect a wallet</h3>
               <p className="mt-1 text-xs text-muted">MetaMask, Coinbase, WalletConnect. You keep your own keys.</p>
               <div className="mt-4"><ConnectButton /></div>
             </div>
-            <div className="rounded-2xl border border-line bg-surface p-5">
+            <div className="bz-frame rounded-2xl border border-line bg-surface p-5">
               <h3 className="font-medium text-fg">Sign in with email</h3>
               <p className="mt-1 text-xs text-muted">
                 Backed by a Circle smart account on Arc. A passkey signs your transactions — no wallet required.
@@ -179,13 +179,10 @@ export default function Home() {
           Read straight from the escrow contract events. Refreshed every 15 seconds.
         </p>
 
-        {/* chart + deal tape side by side */}
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-          <div className="rounded-2xl border border-line bg-surface p-6">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">30-day activity</div>
-            <div className="mt-4">
-              {proto ? <ProtocolChart series={proto.series} /> : <div className="h-[190px] animate-pulse rounded-lg bg-surface-2" />}
-            </div>
+        {/* chart + deal tape side by side (tape caps to the chart's height) */}
+        <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-[1.5fr_1fr]">
+          <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
+            {proto ? <ProtocolChart series={proto.series} /> : <div className="h-[200px] animate-pulse rounded-lg bg-surface-2" />}
           </div>
           <DealTape deals={proto?.recent ?? []} />
         </div>
@@ -214,27 +211,54 @@ export default function Home() {
           <StatTile label="Idle" value={pool ? num(pool.idleUsdc) : '—'} unit="USDC" sub="Available to withdraw" />
           <StatTile label="Share price" value={pool ? pool.sharePrice.toFixed(4) : '—'} sub="NAV per share" />
         </div>
-        {recent.length > 0 && (
-          <div className="mt-4 rounded-2xl border border-line bg-surface p-6">
+        <div className="bz-frame mt-4 grid gap-5 rounded-2xl border border-line bg-surface p-6 md:grid-cols-2">
+          <div>
             <div className="flex items-center justify-between">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Recent deposits</div>
-              <Link href="/pool" className="text-xs text-muted transition hover:text-fg">Open pool ›</Link>
+              <Link href="/pool" className="text-xs text-muted transition hover:text-fg">Pool ›</Link>
             </div>
-            <ul className="mt-3 divide-y divide-line/70">
-              {recent.slice(0, 5).map((r) => (
-                <li key={r.key} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <span className="flex items-center gap-2.5">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                    <span className="font-mono text-xs text-muted">{shortAddress(r.lp)}</span>
-                    <span className="text-fg">staked</span>
-                    <span className="font-mono tabular-nums text-fg">{Number(r.amountUsdc).toLocaleString()} USDC</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted">{timeAgo(r.whenMs)}</span>
-                </li>
-              ))}
-            </ul>
+            {recent.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">No deposits indexed yet.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-line/70">
+                {recent.slice(0, 5).map((r) => (
+                  <li key={r.key} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                    <span className="flex items-center gap-2.5">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                      <span className="font-mono text-xs text-muted">{shortAddress(r.lp)}</span>
+                      <span className="text-fg">staked</span>
+                      <span className="font-mono tabular-nums text-fg">{Number(r.amountUsdc).toLocaleString()}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-muted">{timeAgo(r.whenMs)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        )}
+          <div className="md:border-l md:border-line md:pl-5">
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Recently financed</div>
+              <span className="font-mono text-[11px] text-muted">advances</span>
+            </div>
+            {!proto || proto.financedRecent.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">No advances drawn yet.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-line/70">
+                {proto.financedRecent.slice(0, 5).map((f) => (
+                  <li key={f.txHash} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                    <Link href={`/trade/${f.tradeId}`} className="flex items-center gap-2.5 transition hover:opacity-80">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-info" aria-hidden />
+                      <span className="font-mono text-xs text-muted">#{f.tradeId}</span>
+                      <span className="text-fg">advanced</span>
+                      <span className="font-mono tabular-nums text-fg">{f.amountUsdc ? Number(f.amountUsdc).toLocaleString() : '—'}</span>
+                    </Link>
+                    <span className="shrink-0 text-xs text-muted">{f.whenMs ? timeAgo(f.whenMs) : '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </section>
 
       {/* ── QUICK ACTIONS (compact) ──────────────────────────── */}
@@ -269,7 +293,7 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone?:
 
 function MoneyCard({ label, value, unit, hint }: { label: string; value: string; unit?: string; hint: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</div>
       <div className="mt-2 font-mono text-3xl font-semibold tabular-nums text-fg">
         {value}
@@ -282,7 +306,7 @@ function MoneyCard({ label, value, unit, hint }: { label: string; value: string;
 
 function StatTile({ label, value, unit, sub }: { label: string; value: string; unit?: string; sub?: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</div>
       <div className="mt-2 font-mono text-3xl font-semibold tabular-nums text-fg">
         {value}
@@ -295,7 +319,7 @@ function StatTile({ label, value, unit, sub }: { label: string; value: string; u
 
 function ActionTile({ title, desc, href }: { title: string; desc: string; href: string }) {
   return (
-    <Link href={href} className="group flex flex-col rounded-2xl border border-line bg-surface p-6 transition hover:-translate-y-0.5 hover:border-line-strong">
+    <Link href={href} className="bz-frame group flex flex-col rounded-2xl border border-line bg-surface p-6 transition hover:-translate-y-0.5 hover:border-line-strong">
       <div className="flex items-center justify-between">
         <h3 className="font-display text-xl font-semibold tracking-tight">{title}</h3>
         <span className="text-muted transition group-hover:text-primary" aria-hidden><ArrowIcon /></span>

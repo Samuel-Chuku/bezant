@@ -23,7 +23,7 @@ const KIND: Record<string, { label: string; dot: string }> = {
 // (rows are keyed by tx+kind, so only new ones animate on poll). Not a marquee.
 export function DealTape({ deals }: { deals: ProtocolStats['recent'] }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame flex h-full flex-col rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" aria-hidden />
@@ -35,7 +35,7 @@ export function DealTape({ deals }: { deals: ProtocolStats['recent'] }) {
       {deals.length === 0 ? (
         <p className="mt-4 text-sm text-muted">No deals indexed yet.</p>
       ) : (
-        <ul className="mt-3">
+        <ul className="mt-3 min-h-0 flex-1 overflow-y-auto">
           {deals.map((d) => {
             const k = KIND[d.kind] ?? { label: d.kind, dot: 'bg-muted' };
             return (

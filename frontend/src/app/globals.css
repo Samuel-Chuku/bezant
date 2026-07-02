@@ -168,6 +168,25 @@ body {
 @keyframes bz-fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .bz-fadein { animation: bz-fadein 0.18s var(--ease-standard); }
 
+/* Blueprint corner brackets on card-like elements: four L-marks at the corners,
+   drawn with gradient slivers so the colour is themeable via --frame. */
+.bz-frame { position: relative; }
+.bz-frame::after {
+  content: ""; position: absolute; inset: 6px; pointer-events: none;
+  --frame: rgb(var(--muted) / 0.5); --len: 13px; --w: 1.5px;
+  background:
+    linear-gradient(var(--frame), var(--frame)) top left / var(--len) var(--w) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) top left / var(--w) var(--len) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) top right / var(--len) var(--w) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) top right / var(--w) var(--len) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) bottom left / var(--len) var(--w) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) bottom left / var(--w) var(--len) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) bottom right / var(--len) var(--w) no-repeat,
+    linear-gradient(var(--frame), var(--frame)) bottom right / var(--w) var(--len) no-repeat;
+}
+/* Champagne (brand) accent variant. */
+.bz-frame.bz-frame-brand::after { --frame: var(--champ-edge); }
+
 /* App background canvas: a faint structural grid with crosshair marks at the
    intersections (Firecrawl-style), fixed behind all content. Dark by default;
    near-invisible in light. --grid-* tokens live in :root / the light override. */
