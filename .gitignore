@@ -20,6 +20,9 @@ ideas/
 **/README.md
 !/README.md
 
+# Deploy runbook — local only, not tracked.
+DEPLOY.md
+
 # Recovery files (Circle Entity Secret recovery)
 *recovery*
 *.recovery

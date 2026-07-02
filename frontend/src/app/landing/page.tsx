@@ -52,6 +52,10 @@ function BoardRow({ label, value, on }: { label: string; value: string; on?: boo
   );
 }
 
+// The landing lives on the apex; the app lives on the app subdomain. In prod
+// NEXT_PUBLIC_APP_URL points at it; empty in dev so CTAs stay relative (localhost).
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
+
 export default function LandingPage() {
   useReveal();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -62,8 +66,8 @@ export default function LandingPage() {
         <nav className="nav-links"><a href="#product">Product</a><a href="#protocol">Protocol</a><a href="https://github.com/Samuel-Chuku/bezant" target="_blank" rel="noopener">Docs</a></nav>
         <div className="nav-right">
           <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>◐</button>
-          <Link href="/" className="ghost sm">Sign in</Link>
-          <Link href="/" className="solid sm">Open the app</Link>
+          <Link href={`${APP_URL}/`} className="ghost sm">Sign in</Link>
+          <Link href={`${APP_URL}/`} className="solid sm">Open the app</Link>
         </div>
       </div></header>
 
@@ -75,7 +79,7 @@ export default function LandingPage() {
             <h1 className="serif reveal">Settle on <span className="accent">proof</span>.<br />Price on <span className="accent uline">history<svg viewBox="0 0 100 10" preserveAspectRatio="none" fill="none" aria-hidden><path d="M1 7 Q 26 1 50 6 T 99 5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg></span>.</h1>
             <p className="lead reveal">Credit-priced USDC escrow that releases on verified delivery, and rewrites your terms as your settled history grows. Bonds struck between counterparties, attested on chain, redeemed in good standing.</p>
             <div className="hero-cta reveal">
-              <Link href="/trade/create" className="coin mint"><span className="cap"><PlusIcon /></span><span className="face">Strike a bond</span></Link>
+              <Link href={`${APP_URL}/trade/create`} className="coin mint"><span className="cap"><PlusIcon /></span><span className="face">Strike a bond</span></Link>
               <a href="#protocol" className="ghost">Read the protocol</a>
             </div>
             <div className="trust reveal"><span className="sigil"><Sigil /></span><span className="mono">Built on Circle USDC</span><span className="dotsep" /><span className="mono">Arc network</span></div>
@@ -191,7 +195,7 @@ export default function LandingPage() {
       {/* FOOTER */}
       <footer><span className="orb" aria-hidden /><div className="wrap">
         <p className="foot-cta reveal">Strike your first bond.</p>
-        <Link href="/trade/create" className="coin mint reveal"><span className="cap"><ArrowIcon /></span><span className="face">Open the app</span></Link>
+        <Link href={`${APP_URL}/trade/create`} className="coin mint reveal"><span className="cap"><ArrowIcon /></span><span className="face">Open the app</span></Link>
         <div className="foot-grid">
           <div><span className="wordmark">bezant<span className="dot">.</span></span><p className="foot-desc">Trust infrastructure for stablecoin trade. Settlement you can weigh.</p></div>
           <div className="foot-col"><h5>Product</h5><a href="#">Bonds</a><a href="#">Verify</a><a href="#">Pool</a><a href="#">Bridge</a></div>

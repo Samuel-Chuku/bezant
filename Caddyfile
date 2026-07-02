@@ -1,0 +1,12 @@
+# Auto-HTTPS for the backend API only. The frontend (bezant.trade + app.bezant.trade)
+# is served by Vercel. Requires a public DNS A record for api.bezant.trade pointing
+# at this host (Cloudflare: DNS-only / grey cloud so Caddy can complete the ACME
+# challenge directly), plus ports 80 + 443 open. Set your ACME contact email below.
+{
+	email admin@bezant.trade
+}
+
+api.bezant.trade {
+	encode zstd gzip
+	reverse_proxy backend:3001
+}

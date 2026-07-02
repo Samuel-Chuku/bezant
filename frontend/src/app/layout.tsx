@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Fraunces, Bricolage_Grotesque, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -42,7 +43,12 @@ export const metadata: Metadata = {
   description: 'Trade finance for stablecoins. Escrow that releases on verified delivery.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // On the marketing apex (bezant.trade), "/" is rewritten to the landing, which
+  // brings its own chrome — so suppress the app nav/sidebar/footer entirely.
+  // The app subdomain, local dev, and Vercel previews render the full app shell.
+  const host = ((await headers()).get('host') ?? '').split(':')[0];
+  const isMarketing = host === 'bezant.trade' || host === 'www.bezant.trade';
   return (
     <html lang="en" className={`${fraunces.variable} ${bricolage.variable} ${jetbrainsMono.variable}`}>
       <body>
@@ -56,14 +62,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <Providers>
           <ToastProvider>
-            <TopNav />
-            <CommandPalette />
-            <ProfileSetupBanner />
-            {children}
-            <AppFooter />
-            {/* SidebarSummary self-positions: fixed + draggable at lg+,
-                inline panel below content under lg. */}
-            <SidebarSummary />
+            {isMarketing ? (
+              children
+            ) : (
+              <>
+                <TopNav />
+                <CommandPalette />
+                <ProfileSetupBanner />
+                {children}
+                <AppFooter />
+                {/* SidebarSummary self-positions: fixed + draggable at lg+,
+                    inline panel below content under lg. */}
+                <SidebarSummary />
+              </>
+            )}
           </ToastProvider>
         </Providers>
       </body>
