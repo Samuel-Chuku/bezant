@@ -21,9 +21,10 @@ const KIND: Record<string, { label: string; dot: string }> = {
 
 // A live "deal tape": newest deal prints on top; each newly-arrived row fades in
 // (rows are keyed by tx+kind, so only new ones animate on poll). Not a marquee.
-export function DealTape({ deals }: { deals: ProtocolStats['recent'] }) {
+export function DealTape({ deals, limit = 7 }: { deals: ProtocolStats['recent']; limit?: number }) {
+  const shown = deals.slice(0, limit);
   return (
-    <div className="bz-frame flex h-full flex-col rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" aria-hidden />
@@ -32,11 +33,11 @@ export function DealTape({ deals }: { deals: ProtocolStats['recent'] }) {
         <span className="font-mono text-[11px] text-muted">as they land</span>
       </div>
 
-      {deals.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="mt-4 text-sm text-muted">No deals indexed yet.</p>
       ) : (
-        <ul className="mt-3 min-h-0 flex-1 overflow-y-auto">
-          {deals.map((d) => {
+        <ul className="mt-3">
+          {shown.map((d) => {
             const k = KIND[d.kind] ?? { label: d.kind, dot: 'bg-muted' };
             return (
               <li

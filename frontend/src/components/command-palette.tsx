@@ -71,7 +71,7 @@ export function CommandPalette() {
       onMouseDown={() => setOpen(false)}
     >
       <div
-        className="bz-fadein w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-bg shadow-2xl"
+        className="bz-frame bz-fadein w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-bg shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-line px-4">

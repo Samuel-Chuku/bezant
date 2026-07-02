@@ -277,7 +277,7 @@ export function PanelModal({ v, me, onClose }: { v: VerificationState; me: strin
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div role="dialog" aria-label="Panel decision" className="relative w-full max-w-md rounded-2xl border border-info/30 bg-bg p-5 shadow-2xl">
+      <div role="dialog" aria-label="Panel decision" className="bz-frame relative w-full max-w-md rounded-2xl border border-info/30 bg-bg p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold tracking-tight text-fg">Panel decision</h3>

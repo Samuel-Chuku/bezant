@@ -69,7 +69,7 @@ export function NotificationsBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-bg shadow-2xl"
+          className="bz-frame absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-bg shadow-2xl"
         >
           <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <h3 className="text-sm font-medium text-fg">Notifications</h3>

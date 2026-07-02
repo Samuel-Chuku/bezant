@@ -111,26 +111,10 @@ export function SolanaLogo({ className }: Props) {
   );
 }
 
-// Arc's arch mark: white→silver arch with a foot on a dark rounded tile.
-// Recreation of the official logo — swap for the exact asset if available.
+// Official Arc mark (public/arc-logo.svg) — a self-contained circular badge.
 export function ArcChainBadge({ className }: Props) {
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
-      <defs>
-        <linearGradient id="arc-bg" x1="0" y1="0" x2="0" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#18222f" />
-          <stop offset="1" stopColor="#0b111a" />
-        </linearGradient>
-        <linearGradient id="arc-mark" x1="16" y1="6" x2="16" y2="27" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#f6f8fb" />
-          <stop offset="1" stopColor="#b9c1cd" />
-        </linearGradient>
-      </defs>
-      <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#arc-bg)" stroke="#2a3646" strokeWidth="1" />
-      <path d="M8 26 V15 a8 8 0 0 1 16 0 V26" fill="none" stroke="url(#arc-mark)" strokeWidth="4.2" strokeLinecap="round" />
-      <path d="M24 21 h-4.6" fill="none" stroke="url(#arc-mark)" strokeWidth="4.2" strokeLinecap="round" />
-    </svg>
-  );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/arc-logo.svg" alt="Arc" className={className ?? 'h-6 w-6'} aria-hidden />;
 }
 
 // Bridge source keys plus Avalanche Fuji (a Gateway payout destination that

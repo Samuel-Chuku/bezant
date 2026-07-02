@@ -16,7 +16,8 @@ export function BridgeProgressModal({ run, onClose, tail }: { run: BridgeRun; on
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => (running ? undefined : onClose())} />
-      <div className="relative w-full max-w-sm rounded-2xl border border-line bg-bg shadow-2xl">
+      <div className="bz-frame relative w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-bg shadow-2xl">
+        <span className="bz-livebar" aria-hidden />
         <div className="border-b border-line px-5 py-3.5">
           <p className="text-sm font-medium text-fg">
             {run.status === 'success' ? 'Bridge complete' : run.status === 'error' ? 'Bridge failed' : `Bridging ${run.amount} USDC`}

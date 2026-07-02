@@ -170,10 +170,13 @@ body {
 
 /* Blueprint corner brackets on card-like elements: four L-marks at the corners,
    drawn with gradient slivers so the colour is themeable via --frame. */
+/* Framed elements go angular (sharp corners) so the corner brackets lap exactly.
+   Doubled class beats Tailwind's rounded-* utility without !important. */
+.bz-frame.bz-frame { border-radius: 0; }
 .bz-frame { position: relative; }
 .bz-frame::after {
-  content: ""; position: absolute; inset: 6px; pointer-events: none;
-  --frame: rgb(var(--muted) / 0.5); --len: 13px; --w: 1.5px;
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  --frame: rgb(var(--muted) / 0.55); --len: 14px; --w: 1.5px;
   background:
     linear-gradient(var(--frame), var(--frame)) top left / var(--len) var(--w) no-repeat,
     linear-gradient(var(--frame), var(--frame)) top left / var(--w) var(--len) no-repeat,
@@ -186,6 +189,19 @@ body {
 }
 /* Champagne (brand) accent variant. */
 .bz-frame.bz-frame-brand::after { --frame: var(--champ-edge); }
+
+/* "Powered by" Circle wordmark: dark artwork inverts to legible white on the
+   dark theme; natural colours on light. */
+.circle-mark { filter: brightness(0) invert(1); opacity: 0.85; }
+:root[data-theme='light'] .circle-mark { filter: none; opacity: 1; }
+
+/* Modal live indicator: a thin shimmer bar that signals the panel is working. */
+.bz-livebar { position: absolute; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; border-radius: inherit; }
+.bz-livebar::before {
+  content: ""; position: absolute; top: 0; height: 100%; width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(var(--primary)), transparent);
+  animation: bz-shimmer 1.6s var(--ease-standard) infinite;
+}
 
 /* App background canvas: a faint structural grid with crosshair marks at the
    intersections (Firecrawl-style), fixed behind all content. Dark by default;

@@ -10,7 +10,7 @@ export function OfficerReviewModal({ review, onClose }: { review: OfficerReview;
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div role="dialog" aria-label="Trade Officer review" className="relative w-full max-w-md rounded-2xl border border-line bg-bg p-5 shadow-2xl">
+      <div role="dialog" aria-label="Trade Officer review" className="bz-frame relative w-full max-w-md rounded-2xl border border-line bg-bg p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold tracking-tight text-fg">Trade Officer review</h3>

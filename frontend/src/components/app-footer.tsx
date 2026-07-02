@@ -73,7 +73,15 @@ export function AppFooter() {
               {s}
             </a>
           ))}
-          <span className="ml-auto font-mono text-xs text-muted">Built on Circle USDC + Arc · testnet</span>
+          <span className="ml-auto inline-flex items-center gap-2 font-mono text-xs text-muted">
+            Built on
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/circle-icon.svg" alt="" className="h-4 w-4" aria-hidden />
+            USDC +
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/arc-logo.svg" alt="" className="h-4 w-4" aria-hidden />
+            Arc · testnet
+          </span>
         </div>
       </div>
     </footer>

@@ -99,7 +99,8 @@ export function TxFlowProvider({ children }: { children: ReactNode }) {
       {spec && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => (running ? undefined : close(allDone))} />
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+          <div className="bz-frame relative w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <span className="bz-livebar" aria-hidden />
             {/* Header */}
             <div className="flex items-center justify-between border-b border-line px-6 py-4">
               <h2 className="text-lg font-semibold text-fg">{spec.title}</h2>

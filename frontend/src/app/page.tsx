@@ -179,12 +179,9 @@ export default function Home() {
           Read straight from the escrow contract events. Refreshed every 15 seconds.
         </p>
 
-        {/* chart + deal tape side by side (tape caps to the chart's height) */}
-        <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-[1.5fr_1fr]">
-          <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
-            {proto ? <ProtocolChart series={proto.series} /> : <div className="h-[200px] animate-pulse rounded-lg bg-surface-2" />}
-          </div>
-          <DealTape deals={proto?.recent ?? []} />
+        {/* full-width chart */}
+        <div className="bz-frame mt-6 border border-line bg-surface p-6">
+          {proto ? <ProtocolChart series={proto.series} height={280} /> : <div className="h-[280px] animate-pulse bg-surface-2" />}
         </div>
 
         {/* protocol stat grid — uniform, clean */}
@@ -195,6 +192,11 @@ export default function Home() {
           <StatTile label="USDC funded" value={proto ? num(proto.usdcFundedUsdc) : '—'} unit="USDC" sub="Locked into escrow" />
           <StatTile label="USDC released" value={proto ? num(proto.usdcReleasedUsdc) : '—'} unit="USDC" sub="Paid on proof" />
           <StatTile label="Financed" value={proto ? String(proto.financed) : '—'} sub={proto ? `${num(proto.usdcFinancedUsdc)} USDC advanced` : undefined} />
+        </div>
+
+        {/* deal tape below the numbers, latest 7 */}
+        <div className="mt-4">
+          <DealTape deals={proto?.recent ?? []} limit={7} />
         </div>
       </section>
 
@@ -271,8 +273,14 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="mt-16 text-xs text-muted">
-        Live on <span className="font-mono">Arc Testnet</span> · USDC by Circle.
+      <footer className="mt-16 inline-flex items-center gap-2 text-xs text-muted">
+        Live on
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/arc-logo.svg" alt="" className="h-4 w-4" aria-hidden />
+        <span className="font-mono">Arc Testnet</span> · USDC by
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/circle-icon.svg" alt="" className="h-4 w-4" aria-hidden />
+        Circle
       </footer>
     </main>
   );

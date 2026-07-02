@@ -156,7 +156,7 @@ export function WalletPill() {
         <span className="hidden text-muted sm:inline" aria-hidden>
           ·
         </span>
-        <span className="hidden text-[11px] text-fg sm:inline">{balanceText}</span>
+        <span className="hidden text-[13px] font-medium text-fg sm:inline">{balanceText}</span>
         <span className="ml-1">
           <Avatar address={signer.address} size={26} />
         </span>
@@ -353,28 +353,10 @@ function PasskeyPopover({
   );
 }
 
-// Small chain-style badge for the left of the pill - communicates "this
-// address is on Arc". Cyan accent to match the network identity used by
-// most Arc surfaces; deliberately distinct from our emerald brand color
-// so it reads as a *network* indicator rather than as the app logo.
+// Arc network badge on the left of the pill — the official Arc mark.
 function ArcChainBadge() {
-  return (
-    <span
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-cyan-900/40 ring-1 ring-cyan-500/40"
-      aria-label="Arc Testnet"
-    >
-      <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden>
-        <path
-          d="M4 17 A 10 10 0 0 1 20 17"
-          stroke="rgb(103, 232, 249)"
-          strokeWidth="3"
-          fill="none"
-          strokeLinecap="round"
-        />
-        <circle cx="12" cy="19" r="1.5" fill="rgb(103, 232, 249)" />
-      </svg>
-    </span>
-  );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/arc-logo.svg" alt="Arc Testnet" className="h-6 w-6" />;
 }
 
 function WalletGlyph() {

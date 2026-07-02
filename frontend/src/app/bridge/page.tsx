@@ -22,8 +22,13 @@ export default function BridgePage() {
       </header>
 
       <div className="grid gap-7 lg:grid-cols-[370px_minmax(0,1fr)_390px]">
-        <aside>
+        <aside className="space-y-5">
           <BridgeBalancesPanel />
+          <div className="bz-frame flex flex-col items-center justify-center border border-line bg-surface/40 px-6 py-10">
+            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Powered by</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/circle-logo-2021.svg" alt="Circle" className="circle-mark mt-4 w-44" />
+          </div>
         </aside>
 
         <div>

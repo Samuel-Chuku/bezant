@@ -58,7 +58,7 @@ type Submission =
 
 // Bigger, taller inputs for the wizard (readability on the wide layout).
 const bigField =
-  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3.5 text-base text-fg placeholder:text-muted transition focus:border-primary focus:outline-none';
+  'w-full rounded-none border border-line bg-surface-2 px-4 py-3.5 text-base text-fg placeholder:text-muted transition focus:border-primary focus:outline-none';
 
 export default function CreateTradePage() {
   const signer = useSigner();
@@ -217,7 +217,7 @@ export default function CreateTradePage() {
           <div className="bz-fadein space-y-6">
             <div>
               <label className="text-base font-medium text-fg">Bond amount</label>
-              <div className="mt-2 flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3 transition focus-within:border-primary">
+              <div className="mt-2 flex items-center gap-3 rounded-none border border-line bg-surface-2 px-4 py-3 transition focus-within:border-primary">
                 <input
                   value={amountUsdc}
                   onChange={(e) => setAmountUsdc(e.target.value)}
