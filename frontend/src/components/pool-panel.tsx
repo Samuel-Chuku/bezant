@@ -84,7 +84,7 @@ export function PoolPanel() {
   };
 
   return (
-    <div className="rounded-xl border border-line bg-bg/50 p-4">
+    <div className="bz-frame rounded-xl border border-line bg-bg/50 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xs uppercase tracking-wide text-muted">Financing pool (LP)</h2>
         {stats && <span className="text-xs text-muted">share price {stats.sharePrice.toFixed(4)}</span>}
@@ -199,7 +199,7 @@ function AmountModal({
       <div
         role="dialog"
         aria-label={isDeposit ? 'Deposit to pool' : 'Withdraw from pool'}
-        className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-2xl"
+        className="relative w-full max-w-sm bz-frame rounded-2xl border border-line bg-surface p-5 shadow-2xl"
       >
         <h3 className="text-lg font-semibold tracking-tight text-fg">{isDeposit ? 'Deposit USDC' : 'Withdraw USDC'}</h3>
         <p className="mt-1 text-xs text-muted">

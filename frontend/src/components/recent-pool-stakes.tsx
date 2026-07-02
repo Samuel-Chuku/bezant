@@ -28,7 +28,7 @@ export function RecentPoolStakes() {
           No deposits yet - be the first to provide liquidity.
         </p>
       ) : (
-        <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-bg/40">
+        <ul className="bz-frame mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-bg/40">
           {items.map((s) => (
             <li key={s.key} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface/40">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">

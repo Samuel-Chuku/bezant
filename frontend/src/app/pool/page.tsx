@@ -28,7 +28,7 @@ export default function PoolPage() {
 
       {tab === 'overview' && (
         <div className="bz-fadein">
-          <div className="mt-6 rounded-lg border border-warn/40 bg-warn/15 px-4 py-3 text-xs leading-relaxed text-fg">
+          <div className="bz-frame mt-6 rounded-lg border border-warn/40 bg-warn/15 px-5 py-4 text-sm leading-relaxed text-fg">
             <span className="font-medium text-warn">Risk:</span> you bear credit risk. If a financed bond is refunded or the buyer wins a dispute, the advance is written off and the loss is
             shared across all LPs (share price can fall below 1.0). Withdrawals are capped at idle
             liquidity - capital in live advances is locked until those bonds settle.
