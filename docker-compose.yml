@@ -1,9 +1,9 @@
-# Bezant backend stack on the VPS: Caddy (auto-HTTPS) → backend (Fastify + SQLite).
-# The frontend is hosted on Vercel, not here. Copy deploy.env.example to .env,
-# fill it in, then `docker compose up -d --build`.
+# Bezant backend on the VPS. The host's existing nginx reverse-proxies
+# api.bezant.trade → this container and terminates TLS (certbot). The frontend
+# is on Vercel. Copy deploy.env.example to .env, fill it in, then:
+#   docker compose up -d --build
 #
-# NOTE: the backend is single-instance ONLY (embedded SQLite + polling indexer).
-# Do not add `deploy.replicas` or scale it horizontally.
+# NOTE: single-instance ONLY (embedded SQLite + polling indexer). Do not scale.
 
 services:
   backend:
@@ -11,33 +11,13 @@ services:
       context: ./backend
     env_file: .env
     environment:
-      # Persist DB + deliverables onto the named volume mounted below.
       DB_PATH: /app/data/arc.db
+    # Published to localhost only — nginx on the host proxies it; not public.
+    ports:
+      - "127.0.0.1:3001:3001"
     volumes:
       - backend-data:/app/data
-    expose:
-      - "3001"
     restart: unless-stopped
-    networks: [web]
-
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - backend
-    restart: unless-stopped
-    networks: [web]
 
 volumes:
   backend-data:
-  caddy-data:
-  caddy-config:
-
-networks:
-  web:
