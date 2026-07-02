@@ -31,9 +31,10 @@ const insertTrade = db.prepare(
    VALUES (?, ?, ?, ?, ?)`,
 );
 const insertEvent = db.prepare(
-  `INSERT OR IGNORE INTO trade_events (trade_id, kind, actor, amount_raw, block_number, tx_hash, log_index)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  `INSERT OR IGNORE INTO trade_events (trade_id, kind, actor, amount_raw, block_number, block_time, tx_hash, log_index)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
+const backfillEventTime = db.prepare('UPDATE trade_events SET block_time = ? WHERE block_number = ? AND block_time IS NULL');
 const insertPoolEvent = db.prepare(
   `INSERT OR IGNORE INTO pool_events (lp, kind, assets_raw, shares_raw, block_number, block_time, tx_hash, log_index)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -70,6 +71,20 @@ async function tick(log: FastifyBaseLogger): Promise<void> {
     const raw = await arcClient.getLogs({ address: ESCROW, fromBlock: from, toBlock: to });
     const parsed = parseEventLogs({ abi: tradeEscrowAbi, logs: raw });
 
+    // Block → unix ms for this chunk (one fetch per distinct block), so each
+    // event carries a real timestamp for the protocol activity graph / deal tape.
+    const tsByBlock = new Map<bigint, number>();
+    await Promise.all(
+      [...new Set(parsed.map((ev) => ev.blockNumber))].map(async (b) => {
+        try {
+          const blk = await arcClient.getBlock({ blockNumber: b });
+          tsByBlock.set(b, Number(blk.timestamp) * 1000);
+        } catch {
+          /* leave unset → null block_time */
+        }
+      }),
+    );
+
     for (const ev of parsed) {
       const args = ev.args as Record<string, unknown>;
       const id = args.id as bigint | undefined;
@@ -81,6 +96,7 @@ async function tick(log: FastifyBaseLogger): Promise<void> {
         actorOf(args),
         amountOf(args),
         Number(ev.blockNumber),
+        tsByBlock.get(ev.blockNumber) ?? null,
         ev.transactionHash,
         ev.logIndex ?? 0,
       );
@@ -110,8 +126,33 @@ async function tick(log: FastifyBaseLogger): Promise<void> {
 
   const verifierEvents = VERIFIER ? await tickVerifier(head) : 0;
 
+  // Backfill block_time for legacy trade_events rows (bounded per tick so it
+  // drains without stalling the loop).
+  await backfillTradeEventTimes();
+
   if (trades > 0 || events > 0 || poolEvents > 0 || verifierEvents > 0)
     log.info({ trades, events, poolEvents, verifierEvents, head: head.toString() }, 'trade indexer caught up');
+}
+
+// One-time-ish backfill of block_time for trade_events indexed before the column
+// existed. Processes a bounded batch of distinct blocks per call.
+async function backfillTradeEventTimes(): Promise<void> {
+  const blocks = (
+    db.prepare('SELECT DISTINCT block_number FROM trade_events WHERE block_time IS NULL LIMIT 40').all() as {
+      block_number: number;
+    }[]
+  ).map((r) => r.block_number);
+  if (blocks.length === 0) return;
+  await Promise.all(
+    blocks.map(async (b) => {
+      try {
+        const blk = await arcClient.getBlock({ blockNumber: BigInt(b) });
+        backfillEventTime.run(Number(blk.timestamp) * 1000, b);
+      } catch {
+        /* skip; retried next tick */
+      }
+    }),
+  );
 }
 
 // Scan StakedVerifierModule Staked/Unstaked into verifier_events. Checkpoint is

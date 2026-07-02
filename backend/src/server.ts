@@ -3093,6 +3093,111 @@ app.get<{ Querystring: { address?: string } }>('/arc/trade/pool', async (request
   return out;
 });
 
+// Protocol-wide, contract-derived stats: counts + USDC sums by event kind, a
+// 30-day daily activity series (funded / settled / disputed), the indexed block
+// range, and the most-recent deals for the live tape. Served from the trade
+// indexer DB, so it's a real read of the on-chain events for the whole protocol.
+app.get('/arc/trades/stats', async (_request, reply) => {
+  if (!escrowReady(reply)) return;
+
+  const countOf = (kind: string) =>
+    (db.prepare('SELECT COUNT(*) n FROM trade_events WHERE kind = ?').get(kind) as { n: number }).n;
+  const sumUsdc = (kind: string) => {
+    const rows = db
+      .prepare('SELECT amount_raw FROM trade_events WHERE kind = ? AND amount_raw IS NOT NULL')
+      .all(kind) as { amount_raw: string }[];
+    let s = 0n;
+    for (const r of rows) {
+      try {
+        s += BigInt(r.amount_raw);
+      } catch {
+        /* skip non-numeric */
+      }
+    }
+    return formatUnits(s, 6);
+  };
+
+  const totalDeals = (db.prepare('SELECT COUNT(*) n FROM trade_index').get() as { n: number }).n;
+
+  // Vault (financing pool) principal staked across LP positions.
+  let vault = 0n;
+  for (const r of db.prepare("SELECT assets_raw FROM pool_events WHERE kind = 'pool-deposit'").all() as {
+    assets_raw: string;
+  }[]) {
+    try {
+      vault += BigInt(r.assets_raw);
+    } catch {
+      /* skip */
+    }
+  }
+
+  // Live pool TVL from the contract.
+  let poolTvlUsdc = '0';
+  try {
+    const p = await getPoolStats();
+    poolTvlUsdc = formatUnits(p.totalAssets, 6);
+  } catch {
+    /* pool unreachable → leave 0 */
+  }
+
+  // 30-day daily activity series from block_time (unix ms).
+  const days = 30;
+  const dayMs = 86_400_000;
+  const now = Date.now();
+  const start = now - (days - 1) * dayMs;
+  const series = Array.from({ length: days }, (_, i) => ({ t: start + i * dayMs, funded: 0, settled: 0, disputed: 0 }));
+  const timed = db
+    .prepare('SELECT kind, block_time FROM trade_events WHERE block_time IS NOT NULL AND block_time >= ?')
+    .all(start) as { kind: string; block_time: number }[];
+  for (const e of timed) {
+    const idx = Math.floor((e.block_time - start) / dayMs);
+    if (idx < 0 || idx >= days) continue;
+    if (e.kind === 'TradeFunded') series[idx].funded += 1;
+    else if (e.kind === 'Released') series[idx].settled += 1;
+    else if (e.kind === 'Disputed' || e.kind === 'Refunded') series[idx].disputed += 1;
+  }
+
+  const range = db.prepare('SELECT MIN(block_number) lo, MAX(block_number) hi FROM trade_events').get() as {
+    lo: number | null;
+    hi: number | null;
+  };
+
+  // Most-recent meaningful deals for the live tape.
+  const KINDS = ['TradeFunded', 'Released', 'Disputed', 'Refunded', 'Attested', 'FinancingAdvanced', 'TradeProposed', 'TradeAgreed'];
+  const recentRows = db
+    .prepare(
+      `SELECT trade_id, kind, amount_raw, block_time, tx_hash FROM trade_events
+       WHERE kind IN (${KINDS.map(() => '?').join(',')})
+       ORDER BY block_number DESC, log_index DESC LIMIT 14`,
+    )
+    .all(...KINDS) as { trade_id: number; kind: string; amount_raw: string | null; block_time: number | null; tx_hash: string }[];
+  const recent = recentRows.map((r) => ({
+    tradeId: String(r.trade_id),
+    kind: r.kind,
+    amountUsdc: r.amount_raw ? formatUnits(BigInt(r.amount_raw), 6) : null,
+    whenMs: r.block_time,
+    txHash: r.tx_hash,
+  }));
+
+  return {
+    totalDeals,
+    funded: countOf('TradeFunded'),
+    settled: countOf('Released'),
+    disputed: countOf('Disputed'),
+    refunded: countOf('Refunded'),
+    attested: countOf('Attested'),
+    financed: countOf('FinancingAdvanced'),
+    usdcFundedUsdc: sumUsdc('TradeFunded'),
+    usdcReleasedUsdc: sumUsdc('Released'),
+    usdcFinancedUsdc: sumUsdc('FinancingAdvanced'),
+    vaultDepositsUsdc: formatUnits(vault, 6),
+    poolTvlUsdc,
+    blockRange: { from: range.lo ?? 0, to: range.hi ?? 0 },
+    series,
+    recent,
+  };
+});
+
 // ---- LP deposit / withdraw - signed (Circle wallet) + unsigned (own wallet) ----
 
 app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/arc/trade/pool/deposit', async (request, reply) => {

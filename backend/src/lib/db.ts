@@ -247,6 +247,7 @@ db.exec(`
     actor        TEXT,
     amount_raw   TEXT,
     block_number INTEGER NOT NULL,
+    block_time   INTEGER,
     tx_hash      TEXT NOT NULL,
     log_index    INTEGER NOT NULL,
     indexed_at   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -418,6 +419,14 @@ const colNames = new Set(deliverableCols.map((c) => c.name));
 const vaCols = db.prepare("SELECT name FROM pragma_table_info('verification_assignments')").all() as { name: string }[];
 if (vaCols.length > 0 && !new Set(vaCols.map((c) => c.name)).has('module')) {
   db.exec("ALTER TABLE verification_assignments ADD COLUMN module TEXT NOT NULL DEFAULT ''");
+}
+
+// Idempotent migration: trade_events gained block_time (unix ms) for the
+// protocol activity graph + deal tape. Pre-existing rows are backfilled lazily
+// by the trade indexer on next run.
+const teCols = db.prepare("SELECT name FROM pragma_table_info('trade_events')").all() as { name: string }[];
+if (teCols.length > 0 && !new Set(teCols.map((c) => c.name)).has('block_time')) {
+  db.exec('ALTER TABLE trade_events ADD COLUMN block_time INTEGER');
 }
 
 if (!colNames.has('mime')) db.exec('ALTER TABLE deliverables ADD COLUMN mime TEXT');
