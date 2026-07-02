@@ -105,7 +105,7 @@ export function TxReviewProvider({ children }: { children: ReactNode }) {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => (inFlight ? undefined : onCancel())}
           />
-          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+          <div className="relative w-full max-w-sm overflow-hidden bz-frame rounded-2xl border border-line bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
               <span className="text-base font-semibold text-fg">{meta.title}</span>
               {!inFlight && (

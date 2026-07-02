@@ -27,7 +27,7 @@ export function HandlePrompt({ onClaim, onSkip }: HandlePromptProps) {
   };
 
   return (
-    <div className="rounded-2xl border border-line bg-surface/50 p-6">
+    <div className="bz-frame rounded-2xl border border-line bg-surface/50 p-6">
       <h3 className="font-medium">Want to claim a handle?</h3>
       <p className="mt-1 text-sm text-muted">
         Pick a short name people can use to find or address you. It&apos;s optional. You can keep

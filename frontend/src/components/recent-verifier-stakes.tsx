@@ -70,9 +70,9 @@ export function RecentVerifierStakes() {
       {rows === null ? (
         <p className="mt-3 text-sm text-muted">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="mt-3 rounded-xl border border-line bg-surface px-3 py-8 text-center text-sm text-muted">{empty}</p>
+        <p className="mt-3 bz-frame rounded-xl border border-line bg-surface px-3 py-8 text-center text-sm text-muted">{empty}</p>
       ) : (
-        <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+        <ul className="mt-3 divide-y divide-line overflow-hidden bz-frame rounded-xl border border-line bg-surface">
           {rows.map((s) => (
             <li key={s.key} className="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-surface-2">
               <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${s.isStake ? 'bg-primary/10 text-primary' : 'bg-warn/10 text-warn'}`}>

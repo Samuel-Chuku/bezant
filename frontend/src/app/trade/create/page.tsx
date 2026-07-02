@@ -293,7 +293,7 @@ export default function CreateTradePage() {
           <div className="bz-fadein space-y-6">
             {signer.isConnected && <PassportPanel address={signer.address} />}
 
-            <dl className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+            <dl className="divide-y divide-line overflow-hidden bz-frame rounded-xl border border-line bg-surface">
               <SummaryRow label="Seller" onEdit={() => setStepIdx(0)}>{sellerInput || '—'}</SummaryRow>
               <SummaryRow label="Amount" onEdit={() => setStepIdx(1)}>
                 <span className="font-mono">{amountUsdc || '0'} USDC</span>
@@ -309,7 +309,7 @@ export default function CreateTradePage() {
               )}
             </dl>
 
-            <div className="grid gap-4 rounded-xl border border-line bg-surface p-5 sm:grid-cols-3">
+            <div className="grid gap-4 bz-frame rounded-xl border border-line bg-surface p-5 sm:grid-cols-3">
               {STRIKE_STEPS.map(([t, d]) => (
                 <div key={t}>
                   <div className="text-xs font-semibold uppercase tracking-wider text-brand">{t}</div>

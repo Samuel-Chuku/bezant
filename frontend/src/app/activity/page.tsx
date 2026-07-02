@@ -87,7 +87,7 @@ export default function ActivityPage() {
       )}
 
       {!signer.isConnected && (
-        <section className="rounded-2xl border border-line bg-surface/40 p-6">
+        <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-6">
           <p className="text-sm text-fg">Connect a wallet to see your activity.</p>
         </section>
       )}
@@ -99,7 +99,7 @@ export default function ActivityPage() {
       {signer.isConnected && !isError && isLoading && items.length === 0 && (
         <ul className="space-y-2">
           {[0, 1, 2, 3].map((i) => (
-            <li key={i} className="animate-pulse rounded-xl border border-line bg-surface/40 p-4">
+            <li key={i} className="animate-pulse bz-frame rounded-xl border border-line bg-surface/40 p-4">
               <div className="h-3 w-20 rounded bg-surface-2" />
               <div className="mt-2 h-4 w-3/4 rounded bg-surface-2" />
             </li>
@@ -108,7 +108,7 @@ export default function ActivityPage() {
       )}
 
       {signer.isConnected && !isError && !isLoading && items.length === 0 && (
-        <section className="rounded-2xl border border-line bg-surface/40 p-6 text-center">
+        <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-6 text-center">
           <p className="text-sm text-fg">No activity yet.</p>
           <p className="mt-2 text-xs text-muted">
             Strike a bond or deposit into the pool and it&apos;ll show up here.
@@ -169,7 +169,7 @@ function ActivityCard({ item, onOpen }: { item: NotificationItem; onOpen: () => 
         tabIndex={0}
         onClick={onOpen}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
-        className={`flex w-full cursor-pointer items-start justify-between gap-3 rounded-xl border border-line bg-surface/40 p-4 text-left transition hover:border-line-strong ${
+        className={`flex w-full cursor-pointer items-start justify-between gap-3 bz-frame rounded-xl border border-line bg-surface/40 p-4 text-left transition hover:border-line-strong ${
           item.read ? 'opacity-60' : ''
         }`}
       >

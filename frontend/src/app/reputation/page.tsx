@@ -36,7 +36,7 @@ export default function ReputationIndexPage() {
       </header>
 
       {!signer.isConnected && (
-        <section className="rounded-2xl border border-line bg-surface/40 p-6">
+        <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-6">
           <p className="text-sm text-fg">
             Connect a wallet to see your linked agent&apos;s reputation.
           </p>

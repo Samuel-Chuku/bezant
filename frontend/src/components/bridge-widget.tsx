@@ -414,7 +414,7 @@ export function BridgeWidget({
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-line bg-surface/40 p-7">{children}</section>
+    <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-7">{children}</section>
   );
 }
 

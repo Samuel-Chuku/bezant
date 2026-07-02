@@ -116,7 +116,7 @@ export default function ReputationPage({
 
       {data && (
         <>
-          <section className="rounded-2xl border border-line bg-surface/40 p-5">
+          <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-5">
             <h2 className="text-sm font-medium text-fg">Summary</h2>
             {data.summary.count === 0 ? (
               <p className="mt-3 text-sm text-muted">
@@ -138,7 +138,7 @@ export default function ReputationPage({
           </section>
 
           {data.totalFeedback > 0 && (
-            <section className="mt-6 rounded-2xl border border-line bg-surface/40 p-5">
+            <section className="mt-6 bz-frame rounded-2xl border border-line bg-surface/40 p-5">
               <PaginationHeader data={data} page={page} pageSize={PAGE_SIZE} />
               {loading && (
                 <p className="mt-3 text-xs text-muted">Loading page…</p>

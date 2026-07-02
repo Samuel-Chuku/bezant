@@ -14,7 +14,7 @@ export function BridgeBalancesPanel() {
   if (!signer.isConnected) return null;
 
   return (
-    <aside className="rounded-2xl border border-line bg-surface/40 p-6 shadow-sm">
+    <aside className="bz-frame rounded-2xl border border-line bg-surface/40 p-6 shadow-sm">
       <div>
         <h2 className="text-lg font-medium text-fg">
           Your USDC balances across chains

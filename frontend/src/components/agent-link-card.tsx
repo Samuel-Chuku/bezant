@@ -135,7 +135,7 @@ export function AgentLinkCard({
   // ── Full standalone card ──
   if (currentAgentId !== null) {
     return (
-      <section className="rounded-2xl border border-line bg-surface/40 p-5">
+      <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-5">
         <h2 className="text-sm font-medium text-fg">ERC-8004 agent linked</h2>
         <p className="mt-1 text-xs text-muted">
           Reputation reads on this address will resolve to agent <span className="font-mono">#{currentAgentId}</span>.
@@ -162,7 +162,7 @@ export function AgentLinkCard({
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-surface/40 p-5">
+    <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-5">
       <h2 className="text-sm font-medium text-fg">Link your ERC-8004 agent</h2>
       <p className="mt-1 text-xs text-muted">
         Optional. If you own an agent on the IdentityRegistry, link its agentId here to surface your reputation across Bezant.

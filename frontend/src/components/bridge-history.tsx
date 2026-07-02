@@ -120,7 +120,7 @@ export function BridgeHistory({
   const empty = !liveVisible && visible.length === 0;
 
   return (
-    <section className="rounded-2xl border border-line bg-surface/40 p-6">
+    <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-6">
       <h2 className="text-lg font-medium text-fg">Recent bridges</h2>
       <p className="mt-1.5 text-sm text-muted">
         Inbound arrivals are indexed server-side and survive browser clears.

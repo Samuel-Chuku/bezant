@@ -20,7 +20,7 @@ export function Skeleton({ className }: { className?: string }) {
 // /pacts, /market, etc. so loading states feel consistent.
 export function ListItemSkeleton() {
   return (
-    <div className="space-y-2 rounded-xl border border-line bg-surface/30 p-4">
+    <div className="space-y-2 bz-frame rounded-xl border border-line bg-surface/30 p-4">
       <div className="flex items-center gap-3">
         <Skeleton className="h-4 w-16" />
         <Skeleton className="h-4 w-20" />

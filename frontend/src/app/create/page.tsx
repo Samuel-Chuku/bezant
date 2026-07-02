@@ -144,7 +144,7 @@ export default function CreatePactPage() {
       )}
 
       {signer.isConnected && (
-        <section className="space-y-5 rounded-2xl border border-line bg-surface/50 p-6">
+        <section className="space-y-5 bz-frame rounded-2xl border border-line bg-surface/50 p-6">
           <Field label="Description" hint="What's being done? Short and specific.">
             <textarea
               value={description}

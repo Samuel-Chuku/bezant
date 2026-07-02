@@ -16,9 +16,9 @@ ideas/
 **/ideas/
 **/*-ideas*.md
 
-# All READMEs — none tracked until we write a production-ready one at launch
-README.md
+# Subdir READMEs stay untracked; the root README is the production doc.
 **/README.md
+!/README.md
 
 # Recovery files (Circle Entity Secret recovery)
 *recovery*

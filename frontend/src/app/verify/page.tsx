@@ -131,7 +131,7 @@ export default function VerifyPage() {
       )}
 
       {info?.configured && tab === 'queue' && (signer.isConnected ? (
-        <section className="bz-fadein mt-6 rounded-xl border border-line bg-surface p-5">
+        <section className="bz-fadein mt-6 bz-frame rounded-xl border border-line bg-surface p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-medium text-fg">My verifications</h2>
             <PillSelect
@@ -180,17 +180,17 @@ export default function VerifyPage() {
           })()}
         </section>
       ) : (
-        <p className="bz-fadein mt-6 rounded-xl border border-line bg-surface p-5 text-sm text-muted">Connect a wallet to see the panels you&apos;ve been drawn onto.</p>
+        <p className="bz-fadein mt-6 bz-frame rounded-xl border border-line bg-surface p-5 text-sm text-muted">Connect a wallet to see the panels you&apos;ve been drawn onto.</p>
       ))}
 
       {!info?.configured ? (
-        <p className="mt-8 rounded-xl border border-line bg-surface p-5 text-sm text-muted">
+        <p className="mt-8 bz-frame rounded-xl border border-line bg-surface p-5 text-sm text-muted">
           The staked verifier isn&apos;t deployed on this network yet.
         </p>
       ) : tab === 'stake' ? (
         <div className="bz-fadein mt-6 grid gap-5 sm:grid-cols-2">
           {/* Economics */}
-          <section className="rounded-xl border border-line bg-surface p-5">
+          <section className="bz-frame rounded-xl border border-line bg-surface p-5">
             <div className="text-[11px] uppercase tracking-wide text-muted">Panel economics</div>
             <dl className="mt-3 space-y-2 text-sm">
               <Row label="Panel size">{info.panelSize}</Row>
@@ -204,7 +204,7 @@ export default function VerifyPage() {
           </section>
 
           {/* Stake */}
-          <section className="rounded-xl border border-line bg-surface p-5">
+          <section className="bz-frame rounded-xl border border-line bg-surface p-5">
             <div className="flex items-center justify-between">
               <div className="text-[11px] uppercase tracking-wide text-muted">Your stake</div>
               {signer.isConnected && (
