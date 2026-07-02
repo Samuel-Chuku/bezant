@@ -48,7 +48,7 @@ function NavLink({ href, label, active, badge = 0 }: { href: string; label: stri
       href={href}
       className={[
         'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition',
-        active ? 'bg-surface text-fg' : 'text-muted hover:text-fg',
+        active ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/25' : 'text-muted hover:text-fg',
       ].join(' ')}
     >
       {label}
@@ -76,7 +76,7 @@ function TradesMenu({ pathname }: { pathname: string }) {
         aria-expanded={open}
         className={[
           'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
-          active ? 'bg-surface text-fg' : 'text-muted hover:text-fg',
+          active ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/25' : 'text-muted hover:text-fg',
         ].join(' ')}
       >
         Bonds

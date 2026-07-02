@@ -123,7 +123,7 @@ export default function LandingPage() {
         </div></div>
 
         {/* PILLARS */}
-        <section id="product" className="wrap"><div className="case w-champ">
+        <section id="product" className="wrap"><div className="case w-champ docked">
           <div className="case-left reveal">
             <div className="eyebrow">Credit passport</div>
             <h3>Your history prices the next trade.</h3>

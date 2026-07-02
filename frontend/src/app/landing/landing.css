@@ -157,6 +157,12 @@
 .bezant-landing .case.w-champ{--case-line:var(--champ-edge);--case-fill:radial-gradient(130% 120% at 84% -12%,color-mix(in srgb,var(--champ) 15%,transparent),transparent 56%),var(--s1)}
 .bezant-landing .case.w-mint{--case-line:color-mix(in srgb,var(--mint) 32%,var(--border));--case-fill:radial-gradient(130% 120% at 16% -12%,color-mix(in srgb,var(--mint) 14%,transparent),transparent 56%),var(--s1)}
 .bezant-landing .case-left,.bezant-landing .case-media{position:relative;z-index:1}
+/* Docked variant: text on top, the product mock docked at the card's bottom edge
+   and clipped so it bleeds off (Railway pattern). */
+.bezant-landing .case.docked{grid-template-columns:1fr;align-items:start;gap:22px;padding-bottom:0}
+.bezant-landing .case.docked .case-media{flex-direction:row;gap:16px;margin:10px 0 -34px}
+.bezant-landing .case.docked .case-media .panel{flex:1;min-width:0}
+@media(max-width:700px){.bezant-landing .case.docked .case-media{flex-direction:column;margin-bottom:-22px}}
 
 /* glow orb behind the closing CTA */
 .bezant-landing .orb{position:absolute;left:8%;top:-40px;width:560px;height:560px;max-width:80%;border-radius:50%;pointer-events:none;z-index:0;background:radial-gradient(closest-side,color-mix(in srgb,var(--champ) 22%,transparent),color-mix(in srgb,var(--mint) 12%,transparent) 55%,transparent 72%);filter:blur(26px);animation:bz-orb 7s ease-in-out infinite}
