@@ -3179,6 +3179,20 @@ app.get('/arc/trades/stats', async (_request, reply) => {
     txHash: r.tx_hash,
   }));
 
+  // Recently financed deals (seller drew an advance from the pool).
+  const financedRows = db
+    .prepare(
+      `SELECT trade_id, amount_raw, block_time, tx_hash FROM trade_events
+       WHERE kind = 'FinancingAdvanced' ORDER BY block_number DESC, log_index DESC LIMIT 8`,
+    )
+    .all() as { trade_id: number; amount_raw: string | null; block_time: number | null; tx_hash: string }[];
+  const financedRecent = financedRows.map((r) => ({
+    tradeId: String(r.trade_id),
+    amountUsdc: r.amount_raw ? formatUnits(BigInt(r.amount_raw), 6) : null,
+    whenMs: r.block_time,
+    txHash: r.tx_hash,
+  }));
+
   return {
     totalDeals,
     funded: countOf('TradeFunded'),
@@ -3195,6 +3209,7 @@ app.get('/arc/trades/stats', async (_request, reply) => {
     blockRange: { from: range.lo ?? 0, to: range.hi ?? 0 },
     series,
     recent,
+    financedRecent,
   };
 });
 
