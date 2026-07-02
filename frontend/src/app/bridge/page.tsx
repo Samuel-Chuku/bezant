@@ -22,13 +22,8 @@ export default function BridgePage() {
       </header>
 
       <div className="grid gap-7 lg:grid-cols-[370px_minmax(0,1fr)_390px]">
-        <aside className="space-y-5">
+        <aside>
           <BridgeBalancesPanel />
-          <div className="bz-frame flex flex-col items-center justify-center border border-line bg-surface/40 px-6 py-10">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Powered by</div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/circle-logo-2021.svg" alt="Circle" className="circle-mark mt-4 w-44" />
-          </div>
         </aside>
 
         <div>
@@ -39,6 +34,14 @@ export default function BridgePage() {
           <BridgeHistory run={run} onResetRun={() => setRun(INITIAL_RUN)} />
         </aside>
       </div>
+
+      {/* "Powered by Circle" band (Circle CCTP powers the bridge) between the
+          cards and the footer. Width sized ~65% so its height reads calmer. */}
+      <section className="mt-20 border-t border-line pt-12">
+        <div className="text-center text-base font-semibold uppercase tracking-[0.4em] text-muted">Powered by</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/circle-logo-2021.svg" alt="Circle" className="circle-mark mx-auto mt-6 w-full max-w-[900px]" />
+      </section>
     </main>
   );
 }
