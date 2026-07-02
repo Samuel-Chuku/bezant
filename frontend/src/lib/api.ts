@@ -1175,6 +1175,29 @@ export async function getPoolStats(address?: string): Promise<PoolStats> {
   return jsonFetch('GET', `/arc/trade/pool${q}`);
 }
 
+// Protocol-wide, contract-derived stats read from the trade indexer (no address).
+export type ProtocolStats = {
+  totalDeals: number;
+  funded: number;
+  settled: number;
+  disputed: number;
+  refunded: number;
+  attested: number;
+  financed: number;
+  usdcFundedUsdc: string;
+  usdcReleasedUsdc: string;
+  usdcFinancedUsdc: string;
+  vaultDepositsUsdc: string;
+  poolTvlUsdc: string;
+  blockRange: { from: number; to: number };
+  series: { t: number; funded: number; settled: number; disputed: number }[];
+  recent: { tradeId: string; kind: string; amountUsdc: string | null; whenMs: number | null; txHash: string }[];
+};
+
+export async function getProtocolStats(): Promise<ProtocolStats> {
+  return jsonFetch('GET', '/arc/trades/stats');
+}
+
 export async function buildPoolApproveUnsigned(amountUsdc: string): Promise<UnsignedTx> {
   return jsonFetch('POST', '/arc/trade/pool/deposit/approve/unsigned', { amountUsdc });
 }
