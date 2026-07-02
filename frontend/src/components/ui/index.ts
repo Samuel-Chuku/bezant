@@ -7,3 +7,5 @@ export { StruckButton } from './struck-button';
 export { Badge, type BadgeTone } from './badge';
 export { ContextTabs, type ContextTab } from './context-tabs';
 export { StatePill } from './state-pill';
+export { ContextHeader } from './context-header';
+export { PillSelect, type PillOption } from './pill-select';

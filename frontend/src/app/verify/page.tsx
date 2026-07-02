@@ -8,7 +8,7 @@ import { useTxFlow } from '@/components/tx-flow';
 import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
 import { RecentVerifierStakes } from '@/components/recent-verifier-stakes';
 import { CountdownChip } from '@/components/countdown';
-import { StruckButton, ContextTabs } from '@/components/ui';
+import { StruckButton, ContextTabs, ContextHeader, PillSelect } from '@/components/ui';
 import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx, type VerifierAssignment } from '@/lib/api';
 
 const PlusIcon = () => (
@@ -111,10 +111,10 @@ export default function VerifyPage() {
 
   return (
     <main className="mx-auto max-w-[1440px] px-6 py-16">
-      <h1 className="font-display text-3xl font-semibold tracking-tight">Verify</h1>
-      <p className="mt-2 max-w-2xl text-sm text-muted">
-        Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer&apos;s fee plus stake slashed from anyone who votes against the majority or no-shows.
-      </p>
+      <ContextHeader
+        title="Verify"
+        meta="Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer's fee plus stake slashed from anyone who votes against the majority or no-shows."
+      />
 
       {info?.configured && (
         <div className="mt-8">
@@ -134,21 +134,15 @@ export default function VerifyPage() {
         <section className="bz-fadein mt-6 rounded-xl border border-line bg-surface p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-medium text-fg">My verifications</h2>
-            <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
-              {FILTERS.map((f) => {
-                const n = f.key === 'all' ? assignments.length : assignments.filter((a) => inFilter(a, f.key)).length;
-                return (
-                  <button
-                    key={f.key}
-                    onClick={() => setFilter(f.key)}
-                    className={`rounded-md px-2.5 py-1 text-xs transition ${filter === f.key ? 'bg-surface text-fg' : 'text-muted hover:text-fg'}`}
-                  >
-                    {f.label}
-                    {n > 0 && <span className="ml-1 text-[10px] text-muted">{n}</span>}
-                  </button>
-                );
-              })}
-            </div>
+            <PillSelect
+              value={filter}
+              onChange={(v) => setFilter(v as Filter)}
+              options={FILTERS.map((f) => ({
+                value: f.key,
+                label: f.label,
+                badge: f.key === 'all' ? assignments.length : assignments.filter((a) => inFilter(a, f.key)).length,
+              }))}
+            />
           </div>
 
           {(() => {

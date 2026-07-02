@@ -11,6 +11,7 @@ import { AgentLinkCard } from '@/components/agent-link-card';
 import { SendPanel } from '@/components/send-panel';
 import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
+import { ChainBalancesCard } from '@/components/chain-balances-card';
 import { StruckButton } from '@/components/ui';
 import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
@@ -42,7 +43,7 @@ export default function ProfilePage() {
   if (!signer.isConnected) {
     return (
       <main className="mx-auto max-w-[1440px] px-6 py-16">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Profile</h1>
+        <h1 className="font-display text-4xl font-semibold tracking-tight">Profile</h1>
         <p className="mt-6 text-sm text-muted">
           Connect a wallet or sign in to see your profile.{' '}
           <Link href="/" className="underline">
@@ -62,7 +63,7 @@ export default function ProfilePage() {
         <div className="flex items-center gap-4">
           <Avatar address={signer.address} size={56} />
           <div className="min-w-0">
-            <h1 className="font-display text-3xl font-semibold tracking-tight">
+            <h1 className="font-display text-4xl font-semibold tracking-tight">
               Hello, {user?.handle ? `@${user.handle}` : shortAddress(signer.address)}
             </h1>
             <p className="mt-1 text-sm text-muted">Your bonds, standing and reputation at a glance.</p>
@@ -141,6 +142,7 @@ export default function ProfilePage() {
           <RecentActivity />
         </div>
         {signer.mode !== 'external' && <SendPanel />}
+        <ChainBalancesCard address={signer.address} />
       </div>
     </main>
   );
@@ -168,7 +170,7 @@ function MetricCard({
         <span className="text-xs text-muted">{label}</span>
         <span className={featured ? 'text-primary' : 'text-brand'}>{glyph}</span>
       </div>
-      <div className="mt-3 font-mono text-2xl font-semibold tabular-nums text-fg">
+      <div className="mt-3 font-mono text-3xl font-semibold tabular-nums text-fg">
         {value}
         {unit && <span className="ml-1 text-sm font-normal text-muted">{unit}</span>}
       </div>

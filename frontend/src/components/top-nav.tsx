@@ -161,6 +161,17 @@ export function TopNav() {
                 Switch to Arc →
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('bezant:open-cmdk'))}
+              className="hidden items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-muted transition hover:border-line-strong hover:text-fg sm:inline-flex"
+              aria-label="Open command menu"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" d="m21 21-4.3-4.3" />
+              </svg>
+              <kbd className="font-sans">⌘K</kbd>
+            </button>
             <ThemeToggle />
             <NotificationsBell />
             <WalletPill />

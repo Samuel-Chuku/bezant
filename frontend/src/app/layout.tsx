@@ -30,6 +30,7 @@ import { TopNav } from '@/components/top-nav';
 import { ProfileSetupBanner } from '@/components/profile-setup-banner';
 import { SidebarSummary } from '@/components/sidebar-summary';
 import { AppFooter } from '@/components/app-footer';
+import { CommandPalette } from '@/components/command-palette';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://bezant.trade'),
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <ToastProvider>
             <TopNav />
+            <CommandPalette />
             <ProfileSetupBanner />
             {children}
             <AppFooter />

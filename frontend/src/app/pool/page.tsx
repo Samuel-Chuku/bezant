@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { PoolPanel } from '@/components/pool-panel';
 import { RecentPoolStakes } from '@/components/recent-pool-stakes';
-import { ContextTabs } from '@/components/ui';
+import { ContextTabs, ContextHeader } from '@/components/ui';
 
 // Dedicated financing-pool page: a short explainer of the LP vault (what it
 // funds, who can deposit, the risk) plus the deposit/withdraw panel.
@@ -12,16 +12,11 @@ export default function PoolPage() {
   const [tab, setTab] = useState<'overview' | 'activity'>('overview');
   return (
     <main className="mx-auto max-w-[1440px] px-6 py-16">
-      <header>
-        <div className="text-[11px] uppercase tracking-[0.18em] text-brand">Liquidity</div>
-        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight">Financing pool</h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted">
-          The pool fronts sellers their payment the moment a buyer funds escrow, instead of making
-          them wait out the challenge window. You deposit USDC, receive shares, and earn the
-          financing fees as yield. Anyone with a Bezant account can deposit - no whitelist, no
-          minimum.
-        </p>
-      </header>
+      <ContextHeader
+        eyebrow="Liquidity"
+        title="Financing pool"
+        meta="The pool fronts sellers their payment the moment a buyer funds escrow, instead of making them wait out the challenge window. You deposit USDC, receive shares, and earn the financing fees as yield. Anyone with a Bezant account can deposit - no whitelist, no minimum."
+      />
 
       <div className="mt-6">
         <ContextTabs
