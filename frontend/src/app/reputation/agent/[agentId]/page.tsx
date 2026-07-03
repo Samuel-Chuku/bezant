@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   formatReputationValue,
@@ -10,6 +10,9 @@ import {
   type UserRecord,
 } from '@/lib/api';
 import { ErrorBanner, Skeleton } from '@/components/async-state';
+import { useSigner } from '@/hooks/use-signer';
+import { useUserRecord } from '@/hooks/use-user-record';
+import { PassportPanel } from '@/components/passport-panel';
 
 const PAGE_SIZE = 20;
 
@@ -19,6 +22,11 @@ export default function ReputationPage({
   params: Promise<{ agentId: string }>;
 }) {
   const { agentId } = use(params);
+  const signer = useSigner();
+  const { state: userState } = useUserRecord();
+  // Surface the credit passport only on the viewer's own agent page (it's
+  // address-keyed, and we only have the connected wallet's address).
+  const isOwn = userState.status === 'ready' && userState.user?.agentId === agentId;
   const [data, setData] = useState<ReputationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,26 +124,27 @@ export default function ReputationPage({
 
       {data && (
         <>
-          <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-5">
-            <h2 className="text-sm font-medium text-fg">Summary</h2>
-            {data.summary.count === 0 ? (
-              <p className="mt-3 text-sm text-muted">
-                No feedback yet. This agent hasn&apos;t received any ratings on the
-                ReputationRegistry.
-              </p>
-            ) : (
+          {data.summary.count === 0 ? (
+            <EmptyReputation isOwn={isOwn} />
+          ) : (
+            <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-5">
+              <h2 className="text-sm font-medium text-fg">Summary</h2>
               <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                 <Stat label="Aggregate value" value={summaryValue ?? 'n/a'} mono />
                 <Stat label="Feedback count" value={String(data.summary.count)} mono />
-                <Stat
-                  label="Unique clients"
-                  value={String(data.clientsConsulted.length)}
-                  mono
-                />
+                <Stat label="Unique clients" value={String(data.clientsConsulted.length)} mono />
                 <Stat label="Decimals" value={String(data.summary.valueDecimals)} mono />
               </div>
-            )}
-          </section>
+            </section>
+          )}
+
+          <ReputationExplainer className="mt-6" />
+
+          {isOwn && signer.isConnected && (
+            <div className="mt-6">
+              <PassportPanel address={signer.address} />
+            </div>
+          )}
 
           {data.totalFeedback > 0 && (
             <section className="mt-6 bz-frame rounded-2xl border border-line bg-surface/40 p-5">
@@ -277,5 +286,63 @@ function Stat({
       <dt className="text-xs text-muted">{label}</dt>
       <dd className={`mt-1 text-lg text-fg ${mono ? 'font-mono' : ''}`}>{value}</dd>
     </div>
+  );
+}
+
+// Empty state for an agent with no ratings yet.
+function EmptyReputation({ isOwn }: { isOwn: boolean }) {
+  return (
+    <section className="bz-frame rounded-2xl border border-line bg-surface/40 p-8 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-line bg-surface-2 text-muted">
+        <SealIcon />
+      </div>
+      <h2 className="mt-4 font-display text-xl font-semibold tracking-tight text-fg">No reputation yet</h2>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
+        {isOwn
+          ? 'You haven’t been rated yet. Settle a bond and your counterparty can leave feedback that builds your record.'
+          : 'This agent hasn’t received any ratings. Reputation builds as counterparties leave feedback on settled bonds.'}
+      </p>
+    </section>
+  );
+}
+
+// Plain-English explainer of how reputation is earned and scored on Bezant.
+function ReputationExplainer({ className = '' }: { className?: string }) {
+  return (
+    <section className={`rounded-2xl border border-line bg-surface/40 p-5 ${className}`}>
+      <h3 className="text-sm font-medium text-fg">How reputation works</h3>
+      <ul className="mt-3 space-y-2.5">
+        <Point>
+          Feedback accrues to your <span className="text-fg">agent ID</span>, not your wallet — so your track record
+          travels across apps and counterparties (ERC-8004).
+        </Point>
+        <Point>
+          The headline value is the <span className="text-fg">aggregate</span> of every non-revoked rating a
+          counterparty left after settling a bond with you.
+        </Point>
+        <Point>
+          Ratings from <span className="text-fg">operator-verified</span> counterparties carry more weight.
+        </Point>
+        <Point>Revoked ratings are struck through and don’t count toward the total.</Point>
+      </ul>
+    </section>
+  );
+}
+
+function Point({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex gap-2 text-xs text-muted">
+      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" aria-hidden />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+function SealIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="8" r="6" />
+      <path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5" />
+    </svg>
   );
 }

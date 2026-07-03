@@ -70,7 +70,10 @@ export default function ProfilePage() {
             <p className="mt-1 text-sm text-muted">Your bonds, standing and reputation at a glance.</p>
           </div>
         </div>
-        <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
+        <div className="flex flex-wrap items-center gap-3">
+          <ConnectTelegram />
+          <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
+        </div>
       </header>
 
       {userState.status === 'error' && (
@@ -83,10 +86,6 @@ export default function ProfilePage() {
         <MetricCard label="Volume" glyph={<StackGlyph />} value={stats ? Number(stats.volumeUsdc).toLocaleString() : '-'} unit="USDC" hint="settled" />
         <MetricCard label="Success rate" glyph={<CheckGlyph />} featured value={stats?.successRate != null ? String(Math.round(stats.successRate * 100)) : '-'} unit="%" hint="settled vs resolved" />
         <MetricCard label="Reputation" glyph={<SealGlyph />} value={rep ? Number(rep.value).toFixed(2) : '-'} hint={rep ? `${rep.count} ratings${rep.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked'} />
-      </div>
-
-      <div className="mt-4">
-        <ConnectTelegram />
       </div>
 
       {/* Dashboard grid */}

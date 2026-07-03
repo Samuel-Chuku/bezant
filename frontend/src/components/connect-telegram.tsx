@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
-import { Button } from '@/components/ui';
 
-// Full Telegram-alerts control for the profile page: link status +
-// connect/disconnect. Alerts fire when a trade needs the user's action.
+// Compact inline Telegram-alerts control for the profile header — a small pill
+// that reads "Connect Telegram", shows "Connected" once linked, and disconnects
+// on click when connected. Alerts fire when a trade needs the user's action.
 export function ConnectTelegram() {
   const signer = useSigner();
   const { state, reload, linkTelegram, unlinkTelegram } = useUserRecord();
@@ -65,47 +65,57 @@ export function ConnectTelegram() {
 
   if (!signer.isConnected) return null;
 
+  const base =
+    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:opacity-50';
+
+  // No account row yet — Telegram needs one; nudge to set up a profile.
+  if (user === null) {
+    return (
+      <span className={`${base} border-line text-muted`} title="Set up a profile first to enable alerts">
+        <TelegramIcon /> Telegram
+      </span>
+    );
+  }
+
+  if (linked) {
+    return (
+      <button
+        type="button"
+        onClick={disconnect}
+        disabled={busy}
+        title="Telegram connected — click to disconnect"
+        className={`${base} border-primary/40 bg-primary/10 text-primary hover:bg-primary/15`}
+      >
+        <TelegramIcon /> {busy ? '…' : 'Connected'} <CheckIcon />
+      </button>
+    );
+  }
+
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <TelegramIcon />
-            <h3 className="font-medium text-fg">Telegram alerts</h3>
-            {linked && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Connected</span>
-            )}
-          </div>
-          <p className="mt-1 max-w-sm text-xs text-muted">
-            Get a ping when a trade needs your action — fund, deliver, respond, or vote.
-          </p>
-        </div>
-        {user === null ? (
-          <span className="shrink-0 text-xs text-muted">Set up a profile first</span>
-        ) : linked ? (
-          <Button variant="secondary" size="sm" onClick={disconnect} disabled={busy}>
-            {busy ? '…' : 'Disconnect'}
-          </Button>
-        ) : (
-          <Button size="sm" onClick={connect} disabled={busy}>
-            {busy ? 'Opening…' : 'Connect Telegram'}
-          </Button>
-        )}
-      </div>
-      {awaiting && !linked && (
-        <p className="mt-3 text-xs text-muted">
-          Waiting for you to tap <span className="text-fg">Start</span> in Telegram…
-        </p>
-      )}
-      {error && <p className="mt-3 text-xs text-danger">{error}</p>}
-    </div>
+    <button
+      type="button"
+      onClick={connect}
+      disabled={busy}
+      title={error || 'Get a Telegram ping when a trade needs your action'}
+      className={`${base} border-line text-fg hover:border-line-strong hover:bg-surface-2`}
+    >
+      <TelegramIcon /> {busy ? 'Opening…' : awaiting ? 'Waiting…' : 'Connect Telegram'}
+    </button>
   );
 }
 
 function TelegramIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-primary" aria-hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6L9 17l-5-5" />
     </svg>
   );
 }
