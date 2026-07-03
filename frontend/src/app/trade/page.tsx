@@ -9,6 +9,7 @@ import { CountdownChip } from '@/components/countdown';
 import { StepCue } from '@/components/step-cue';
 import { describeTradeStep } from '@/lib/trade-status';
 import { StruckButton, StatePill } from '@/components/ui';
+import { TelegramNudge } from '@/components/telegram-nudge';
 
 const PlusIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
@@ -59,6 +60,8 @@ export default function TradesPage() {
         <h1 className="t-h1">Bonds</h1>
         <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
       </div>
+
+      <TelegramNudge />
 
       {!signer.isConnected && (
         <p className="mt-6 text-sm text-muted">

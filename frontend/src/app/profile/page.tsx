@@ -13,6 +13,7 @@ import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
 import { ChainBalancesCard } from '@/components/chain-balances-card';
 import { StruckButton } from '@/components/ui';
+import { ConnectTelegram } from '@/components/connect-telegram';
 import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { timeAgo } from '@/lib/relative-time';
@@ -82,6 +83,10 @@ export default function ProfilePage() {
         <MetricCard label="Volume" glyph={<StackGlyph />} value={stats ? Number(stats.volumeUsdc).toLocaleString() : '-'} unit="USDC" hint="settled" />
         <MetricCard label="Success rate" glyph={<CheckGlyph />} featured value={stats?.successRate != null ? String(Math.round(stats.successRate * 100)) : '-'} unit="%" hint="settled vs resolved" />
         <MetricCard label="Reputation" glyph={<SealGlyph />} value={rep ? Number(rep.value).toFixed(2) : '-'} hint={rep ? `${rep.count} ratings${rep.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked'} />
+      </div>
+
+      <div className="mt-4">
+        <ConnectTelegram />
       </div>
 
       {/* Dashboard grid */}

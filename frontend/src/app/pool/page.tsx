@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { PoolPanel } from '@/components/pool-panel';
 import { RecentPoolStakes } from '@/components/recent-pool-stakes';
 import { ContextTabs, ContextHeader } from '@/components/ui';
+import { TelegramNudge } from '@/components/telegram-nudge';
 
 // Dedicated financing-pool page: a short explainer of the LP vault (what it
 // funds, who can deposit, the risk) plus the deposit/withdraw panel.
@@ -17,6 +18,8 @@ export default function PoolPage() {
         title="Financing pool"
         meta="The pool fronts sellers their payment the moment a buyer funds escrow, instead of making them wait out the challenge window. You deposit USDC, receive shares, and earn the financing fees as yield. Anyone with a Bezant account can deposit - no whitelist, no minimum."
       />
+
+      <TelegramNudge />
 
       <div className="mt-6">
         <ContextTabs

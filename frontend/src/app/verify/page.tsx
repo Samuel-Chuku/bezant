@@ -9,6 +9,7 @@ import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
 import { RecentVerifierStakes } from '@/components/recent-verifier-stakes';
 import { CountdownChip } from '@/components/countdown';
 import { StruckButton, ContextTabs, ContextHeader, PillSelect } from '@/components/ui';
+import { TelegramNudge } from '@/components/telegram-nudge';
 import { getVerifierInfo, buildVerifierStakeUnsigned, buildVerifierUnstakeUnsigned, type VerifierInfo, type UnsignedTx, type VerifierAssignment } from '@/lib/api';
 
 const PlusIcon = () => (
@@ -115,6 +116,8 @@ export default function VerifyPage() {
         title="Verify"
         meta="Stake USDC to join the verifier panel. When a buyer picks decentralized verification, a stake-weighted panel is drawn to vote on delivery - honest voters split the buyer's fee plus stake slashed from anyone who votes against the majority or no-shows."
       />
+
+      <TelegramNudge />
 
       {info?.configured && (
         <div className="mt-8">

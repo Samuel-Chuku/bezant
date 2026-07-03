@@ -87,6 +87,7 @@ import { startTradeIndexer } from './lib/trade-indexer.js';
 import { startWrapperIndexer } from './lib/wrapper-indexer.js';
 import { startBridgeIndexer } from './lib/bridge-indexer.js';
 import { startAutoRevealAgent, type AutoRevealRow } from './lib/auto-reveal-agent.js';
+import { sendTelegramMessage, getBotUsername, setTelegramWebhook, telegramEnabled } from './lib/telegram.js';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -368,6 +369,11 @@ function requireSigner(
 // ADMIN_API_KEY is set, callers must send a matching `x-admin-key` header;
 // when it's unset the routes stay open (dev) - a startup warning nags to set it.
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? '';
+// Public https base for this backend (e.g. https://api.bezant.trade) — used to
+// auto-register the Telegram webhook at boot. Secret is echoed by Telegram in a
+// header the webhook verifies.
+const PUBLIC_API_URL = process.env.PUBLIC_API_URL ?? '';
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
 function requireAdmin(request: { headers: Record<string, unknown> }, reply: FastifyReply): boolean {
   if (!ADMIN_API_KEY) return true; // not configured → open in dev
   if (request.headers['x-admin-key'] !== ADMIN_API_KEY) {
@@ -3640,6 +3646,67 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
   return { items };
 });
 
+// ─── Telegram alerts ───────────────────────────────────────────────────────
+// Link flow: the frontend requests a one-time token, opens
+// t.me/<bot>?start=<token>, the user taps Start, Telegram calls our webhook,
+// and we bind their chat id to the account. Auth follows the same trust-the-
+// connected-address model as /arc/notifications.
+type TgUpdate = { message?: { text?: string; chat?: { id?: number | string } } };
+
+app.post<{ Body: { address?: string } }>('/arc/telegram/link', async (request, reply) => {
+  if (!telegramEnabled()) return reply.code(503).send({ error: 'telegram not configured' });
+  const address = (request.body?.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
+  const user = db.prepare('SELECT id FROM users WHERE wallet_address = ?').get(address) as { id: string } | undefined;
+  if (!user) return reply.code(404).send({ error: 'no account for this address — claim a handle first' });
+  const username = await getBotUsername();
+  if (!username) return reply.code(503).send({ error: 'telegram bot unavailable' });
+  const token = randomUUID();
+  db.prepare('INSERT INTO telegram_link_tokens (token, user_id) VALUES (?, ?)').run(token, user.id);
+  return { url: `https://t.me/${username}?start=${token}` };
+});
+
+app.post<{ Body: { address?: string } }>('/arc/telegram/unlink', async (request, reply) => {
+  const address = (request.body?.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
+  db.prepare('UPDATE users SET telegram_chat_id = NULL WHERE wallet_address = ?').run(address);
+  return { ok: true };
+});
+
+// Telegram → us. Verifies the shared secret header, then handles `/start <token>`.
+app.post<{ Body: TgUpdate }>('/telegram/webhook', async (request, reply) => {
+  if (TELEGRAM_WEBHOOK_SECRET && request.headers['x-telegram-bot-api-secret-token'] !== TELEGRAM_WEBHOOK_SECRET) {
+    return reply.code(401).send({ error: 'bad secret' });
+  }
+  const msg = request.body?.message;
+  const text = msg?.text ?? '';
+  const chatId = msg?.chat?.id;
+  if (chatId != null && text.startsWith('/start')) {
+    const token = text.split(/\s+/)[1] ?? '';
+    const row = db
+      .prepare('SELECT user_id, created_at FROM telegram_link_tokens WHERE token = ?')
+      .get(token) as { user_id: string; created_at: string } | undefined;
+    const fresh = row && Date.now() - new Date(row.created_at + 'Z').getTime() < 15 * 60 * 1000;
+    if (row && fresh) {
+      db.prepare('UPDATE users SET telegram_chat_id = ? WHERE id = ?').run(String(chatId), row.user_id);
+      db.prepare('DELETE FROM telegram_link_tokens WHERE token = ?').run(token);
+      // Seed current pending actions as already-sent so a fresh link doesn't
+      // immediately replay a backlog of alerts.
+      const u = db.prepare('SELECT wallet_address FROM users WHERE id = ?').get(row.user_id) as { wallet_address: string } | undefined;
+      if (u) {
+        const address = u.wallet_address.toLowerCase();
+        for (const a of await computeUserAlerts(address)) {
+          db.prepare('INSERT OR IGNORE INTO telegram_sent (address, key) VALUES (?, ?)').run(address, a.key);
+        }
+      }
+      await sendTelegramMessage(String(chatId), "✅ <b>Connected to Bezant.</b>\nYou'll get a ping here when a trade needs your action.");
+    } else {
+      await sendTelegramMessage(String(chatId), '⚠️ That link expired. Open Bezant and tap “Connect Telegram” again.');
+    }
+  }
+  return { ok: true };
+});
+
 // Per-trade event timeline (what happened, by whom, with tx hashes).
 app.get<{ Params: { id: string } }>('/arc/trades/:id/events', async (request, reply) => {
   if (!escrowReady(reply)) return;
@@ -3705,6 +3772,93 @@ function startAttestationFinalizer(log: MiniLog): void {
     tick()
       .catch((err) => log.error(err, 'attestation finalizer tick failed'))
       .finally(() => setTimeout(loop, 5000));
+  loop();
+}
+
+// Alerts for a user: action-required items (what they must do next) plus
+// terminal outcomes (settled / disputed / resolved / refunded). Reused by the
+// Telegram notifier and by the link handler (to seed current items so a fresh
+// link doesn't replay a backlog). Keys are stable so each alert fires once.
+type UserAlert = { key: string; kind: 'action' | 'event'; summary: string };
+async function computeUserAlerts(address: string): Promise<UserAlert[]> {
+  const items: UserAlert[] = [];
+  if (TRADE_ESCROW_ADDRESS === ZERO_ADDRESS) return items;
+  const ids = (
+    db.prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ?').all(address, address) as { trade_id: number }[]
+  ).map((r) => r.trade_id);
+  for (const id of ids) {
+    try {
+      const t = await getTrade(BigInt(id));
+      const isBuyer = t.buyer.toLowerCase() === address;
+      const isSeller = t.seller.toLowerCase() === address;
+      const myOffer = t.lastProposer.toLowerCase() === address;
+      let action: string | null = null;
+      if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer) {
+        const offerBy = t.lastProposer.toLowerCase() === t.buyer.toLowerCase() ? 'buyer' : 'seller';
+        action = `Trade #${id} — respond to the ${offerBy}'s offer of ${formatUnits(t.amount, 6)} USDC`;
+      } else if (t.status === 'Agreed' && isBuyer) {
+        action = `Trade #${id} — fund the escrow`;
+      } else if (t.status === 'Funded' && isSeller) {
+        action = `Trade #${id} — submit your delivery document`;
+      } else if (t.status === 'Funded' && isBuyer && Date.now() / 1000 > t.deadline) {
+        action = `Trade #${id} — deadline passed, claim your refund`;
+      }
+      if (action) items.push({ key: `trade:${id}:action:${t.status}`, kind: 'action', summary: action });
+    } catch {
+      // Skip trades we can't read this tick; retried next poll.
+    }
+
+    // Terminal outcomes — read from the indexer, one alert per outcome. Both
+    // parties are on the trade, so whoever is linked gets the update.
+    const terminal = db
+      .prepare("SELECT DISTINCT kind FROM trade_events WHERE trade_id = ? AND kind IN ('Released','Resolved','Refunded','Disputed')")
+      .all(id) as { kind: string }[];
+    for (const e of terminal) {
+      const summary =
+        e.kind === 'Released'
+          ? `Trade #${id} settled — paid to the seller`
+          : e.kind === 'Resolved'
+            ? `Trade #${id} — dispute resolved`
+            : e.kind === 'Refunded'
+              ? `Trade #${id} — refunded`
+              : `Trade #${id} — a dispute was opened`;
+      items.push({ key: `trade:${id}:event:${e.kind}`, kind: 'event', summary });
+    }
+  }
+  for (const p of await pendingVerificationsFor(address)) {
+    items.push({ key: `verify:${p.tradeId}:pending`, kind: 'action', summary: `Trade #${p.tradeId} — cast your verifier verdict on delivery` });
+  }
+  return items;
+}
+
+// Telegram notifier: every 30s, push each linked user's *new* alerts to their
+// chat, deduped via telegram_sent. Action items lead with "Action needed";
+// terminal outcomes lead with "Update". No-op unless the bot token is set.
+function startTelegramNotifier(log: MiniLog): void {
+  if (!telegramEnabled()) {
+    log.info({}, 'telegram notifier disabled (TELEGRAM_BOT_TOKEN not set)');
+    return;
+  }
+  const tick = async () => {
+    const linked = db
+      .prepare('SELECT wallet_address, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL')
+      .all() as { wallet_address: string; telegram_chat_id: string }[];
+    for (const u of linked) {
+      const address = u.wallet_address.toLowerCase();
+      for (const a of await computeUserAlerts(address)) {
+        const already = db.prepare('SELECT 1 FROM telegram_sent WHERE address = ? AND key = ?').get(address, a.key);
+        if (already) continue;
+        const text =
+          a.kind === 'action' ? `🔔 <b>Action needed</b>\n${a.summary}` : `📣 <b>Update</b>\n${a.summary}`;
+        const sent = await sendTelegramMessage(u.telegram_chat_id, text);
+        if (sent) db.prepare('INSERT OR IGNORE INTO telegram_sent (address, key) VALUES (?, ?)').run(address, a.key);
+      }
+    }
+  };
+  const loop = () =>
+    tick()
+      .catch((err) => log.error(err, 'telegram notifier tick failed'))
+      .finally(() => setTimeout(loop, 30000));
   loop();
 }
 
@@ -4106,6 +4260,14 @@ app
     startBridgeIndexer(app.log);
     startTradeIndexer(app.log);
     startAttestationFinalizer(app.log);
+    startTelegramNotifier(app.log);
+    // Register the Telegram webhook so /start deep-links reach us (needs a
+    // public https URL — set PUBLIC_API_URL in prod).
+    if (telegramEnabled() && PUBLIC_API_URL) {
+      void setTelegramWebhook(`${PUBLIC_API_URL.replace(/\/$/, '')}/telegram/webhook`, TELEGRAM_WEBHOOK_SECRET).then((ok) =>
+        app.log.info({ ok }, 'telegram setWebhook'),
+      );
+    }
     // Auto-reveal agent: reveals opted-in evaluators' votes via the operator
     // wallet once the reveal window opens. revealVote is permissionless, so the
     // operator can reveal on anyone's behalf given (vote, secret).

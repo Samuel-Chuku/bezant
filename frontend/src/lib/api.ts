@@ -8,6 +8,9 @@ export type UserRecord = {
   // ERC-8004 IdentityRegistry agentId (uint256 as string). null until the
   // user links an agentId they own - verified on-chain at link time.
   agentId: string | null;
+  // True once the user has linked a Telegram chat for action alerts. The raw
+  // chat id is never exposed.
+  telegramLinked: boolean;
   createdAt: string;
 };
 
@@ -209,6 +212,17 @@ export async function linkAgentId(
     `/users/${encodeURIComponent(userId)}/agent-id`,
     { agentId },
   );
+}
+
+// Telegram alerts. link() returns a t.me deep link to open — the chat is bound
+// server-side when the user taps Start (via the bot webhook), so the linked
+// status only reflects after a subsequent getUserByAddress refetch.
+export async function linkTelegram(address: string): Promise<{ url: string }> {
+  return jsonFetch<{ url: string }>('POST', '/arc/telegram/link', { address });
+}
+
+export async function unlinkTelegram(address: string): Promise<{ ok: boolean }> {
+  return jsonFetch<{ ok: boolean }>('POST', '/arc/telegram/unlink', { address });
 }
 
 // Self-registration flow (M32). Step 1 - get unsigned calldata for the

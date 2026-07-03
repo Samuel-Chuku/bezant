@@ -92,6 +92,33 @@ if (circleWalletColumn?.notnull === 1 || !signingModeColumn) {
   `);
 }
 
+// Telegram alerts: an optional chat id linked to a user for push notifications.
+// Added after the table-recreate migrations above so it survives them (those
+// only fire on ancient schemas, but re-reading the columns keeps this
+// order-independent).
+const userColsAfter = db
+  .prepare("SELECT name FROM pragma_table_info('users')")
+  .all() as { name: string }[];
+if (!new Set(userColsAfter.map((c) => c.name)).has('telegram_chat_id')) {
+  db.exec('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT');
+}
+
+// One-time link tokens (deep-link `t.me/<bot>?start=<token>`) and per-key
+// dedupe of alerts already pushed to Telegram.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+    token      TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS telegram_sent (
+    address TEXT NOT NULL,
+    key     TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (address, key)
+  );
+`);
+
 export type UserRow = {
   id: string;
   handle: string | null;
@@ -99,6 +126,7 @@ export type UserRow = {
   wallet_address: string;
   signing_mode: SigningMode;
   agent_id: string | null;
+  telegram_chat_id: string | null;
   created_at: string;
 };
 
@@ -109,6 +137,7 @@ export type User = {
   walletAddress: string;
   signingMode: SigningMode;
   agentId: string | null;
+  telegramLinked: boolean;
   createdAt: string;
 };
 
@@ -120,6 +149,8 @@ export function rowToUser(row: UserRow): User {
     walletAddress: row.wallet_address,
     signingMode: row.signing_mode,
     agentId: row.agent_id,
+    // Expose only whether Telegram is linked, never the raw chat id.
+    telegramLinked: row.telegram_chat_id != null,
     createdAt: row.created_at,
   };
 }

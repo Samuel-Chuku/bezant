@@ -7,8 +7,10 @@ import {
   claimHandle as claimHandleApi,
   getUserByAddress,
   linkAgentId as linkAgentIdApi,
+  linkTelegram as linkTelegramApi,
   parseRegistration,
   registerExternalUser,
+  unlinkTelegram as unlinkTelegramApi,
   type UserRecord,
 } from '@/lib/api';
 import { useSigner } from './use-signer';
@@ -27,6 +29,9 @@ type State =
 export function useUserRecord() {
   const signer = useSigner();
   const [state, setState] = useState<State>({ status: 'idle' });
+  // Bump to force a re-probe (e.g. after linking Telegram out-of-band).
+  const [reloadTick, setReloadTick] = useState(0);
+  const reload = useCallback(() => setReloadTick((t) => t + 1), []);
 
   // On connect: probe the backend to see if this address already has a row.
   // We do NOT auto-create. Registration only happens when the user claims a
@@ -55,7 +60,7 @@ export function useUserRecord() {
     return () => {
       cancelled = true;
     };
-  }, [signer.isConnected, signer.address]);
+  }, [signer.isConnected, signer.address, reloadTick]);
 
   // claimHandle is the single entry point for "I want a handle." It picks the
   // right backend call based on whether a row already exists:
@@ -132,5 +137,20 @@ export function useUserRecord() {
     return { agentId: parsed.agentId };
   }, [state, signer]);
 
-  return { state, claimHandle, linkAgentId, registerAgent };
+  // Telegram alerts. linkTelegram returns a t.me deep link to open; the account
+  // is bound server-side once the user taps Start, so callers should poll
+  // `reload()` afterward to pick up telegramLinked. unlinkTelegram is immediate.
+  const linkTelegram = useCallback(async (): Promise<string> => {
+    if (!signer.isConnected) throw new Error('Not connected');
+    const { url } = await linkTelegramApi(signer.address.toLowerCase());
+    return url;
+  }, [signer]);
+
+  const unlinkTelegram = useCallback(async () => {
+    if (!signer.isConnected) throw new Error('Not connected');
+    await unlinkTelegramApi(signer.address.toLowerCase());
+    reload();
+  }, [signer, reload]);
+
+  return { state, claimHandle, linkAgentId, registerAgent, reload, linkTelegram, unlinkTelegram };
 }
