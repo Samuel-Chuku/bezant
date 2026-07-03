@@ -217,7 +217,7 @@ export default function LandingPage() {
           <div className="foot-col"><h5>Protocol</h5><a href="#">Passport</a><a href="#">Verification</a><a href="#">Financing</a><a href="#">Reputation</a></div>
           <div className="foot-col"><h5>Company</h5><a href="#">Docs</a><a href="#">Careers</a><a href="#">Blog</a><a href="#">Contact</a></div>
         </div>
-        <div className="socials"><a href="#">X.com</a><a href="#">LinkedIn</a><a href="#">GitHub</a><a href="#">Farcaster</a><a href="#">Arc</a><span className="meta mono">Built on Circle USDC + Arc · testnet</span></div>
+        <div className="socials"><a href="https://x.com/bezant_trade" target="_blank" rel="noopener">X.com</a><a href="#">LinkedIn</a><a href="https://github.com/Samuel-Chuku/bezant" target="_blank" rel="noopener">GitHub</a><a href="#">Farcaster</a><a href="#">Arc</a><span className="meta mono">Built on Circle USDC + Arc · testnet</span></div>
         <div className="foot-brand reveal" aria-hidden>bezant<span className="dot">.</span></div>
       </div></footer>
     </div>

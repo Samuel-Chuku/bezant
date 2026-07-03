@@ -93,7 +93,7 @@ export default function Home() {
       {/* ── HERO ─────────────────────────────────────────────── */}
       {signer.isConnected ? (
         <section className="grid items-stretch gap-6 lg:grid-cols-[1.4fr_1fr]">
-          <div className="flex flex-col justify-center">
+          <div data-tour="hero" className="flex flex-col justify-center">
             <Eyebrow>Settlement desk</Eyebrow>
             <h1 className="mt-3 font-display text-5xl font-semibold leading-[1.02] tracking-tight sm:text-6xl">
               Welcome back,<br />
@@ -102,7 +102,7 @@ export default function Home() {
             <p className="mt-4 max-w-md text-base text-muted">
               Escrow that releases on proof. Strike a bond, fund the passport-priced deposit, and settle on chain.
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+            <div data-tour="start" className="mt-7 flex flex-wrap items-center gap-3">
               <StruckButton href="/trade/create" icon={<PlusIcon />}>Strike a bond</StruckButton>
               <Link href="/trade" className={buttonClass('secondary')}>Your bonds</Link>
               <Link href="/activity" className="px-2 py-2 text-sm text-muted transition hover:text-fg">Activity →</Link>
@@ -127,7 +127,7 @@ export default function Home() {
         </section>
       ) : (
         <section className="grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
-          <div>
+          <div data-tour="hero">
             <Eyebrow>Settlement desk</Eyebrow>
             <h1 className="mt-3 font-display text-5xl font-semibold leading-[1.02] tracking-tight sm:text-6xl">
               Settle on <span className="text-primary">proof</span>.<br />Price on history.
@@ -137,7 +137,7 @@ export default function Home() {
               history grows. Sign in to strike your first bond.
             </p>
           </div>
-          <div className="space-y-3">
+          <div data-tour="signin" className="space-y-3">
             <div className="bz-frame rounded-2xl border border-line bg-surface p-5">
               <h3 className="font-medium text-fg">Connect a wallet</h3>
               <p className="mt-1 text-xs text-muted">MetaMask, Coinbase, WalletConnect. You keep your own keys.</p>
@@ -156,7 +156,7 @@ export default function Home() {
 
       {/* ── YOUR MONEY (connected) — clean, no colour accents ─── */}
       {signer.isConnected && (
-        <section className="mt-6 grid gap-4 sm:grid-cols-3">
+        <section data-tour="money" className="mt-6 grid gap-4 sm:grid-cols-3">
           <MoneyCard label="Available" value={available} unit="USDC" hint="Ready to spend on Arc" />
           <MoneyCard label="In escrow" value={escrowUsdc ? escrowUsdc.toLocaleString() : '0'} unit="USDC" hint="Locked in funded bonds" />
           <MoneyCard label="Settled volume" value={stats ? num(stats.volumeUsdc) : '—'} unit="USDC" hint="Released to you, to date" />
@@ -164,7 +164,7 @@ export default function Home() {
       )}
 
       {/* ── EVERY DEAL, ON ARC (protocol-wide live read) ─────── */}
-      <section className="mt-14">
+      <section data-tour="protocol" className="mt-14">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" aria-hidden />
           <Eyebrow>Live on Arc</Eyebrow>
@@ -201,7 +201,7 @@ export default function Home() {
       </section>
 
       {/* ── FINANCING POOL (after the protocol read) ─────────── */}
-      <section className="mt-14">
+      <section data-tour="pool" className="mt-14">
         <Eyebrow>Financing</Eyebrow>
         <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight">The financing pool.</h2>
         <p className="mt-2 max-w-lg text-sm text-muted">
@@ -264,7 +264,7 @@ export default function Home() {
       </section>
 
       {/* ── QUICK ACTIONS (compact) ──────────────────────────── */}
-      <section className="mt-14">
+      <section data-tour="quickstart" className="mt-14">
         <Eyebrow>Get started</Eyebrow>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           <ActionTile title="Strike a bond" href="/trade/create" desc="Set terms and fund a passport-priced deposit. It releases on proof." />

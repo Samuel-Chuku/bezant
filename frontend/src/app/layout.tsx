@@ -32,6 +32,9 @@ import { ProfileSetupBanner } from '@/components/profile-setup-banner';
 import { SidebarSummary } from '@/components/sidebar-summary';
 import { AppFooter } from '@/components/app-footer';
 import { CommandPalette } from '@/components/command-palette';
+import { OnboardingTour } from '@/components/onboarding-tour';
+import { TourButton } from '@/components/tour-button';
+import { FeedbackWidget } from '@/components/feedback-widget';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://bezant.trade'),
@@ -74,6 +77,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 {/* SidebarSummary self-positions: fixed + draggable at lg+,
                     inline panel below content under lg. */}
                 <SidebarSummary />
+                <OnboardingTour />
+                <TourButton />
+                <FeedbackWidget />
               </>
             )}
           </ToastProvider>
