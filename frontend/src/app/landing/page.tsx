@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useReveal } from '@/hooks/use-reveal';
+import { useSigner } from '@/hooks/use-signer';
 import './landing.css';
 
 // Bezant marketing landing. Self-contained + token-scoped (.bezant-landing);
@@ -59,6 +60,14 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
 export default function LandingPage() {
   useReveal();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  // Connection is per-origin: on app.bezant.trade/landing this reflects the
+  // signed-in app session (→ "Go back to app"); on the marketing apex it's
+  // always false (→ Sign in / Open the app). Gate on mount to avoid a hydration
+  // mismatch, since wallet state only exists client-side.
+  const signer = useSigner();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const connected = mounted && signer.isConnected;
   return (
     <div className="bezant-landing" data-theme={theme}>
       <header className="nav"><div className="wrap nav-row">
@@ -66,8 +75,14 @@ export default function LandingPage() {
         <nav className="nav-links"><a href="#product">Product</a><a href="#protocol">Protocol</a><a href="https://github.com/Samuel-Chuku/bezant" target="_blank" rel="noopener">Docs</a></nav>
         <div className="nav-right">
           <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>◐</button>
-          <Link href={`${APP_URL}/`} className="ghost sm">Sign in</Link>
-          <Link href={`${APP_URL}/`} className="solid sm">Open the app</Link>
+          {connected ? (
+            <Link href={`${APP_URL}/`} className="solid sm">Go back to app →</Link>
+          ) : (
+            <>
+              <Link href={`${APP_URL}/`} className="ghost sm">Sign in</Link>
+              <Link href={`${APP_URL}/`} className="solid sm">Open the app</Link>
+            </>
+          )}
         </div>
       </div></header>
 

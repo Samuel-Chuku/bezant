@@ -92,13 +92,20 @@ export function NotificationsBell() {
         coords &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div
-            ref={panelRef}
-            role="dialog"
-            aria-label="Notifications"
-            style={{ position: 'fixed', top: coords.top, right: coords.right }}
-            className="bz-frame z-50 w-80 rounded-xl border border-line bg-bg shadow-2xl"
-          >
+          <>
+            {/* Dim + blur the page so focus stays on the notifications. */}
+            <div
+              className="fixed inset-0 z-40 bg-bg/20 backdrop-blur-sm"
+              aria-hidden
+              onClick={() => setOpen(false)}
+            />
+            <div
+              ref={panelRef}
+              role="dialog"
+              aria-label="Notifications"
+              style={{ position: 'fixed', top: coords.top, right: coords.right }}
+              className="bz-frame z-50 w-80 rounded-xl border border-line bg-bg shadow-2xl"
+            >
           <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <h3 className="text-sm font-medium text-fg">Notifications</h3>
             {items.length > 0 && unreadCount > 0 && (
@@ -147,7 +154,8 @@ export function NotificationsBell() {
               See all Activities →
             </Link>
           </footer>
-          </div>,
+            </div>
+          </>,
           document.body,
         )}
     </div>

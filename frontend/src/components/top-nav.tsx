@@ -134,7 +134,11 @@ export function TopNav() {
                 <path d="M3 6h18M3 12h18M3 18h18" />
               </svg>
             </button>
-            <Link href="/" className="inline-flex items-center" aria-label="Bezant home">
+            <Link
+              href="/landing"
+              className="inline-flex items-center transition-transform duration-200 will-change-transform hover:-translate-y-0.5 hover:scale-[1.03] active:scale-100"
+              aria-label="Bezant landing"
+            >
               <BezantWordmark markSize={24} textClassName="text-lg" />
             </Link>
           </div>
