@@ -780,8 +780,15 @@ function Action({
   );
 }
 
+// Pending / awaiting-someone-else state. Amber fill + a pulsing dot so the
+// status reads at a glance rather than blending into the page as muted text.
 function Waiting({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-line bg-bg/40 p-4 text-sm text-muted">{children}</p>;
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-warn/40 bg-warn/10 p-4">
+      <span className="mt-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-warn" aria-hidden />
+      <p className="text-[0.95rem] font-medium text-fg">{children}</p>
+    </div>
+  );
 }
 
 // Terminal / in-flight outcome summary card (Settled / Refunded / Cancelled /

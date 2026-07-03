@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
@@ -14,6 +15,9 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
   const router = useRouter();
 
   // Close on route change.
@@ -21,13 +25,14 @@ export function NotificationsBell() {
     setOpen(false);
   }, [pathname]);
 
-  // Close on outside click + Escape.
+  // Close on outside click + Escape. The panel is portaled to <body>, so the
+  // outside check must exclude both the button wrapper and the panel itself.
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (wrapperRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -40,6 +45,23 @@ export function NotificationsBell() {
     };
   }, [open]);
 
+  // Anchor the portaled panel under the bell (right-aligned). Recompute while
+  // open so it tracks scroll/resize.
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = buttonRef.current?.getBoundingClientRect();
+      if (r) setCoords({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+
   // Hide bell entirely when not connected - there's nothing to show.
   if (!signer.isConnected) return null;
 
@@ -48,6 +70,7 @@ export function NotificationsBell() {
   return (
     <div ref={wrapperRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"
@@ -65,12 +88,17 @@ export function NotificationsBell() {
         )}
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Notifications"
-          className="bz-frame absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-bg shadow-2xl"
-        >
+      {open &&
+        coords &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label="Notifications"
+            style={{ position: 'fixed', top: coords.top, right: coords.right }}
+            className="bz-frame z-50 w-80 rounded-xl border border-line bg-bg shadow-2xl"
+          >
           <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <h3 className="text-sm font-medium text-fg">Notifications</h3>
             {items.length > 0 && unreadCount > 0 && (
@@ -119,8 +147,9 @@ export function NotificationsBell() {
               See all Activities →
             </Link>
           </footer>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

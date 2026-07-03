@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { parseEventLogs } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
-import { buildCreateTradeUnsigned, resolveAddress, getVerifierInfo, type VerifierInfo } from '@/lib/api';
+import { buildCreateTradeUnsigned, resolveAddress, getUserByHandle, getVerifierInfo, type VerifierInfo } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
+import { shortAddress } from '@/lib/format';
 import { useToast } from '@/components/toast';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { PassportPanel } from '@/components/passport-panel';
@@ -56,6 +57,14 @@ type Submission =
   | { status: 'waiting'; hash: string }
   | { status: 'error'; message: string };
 
+// Live counterparty resolution shown under the handle/address input.
+type SellerCheck =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'address'; address: string }
+  | { status: 'found'; handle: string; address: string }
+  | { status: 'notfound' };
+
 // Bigger, taller inputs for the wizard (readability on the wide layout).
 const bigField =
   'w-full rounded-none border border-line bg-surface-2 px-4 py-3.5 text-base text-fg placeholder:text-muted transition focus:border-primary focus:outline-none';
@@ -78,10 +87,52 @@ export default function CreateTradePage() {
   const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
   const [stepIdx, setStepIdx] = useState(0);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [sellerCheck, setSellerCheck] = useState<SellerCheck>({ status: 'idle' });
 
   useEffect(() => {
     getVerifierInfo().then(setVerifier).catch(() => {});
   }, []);
+
+  // Live-resolve the counterparty as they type: a 0x address is accepted as-is;
+  // anything else is looked up as a Bezant handle (debounced) so the buyer knows
+  // it exists — or is told to paste an address — before submitting.
+  useEffect(() => {
+    const raw = sellerInput.trim();
+    if (!raw) {
+      setSellerCheck({ status: 'idle' });
+      return;
+    }
+    if (/^0x[0-9a-fA-F]{40}$/.test(raw)) {
+      setSellerCheck({ status: 'address', address: raw.toLowerCase() });
+      return;
+    }
+    setSellerCheck({ status: 'checking' });
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const user = await getUserByHandle(raw);
+        if (cancelled) return;
+        setSellerCheck(
+          user
+            ? { status: 'found', handle: user.handle ?? raw, address: user.walletAddress }
+            : { status: 'notfound' },
+        );
+      } catch {
+        // Network hiccup — don't block; submit will re-resolve authoritatively.
+        if (!cancelled) setSellerCheck({ status: 'idle' });
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [sellerInput]);
+
+  // Clear any prior submit error when the buyer navigates or edits a step, so a
+  // stale "no user found" message doesn't linger after they go back to fix it.
+  useEffect(() => {
+    setSubmission({ status: 'idle' });
+  }, [stepIdx]);
 
   // Verification step only exists when the staked verifier is deployed; otherwise
   // it's Trade Officer by default and the step is skipped.
@@ -105,7 +156,11 @@ export default function CreateTradePage() {
     return false;
   };
   const validate = (key: string): boolean => {
-    if (key === 'counterparty' && !sellerInput.trim()) return fail('Enter the seller’s handle or address.');
+    if (key === 'counterparty') {
+      if (!sellerInput.trim()) return fail('Enter the seller’s handle or address.');
+      if (sellerCheck.status === 'notfound')
+        return fail('No Bezant user with that handle — paste their 0x wallet address instead.');
+    }
     if (key === 'terms') {
       if (!amountUsdc || Number(amountUsdc) <= 0) return fail('Enter a positive bond amount.');
       if (!milestone.trim()) return fail('Describe the delivery milestone.');
@@ -209,6 +264,24 @@ export default function CreateTradePage() {
                 className={`mt-4 ${bigField}`}
               />
             </label>
+            <div className="mt-2 min-h-5 text-sm">
+              {sellerCheck.status === 'checking' && <span className="text-muted">Checking…</span>}
+              {sellerCheck.status === 'found' && (
+                <span className="flex items-center gap-1.5 text-primary">
+                  <CheckIcon /> {sellerCheck.handle} · <span className="font-mono">{shortAddress(sellerCheck.address)}</span>
+                </span>
+              )}
+              {sellerCheck.status === 'address' && (
+                <span className="flex items-center gap-1.5 text-primary">
+                  <CheckIcon /> Wallet address · <span className="font-mono">{shortAddress(sellerCheck.address)}</span>
+                </span>
+              )}
+              {sellerCheck.status === 'notfound' && (
+                <span className="text-warn">
+                  No Bezant user “{sellerInput.trim()}”. Paste their 0x wallet address instead.
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -294,7 +367,18 @@ export default function CreateTradePage() {
             {signer.isConnected && <PassportPanel address={signer.address} />}
 
             <dl className="divide-y divide-line overflow-hidden bz-frame rounded-xl border border-line bg-surface">
-              <SummaryRow label="Seller" onEdit={() => setStepIdx(0)}>{sellerInput || '—'}</SummaryRow>
+              <SummaryRow label="Seller" onEdit={() => setStepIdx(0)}>
+                {sellerCheck.status === 'found' ? (
+                  <span>
+                    {sellerCheck.handle}{' '}
+                    <span className="font-mono text-muted">({shortAddress(sellerCheck.address)})</span>
+                  </span>
+                ) : sellerCheck.status === 'address' ? (
+                  <span className="font-mono">{shortAddress(sellerCheck.address)}</span>
+                ) : (
+                  sellerInput || '—'
+                )}
+              </SummaryRow>
               <SummaryRow label="Amount" onEdit={() => setStepIdx(1)}>
                 <span className="font-mono">{amountUsdc || '0'} USDC</span>
               </SummaryRow>
