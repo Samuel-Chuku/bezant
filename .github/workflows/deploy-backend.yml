@@ -1,0 +1,53 @@
+# Auto-deploy the backend to the RackNerd VPS on push to main.
+#
+# Only runs when backend-relevant files change (the frontend is on Vercel and
+# deploys itself). SSHes in, pulls, and rebuilds the Docker container — the same
+# steps you run by hand today.
+#
+# Required GitHub repo secrets (Settings → Secrets and variables → Actions):
+#   VPS_HOST     - the VPS IP or hostname (e.g. 104.223.45.219)
+#   VPS_USER     - the SSH user (e.g. a dedicated "deploy" user; root works too)
+#   VPS_SSH_KEY  - the PRIVATE key whose public half is in that user's authorized_keys
+#   VPS_PORT     - (optional) SSH port; defaults to 22
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false # never interrupt an in-flight deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          PORT="${VPS_PORT:-22}"
+          # Pin the host key on first contact (TOFU). For stronger security,
+          # store the known_hosts line as a secret and write it here instead.
+          ssh-keyscan -p "$PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$VPS_USER@$VPS_HOST" '
+            set -e
+            cd ~/bezant
+            git pull --ff-only origin main
+            docker compose up -d --build
+            docker image prune -f
+            docker compose ps
+          '
