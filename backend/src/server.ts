@@ -3651,7 +3651,13 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
 // t.me/<bot>?start=<token>, the user taps Start, Telegram calls our webhook,
 // and we bind their chat id to the account. Auth follows the same trust-the-
 // connected-address model as /arc/notifications.
-type TgUpdate = { message?: { text?: string; chat?: { id?: number | string } } };
+type TgUpdate = {
+  message?: {
+    text?: string;
+    chat?: { id?: number | string };
+    from?: { username?: string; first_name?: string };
+  };
+};
 
 app.post<{ Body: { address?: string } }>('/arc/telegram/link', async (request, reply) => {
   if (!telegramEnabled()) return reply.code(503).send({ error: 'telegram not configured' });
@@ -3669,8 +3675,18 @@ app.post<{ Body: { address?: string } }>('/arc/telegram/link', async (request, r
 app.post<{ Body: { address?: string } }>('/arc/telegram/unlink', async (request, reply) => {
   const address = (request.body?.address ?? '').toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
-  db.prepare('UPDATE users SET telegram_chat_id = NULL WHERE wallet_address = ?').run(address);
+  db.prepare('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE wallet_address = ?').run(address);
   return { ok: true };
+});
+
+// Linked status + which Telegram account, for the profile disconnect popover.
+app.get<{ Querystring: { address?: string } }>('/arc/telegram/status', async (request, reply) => {
+  const address = (request.query.address ?? '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const row = db
+    .prepare('SELECT telegram_chat_id, telegram_username FROM users WHERE wallet_address = ?')
+    .get(address) as { telegram_chat_id: string | null; telegram_username: string | null } | undefined;
+  return { linked: Boolean(row?.telegram_chat_id), username: row?.telegram_username ?? null };
 });
 
 // Telegram → us. Verifies the shared secret header, then handles `/start <token>`.
@@ -3688,7 +3704,8 @@ app.post<{ Body: TgUpdate }>('/telegram/webhook', async (request, reply) => {
       .get(token) as { user_id: string; created_at: string } | undefined;
     const fresh = row && Date.now() - new Date(row.created_at + 'Z').getTime() < 15 * 60 * 1000;
     if (row && fresh) {
-      db.prepare('UPDATE users SET telegram_chat_id = ? WHERE id = ?').run(String(chatId), row.user_id);
+      const username = msg?.from?.username ?? msg?.from?.first_name ?? null;
+      db.prepare('UPDATE users SET telegram_chat_id = ?, telegram_username = ? WHERE id = ?').run(String(chatId), username, row.user_id);
       db.prepare('DELETE FROM telegram_link_tokens WHERE token = ?').run(token);
       // Seed current pending actions as already-sent so a fresh link doesn't
       // immediately replay a backlog of alerts.

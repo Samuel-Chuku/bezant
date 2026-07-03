@@ -102,6 +102,9 @@ const userColsAfter = db
 if (!new Set(userColsAfter.map((c) => c.name)).has('telegram_chat_id')) {
   db.exec('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT');
 }
+if (!new Set(userColsAfter.map((c) => c.name)).has('telegram_username')) {
+  db.exec('ALTER TABLE users ADD COLUMN telegram_username TEXT');
+}
 
 // One-time link tokens (deep-link `t.me/<bot>?start=<token>`) and per-key
 // dedupe of alerts already pushed to Telegram.

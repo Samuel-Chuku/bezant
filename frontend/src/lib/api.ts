@@ -225,6 +225,12 @@ export async function unlinkTelegram(address: string): Promise<{ ok: boolean }> 
   return jsonFetch<{ ok: boolean }>('POST', '/arc/telegram/unlink', { address });
 }
 
+export async function getTelegramStatus(
+  address: string,
+): Promise<{ linked: boolean; username: string | null }> {
+  return jsonFetch('GET', `/arc/telegram/status?address=${encodeURIComponent(address)}`);
+}
+
 // Self-registration flow (M32). Step 1 - get unsigned calldata for the
 // IdentityRegistry's no-arg `register()`. Frontend signs via useSigner.
 export async function buildRegisterAgentUnsigned(): Promise<UnsignedTx & {
