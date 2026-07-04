@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { authHeadersForBody, rememberAccountKey } from './lib/account-keys';
 
 // Progressive-trust demo: runs one buyer through N trades and shows the passport
 // mechanically stepping the required deposit down as the track record grows.
@@ -26,7 +27,7 @@ const RESET = '\x1b[0m';
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...authHeadersForBody(body) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -49,7 +50,9 @@ async function resolveOrCreateUser(handle: string): Promise<UserRecord> {
   const res = await fetch(`${BASE}/users/by-handle/${encodeURIComponent(handle)}`);
   if (res.ok) return (await res.json()) as UserRecord;
   if (res.status !== 404) throw new Error(`GET /users/by-handle/${handle} → HTTP ${res.status}`);
-  return req<UserRecord>('POST', '/users', { handle });
+  const created = await req<UserRecord & { accountKey?: string }>('POST', '/users', { handle });
+  if (created.accountKey) rememberAccountKey(handle, created.accountKey);
+  return created;
 }
 
 async function usdcRaw(address: string): Promise<bigint> {

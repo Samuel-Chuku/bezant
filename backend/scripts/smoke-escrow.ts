@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { authHeadersForBody, rememberAccountKey } from './lib/account-keys';
 import { randomBytes } from 'node:crypto';
 
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:3001';
@@ -35,7 +36,7 @@ function step(label: string) {
 async function req<T>(method: string, path: string, body?: unknown, expectStatus?: number[]): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...authHeadersForBody(body) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -69,7 +70,9 @@ async function resolveOrCreateUser(handle: string): Promise<UserRecord> {
     throw new Error(`GET /users/by-handle/${handle} → HTTP ${res.status}: ${text}`);
   }
   console.log(`${YELLOW}+ creating user with handle "${handle}"${RESET}`);
-  return req<UserRecord>('POST', '/users', { handle });
+  const created = await req<UserRecord & { accountKey?: string }>('POST', '/users', { handle });
+  if (created.accountKey) rememberAccountKey(handle, created.accountKey);
+  return created;
 }
 
 async function getUsdcRawBalance(address: string): Promise<bigint> {

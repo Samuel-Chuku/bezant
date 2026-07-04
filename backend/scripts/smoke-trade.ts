@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { authHeadersForBody, rememberAccountKey } from './lib/account-keys';
 
 // End-to-end smoke for the standalone escrow loop:
 //   create (buyer) -> fund (buyer) -> [finance (seller)] -> attest (operator)
@@ -36,7 +37,7 @@ function step(label: string) {
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...authHeadersForBody(body) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -65,7 +66,9 @@ async function resolveOrCreateUser(handle: string): Promise<UserRecord> {
   }
   if (res.status !== 404) throw new Error(`GET /users/by-handle/${handle} → HTTP ${res.status}`);
   console.log(`${YELLOW}+ creating user "${handle}"${RESET}`);
-  return req<UserRecord>('POST', '/users', { handle });
+  const created = await req<UserRecord & { accountKey?: string }>('POST', '/users', { handle });
+  if (created.accountKey) rememberAccountKey(handle, created.accountKey);
+  return created;
 }
 
 async function usdcRaw(address: string): Promise<bigint> {
