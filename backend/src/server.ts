@@ -285,6 +285,50 @@ app.register(cors, {
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
 });
 
+// Lightweight in-memory per-IP rate limiter (fixed window). Defense-in-depth for
+// the unauthenticated surface against brute-force / enumeration. Single-instance
+// only - if scaling horizontally, move to @fastify/rate-limit with a shared
+// store. Set RATE_LIMIT_MAX=0 to disable. Behind Cloudflare/nginx the socket IP
+// is the proxy, so prefer the forwarded client IP; note these headers are
+// spoofable unless the origin is locked to Cloudflare - CF/nginx-level limits
+// remain the stronger control.
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000);
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 300);
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, b] of rateBuckets) if (b.resetAt <= now) rateBuckets.delete(ip);
+}, RATE_LIMIT_WINDOW_MS).unref();
+
+function clientIp(request: { headers: Record<string, unknown>; ip: string }): string {
+  const cf = request.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf) return cf;
+  const xff = request.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return request.ip;
+}
+
+if (RATE_LIMIT_MAX > 0) {
+  app.addHook('onRequest', async (request, reply) => {
+    // Exempt CORS preflight, liveness probes, and the (already secret-gated)
+    // Telegram webhook, which can burst legitimately.
+    if (request.method === 'OPTIONS') return;
+    if (request.url === '/health' || request.url.startsWith('/telegram/webhook')) return;
+    const ip = clientIp(request);
+    const now = Date.now();
+    const b = rateBuckets.get(ip);
+    if (!b || b.resetAt <= now) {
+      rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+      return;
+    }
+    b.count += 1;
+    if (b.count > RATE_LIMIT_MAX) {
+      reply.header('Retry-After', String(Math.ceil((b.resetAt - now) / 1000)));
+      return reply.code(429).send({ error: 'too many requests - slow down' });
+    }
+  });
+}
+
 // Single error handler so every error response is shaped { error: string },
 // matching the convention used by per-route reply.code(...).send({error}).
 // Without this, unhandled throws and schema-validation errors return
@@ -418,9 +462,9 @@ function requireSigner(
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────
-// Admin guard for operator/treasury ops (e.g. seeding the pool). When
-// ADMIN_API_KEY is set, callers must send a matching `x-admin-key` header;
-// when it's unset the routes stay open (dev) - a startup warning nags to set it.
+// Admin guard for operator/treasury ops (e.g. seeding the pool, reading the
+// operator balance). Fail-closed: callers must send a matching `x-admin-key`
+// header, and when ADMIN_API_KEY is unset the admin routes stay LOCKED.
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? '';
 // Public https base for this backend (e.g. https://api.bezant.trade) — used to
 // auto-register the Telegram webhook at boot. Secret is echoed by Telegram in a
@@ -428,8 +472,13 @@ const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? '';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL ?? '';
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
 function requireAdmin(request: { headers: Record<string, unknown> }, reply: FastifyReply): boolean {
-  if (!ADMIN_API_KEY) return true; // not configured → open in dev
-  if (request.headers['x-admin-key'] !== ADMIN_API_KEY) {
+  if (!ADMIN_API_KEY) {
+    // Fail-closed: without a configured key the admin surface stays locked.
+    reply.code(503).send({ error: 'admin API not configured' });
+    return false;
+  }
+  const provided = request.headers['x-admin-key'];
+  if (typeof provided !== 'string' || !verifyAccountKey(provided, accountKeyHash(ADMIN_API_KEY))) {
     reply.code(401).send({ error: 'admin key required' });
     return false;
   }
@@ -650,7 +699,8 @@ app.get('/version', async () => {
   };
 });
 
-app.get('/wallet/balance', async () => {
+app.get('/wallet/balance', async (request, reply) => {
+  if (!requireAdmin(request, reply)) return;
   const res = await circle.getWalletTokenBalance({ id: CIRCLE_OPERATOR_WALLET_ID });
   return res.data;
 });
@@ -3866,7 +3916,9 @@ app.get<{ Querystring: { address?: string } }>('/arc/telegram/status', async (re
 
 // Telegram → us. Verifies the shared secret header, then handles `/start <token>`.
 app.post<{ Body: TgUpdate }>('/telegram/webhook', async (request, reply) => {
-  if (TELEGRAM_WEBHOOK_SECRET && request.headers['x-telegram-bot-api-secret-token'] !== TELEGRAM_WEBHOOK_SECRET) {
+  // Fail-closed: without a configured secret we can't trust any caller claiming
+  // to be Telegram, so reject rather than accept forged updates.
+  if (!TELEGRAM_WEBHOOK_SECRET || request.headers['x-telegram-bot-api-secret-token'] !== TELEGRAM_WEBHOOK_SECRET) {
     return reply.code(401).send({ error: 'bad secret' });
   }
   const msg = request.body?.message;
@@ -4452,7 +4504,7 @@ const port = Number(process.env.PORT ?? 3001);
 app
   .listen({ port, host: '0.0.0.0' })
   .then(() => {
-    if (!ADMIN_API_KEY) app.log.warn('ADMIN_API_KEY not set - operator/treasury routes (e.g. pool/fund) are unauthenticated. Set it in .env to lock them down.');
+    if (!ADMIN_API_KEY) app.log.warn('ADMIN_API_KEY not set - admin/treasury routes (pool fund, wallet balance) are LOCKED until you set it in .env.');
     startWrapperIndexer(app.log);
     startBridgeIndexer(app.log);
     startTradeIndexer(app.log);
