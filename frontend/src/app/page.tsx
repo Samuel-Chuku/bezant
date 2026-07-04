@@ -6,6 +6,7 @@ import { useBalance } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useSigner } from '@/hooks/use-signer';
 import { useUserRecord } from '@/hooks/use-user-record';
+import { useSessionVersion } from '@/components/session-manager';
 import { EmailSignIn } from '@/components/email-sign-in';
 import { StruckButton, buttonClass } from '@/components/ui';
 import { ProtocolChart } from '@/components/protocol-chart';
@@ -39,6 +40,7 @@ export default function Home() {
   const user = userState.status === 'ready' ? userState.user : null;
   const name = user?.handle ?? (signer.isConnected ? shortAddress(signer.address) : null);
 
+  const sv = useSessionVersion();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [pool, setPool] = useState<PoolStats | null>(null);
   const [proto, setProto] = useState<ProtocolStats | null>(null);
@@ -79,7 +81,7 @@ export default function Home() {
     return () => {
       live = false;
     };
-  }, [signer.isConnected, signer.address]);
+  }, [signer.isConnected, signer.address, sv]);
 
   const escrowUsdc = useMemo(
     () => trades.filter((t) => t.status === 'Funded').reduce((s, t) => s + Number(t.depositUsdc || 0), 0),
@@ -159,7 +161,7 @@ export default function Home() {
         <section data-tour="money" className="mt-6 grid gap-4 sm:grid-cols-3">
           <MoneyCard label="Available" value={available} unit="USDC" hint="Ready to spend on Arc" />
           <MoneyCard label="In escrow" value={escrowUsdc ? escrowUsdc.toLocaleString() : '0'} unit="USDC" hint="Locked in funded bonds" />
-          <MoneyCard label="Settled volume" value={stats ? num(stats.volumeUsdc) : '—'} unit="USDC" hint="Released to you, to date" />
+          <MoneyCard label="Settled volume" value={stats?.volumeUsdc ? num(stats.volumeUsdc) : '—'} unit="USDC" hint="Released to you, to date" />
         </section>
       )}
 

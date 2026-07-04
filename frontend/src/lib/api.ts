@@ -1,3 +1,5 @@
+import { clearSession, getSessionToken } from './session';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
 export type UserRecord = {
@@ -15,9 +17,13 @@ export type UserRecord = {
 };
 
 async function jsonFetch<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const token = getSessionToken();
+  const headers: Record<string, string> = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -28,6 +34,9 @@ async function jsonFetch<T>(method: string, path: string, body?: unknown): Promi
     parsed = text;
   }
   if (!res.ok) {
+    // 401 = our session is missing/expired - drop it so the next connect
+    // re-triggers sign-in.
+    if (res.status === 401) clearSession();
     const message = extractErrorMessage(parsed, res.status);
     const err = new Error(message) as Error & { status?: number };
     err.status = res.status;
@@ -169,10 +178,11 @@ export type UserStats = {
   disputed: number;
   cancelled: number;
   active: number;
-  volumeUsdc: string;
+  // Owner-only: present when the caller is signed in as this address.
+  volumeUsdc?: string;
   successRate: number | null;
   reputation: { agentId: string; count: number; value: string; operatorVerified: boolean } | null;
-  verifier: { stakeUsdc: string; lockedUsdc: string; panelsServed: number; accuracy: number | null; netPnlUsdc: string } | null;
+  verifier: { stakeUsdc: string; lockedUsdc: string; panelsServed: number; accuracy: number | null; netPnlUsdc?: string } | null;
 };
 
 export async function getUserStats(address: string): Promise<UserStats> {

@@ -14,6 +14,7 @@ import { PoolYieldStrip } from '@/components/pool-yield';
 import { ChainBalancesCard } from '@/components/chain-balances-card';
 import { StruckButton } from '@/components/ui';
 import { ConnectTelegram } from '@/components/connect-telegram';
+import { useSessionVersion } from '@/components/session-manager';
 import { getPoolStats, getUserStats, type PoolStats, type UserStats } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import { timeAgo } from '@/lib/relative-time';
@@ -23,6 +24,7 @@ import { timeAgo } from '@/lib/relative-time';
 export default function ProfilePage() {
   const signer = useSigner();
   const { state: userState, linkAgentId, registerAgent } = useUserRecord();
+  const sv = useSessionVersion();
   const [stats, setStats] = useState<UserStats | null>(null);
 
   const user = userState.status === 'ready' ? userState.user : null;
@@ -39,7 +41,7 @@ export default function ProfilePage() {
     return () => {
       live = false;
     };
-  }, [signer.isConnected, signer.address]);
+  }, [signer.isConnected, signer.address, sv]);
 
   if (!signer.isConnected) {
     return (
@@ -83,7 +85,7 @@ export default function ProfilePage() {
       {/* At-a-glance metrics */}
       <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <MetricCard label="Bonds" glyph={<VaultGlyph />} value={stats ? String(stats.tradesTotal) : '-'} hint={stats ? `${stats.settled} settled · ${stats.active} active` : undefined} />
-        <MetricCard label="Volume" glyph={<StackGlyph />} value={stats ? Number(stats.volumeUsdc).toLocaleString() : '-'} unit="USDC" hint="settled" />
+        <MetricCard label="Volume" glyph={<StackGlyph />} value={stats?.volumeUsdc ? Number(stats.volumeUsdc).toLocaleString() : '-'} unit="USDC" hint="settled" />
         <MetricCard label="Success rate" glyph={<CheckGlyph />} featured value={stats?.successRate != null ? String(Math.round(stats.successRate * 100)) : '-'} unit="%" hint="settled vs resolved" />
         <MetricCard label="Reputation" glyph={<SealGlyph />} value={rep ? Number(rep.value).toFixed(2) : '-'} hint={rep ? `${rep.count} ratings${rep.operatorVerified ? ' · ✓ boosted' : ''}` : 'no agent linked'} />
       </div>
@@ -259,11 +261,13 @@ function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
         <Field label="Staked">{v.stakeUsdc} USDC{v.lockedUsdc !== '0' ? <span className="text-muted"> · {v.lockedUsdc} locked</span> : null}</Field>
         <Field label="Panels served">{v.panelsServed}</Field>
         <Field label="Accuracy">{v.accuracy != null ? `${Math.round(v.accuracy * 100)}%` : '-'}</Field>
-        <Field label="Net rewards">
-          <span className={pnl > 0 ? 'text-primary' : pnl < 0 ? 'text-danger' : 'text-fg'}>
-            {pnl > 0 ? '+' : ''}{v.netPnlUsdc} USDC
-          </span>
-        </Field>
+        {v.netPnlUsdc != null && (
+          <Field label="Net rewards">
+            <span className={pnl > 0 ? 'text-primary' : pnl < 0 ? 'text-danger' : 'text-fg'}>
+              {pnl > 0 ? '+' : ''}{v.netPnlUsdc} USDC
+            </span>
+          </Field>
+        )}
       </div>
     </div>
   );

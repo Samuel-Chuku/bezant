@@ -469,6 +469,132 @@ async function verifyActionSig(
   return true;
 }
 
+// ── SIWE session auth ───────────────────────────────────────────────────────
+// Sign-in flow: GET /auth/nonce issues a one-time message to sign; POST
+// /auth/verify checks the wallet signature (EOA + ERC-1271/6492 smart accounts
+// via arcClient.verifyMessage) and returns a bearer session token. Reads that
+// expose a user's own data use requireSession to bind the caller to a verified
+// address, instead of trusting a client-supplied ?address.
+const AUTH_NONCE_TTL_MS = 10 * 60_000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60_000;
+const AUTH_DOMAIN = process.env.AUTH_DOMAIN ?? 'bezant.trade';
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+function buildSiweMessage(address: string, nonce: string, issuedAt: string): string {
+  return [
+    `${AUTH_DOMAIN} wants you to sign in with your wallet:`,
+    address,
+    '',
+    'Sign in to Bezant. This request will not trigger a transaction or cost gas.',
+    '',
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt}`,
+  ].join('\n');
+}
+
+// Resolve the caller's verified address from their bearer session, or 401.
+// Returns the lowercased address so callers can compare case-insensitively.
+function requireSession(
+  request: { headers: Record<string, unknown> },
+  reply: FastifyReply,
+): string | null {
+  const token = extractBearer(request);
+  if (!token) {
+    reply.code(401).send({ error: 'authentication required - sign in first' });
+    return null;
+  }
+  const row = db
+    .prepare('SELECT address, expires_at FROM sessions WHERE token_hash = ?')
+    .get(accountKeyHash(token)) as { address: string; expires_at: number } | undefined;
+  if (!row) {
+    reply.code(401).send({ error: 'invalid session - sign in again' });
+    return null;
+  }
+  if (row.expires_at < Date.now()) {
+    db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(accountKeyHash(token));
+    reply.code(401).send({ error: 'session expired - sign in again' });
+    return null;
+  }
+  return row.address.toLowerCase();
+}
+
+// Like requireSession but never replies - returns the verified address if a
+// valid session bearer is present, else null. For public reads that reveal more
+// to the owner than to strangers.
+function optionalSession(request: { headers: Record<string, unknown> }): string | null {
+  const token = extractBearer(request);
+  if (!token) return null;
+  const row = db
+    .prepare('SELECT address, expires_at FROM sessions WHERE token_hash = ?')
+    .get(accountKeyHash(token)) as { address: string; expires_at: number } | undefined;
+  if (!row || row.expires_at < Date.now()) return null;
+  return row.address.toLowerCase();
+}
+
+app.get<{ Querystring: { address?: string } }>('/auth/nonce', async (request, reply) => {
+  const address = request.query.address;
+  if (!address || !ADDRESS_RE.test(address)) {
+    return reply.code(400).send({ error: 'valid address query param required' });
+  }
+  // Opportunistic cleanup of expired nonces to keep the table small.
+  db.prepare('DELETE FROM auth_nonces WHERE expires_at < ?').run(Date.now());
+  const nonce = randomBytes(16).toString('hex');
+  const issuedAt = new Date().toISOString();
+  const message = buildSiweMessage(address, nonce, issuedAt);
+  db.prepare('INSERT INTO auth_nonces (nonce, address, message, expires_at) VALUES (?, ?, ?, ?)').run(
+    nonce,
+    address,
+    message,
+    Date.now() + AUTH_NONCE_TTL_MS,
+  );
+  return { nonce, message };
+});
+
+app.post<{ Body: { nonce?: string; signature?: string } }>('/auth/verify', async (request, reply) => {
+  const { nonce, signature } = request.body ?? {};
+  if (!nonce || !signature) {
+    return reply.code(400).send({ error: 'nonce and signature are required' });
+  }
+  const row = db
+    .prepare('SELECT address, message, expires_at FROM auth_nonces WHERE nonce = ?')
+    .get(nonce) as { address: string; message: string; expires_at: number } | undefined;
+  // Consume the nonce immediately - single use whether or not it verifies.
+  db.prepare('DELETE FROM auth_nonces WHERE nonce = ?').run(nonce);
+  if (!row) {
+    return reply.code(401).send({ error: 'unknown or used nonce - request a new one' });
+  }
+  if (row.expires_at < Date.now()) {
+    return reply.code(401).send({ error: 'nonce expired - request a new one' });
+  }
+  let ok = false;
+  try {
+    ok = await arcClient.verifyMessage({
+      address: row.address as `0x${string}`,
+      message: row.message,
+      signature: signature as `0x${string}`,
+    });
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    return reply.code(401).send({ error: 'invalid signature for this address' });
+  }
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  db.prepare('INSERT INTO sessions (token_hash, address, expires_at) VALUES (?, ?, ?)').run(
+    accountKeyHash(token),
+    row.address,
+    expiresAt,
+  );
+  return { token, address: row.address, expiresAt };
+});
+
+app.post('/auth/logout', async (request, reply) => {
+  const token = extractBearer(request);
+  if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(accountKeyHash(token));
+  return reply.send({ ok: true });
+});
+
 // Health probe: liveness vs readiness. Returns 200 when both dependencies
 // (SQLite + Arc RPC) respond; 503 when either is down so external monitors
 // can distinguish "process is running" from "process can actually serve".
@@ -1542,10 +1668,9 @@ type PactsByAddressEntry = {
 app.get<{ Params: { address: string } }>(
   '/pacts/by-address/:address',
   async (request, reply) => {
-    const address = request.params.address.toLowerCase();
-    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-      return reply.code(400).send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
-    }
+    // Self-only: derive the address from the caller's verified session.
+    const address = requireSession(request, reply);
+    if (!address) return;
     const rows = db
       .prepare(
         `SELECT * FROM pacts_index
@@ -1599,10 +1724,8 @@ app.get<{
   Params: { address: string };
   Querystring: { limit?: string; offset?: string };
 }>('/pacts/by-address/:address/feed', async (request, reply) => {
-  const address = request.params.address.toLowerCase();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-    return reply.code(400).send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
-  }
+  const address = requireSession(request, reply);
+  if (!address) return;
   const limit = clampInt(request.query.limit, FEED_PAGE_DEFAULT, 1, FEED_PAGE_MAX);
   const offset = clampInt(request.query.offset, 0, 0, 100_000);
 
@@ -1707,12 +1830,8 @@ app.get<{
   Params: { address: string };
   Querystring: { limit?: string };
 }>('/bridge/history/:address', async (request, reply) => {
-  const address = request.params.address.toLowerCase();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-    return reply
-      .code(400)
-      .send({ error: 'address must be a 0x-prefixed 20-byte hex address' });
-  }
+  const address = requireSession(request, reply);
+  if (!address) return;
   const limit = clampInt(
     request.query.limit,
     BRIDGE_HISTORY_DEFAULT,
@@ -3336,10 +3455,8 @@ app.post<{ Body: { amountUsdc?: string; shares?: string } }>('/arc/trade/pool/wi
 // chain scan, so the feed stays fresh without timing out under polling.
 app.get<{ Querystring: { address?: string } }>('/arc/trade/pool/activity', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const address = (request.query.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) {
-    return reply.code(400).send({ error: 'address query param (0x…) required' });
-  }
+  const address = requireSession(request, reply);
+  if (!address) return;
 
   const rows = db
     .prepare(
@@ -3574,8 +3691,9 @@ app.post<{ Params: { id: string }; Body: { releaseToSeller: boolean } }>(
 // List a user's trades (as buyer or seller) from the trade index, with live status.
 app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const address = (request.query.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  // Self-only: read from the caller's verified session, not a client-supplied address.
+  const address = requireSession(request, reply);
+  if (!address) return;
 
   const rows = db
     .prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ? ORDER BY trade_id DESC')
@@ -3606,15 +3724,15 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades', async (request, re
 // (what they need to do next). Feeds the global bell.
 // Notification read-state, keyed by address - shared across the user's devices.
 app.get<{ Querystring: { address?: string } }>('/arc/notifications/read', async (request, reply) => {
-  const address = (request.query.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
   const rows = db.prepare('SELECT key FROM notif_reads WHERE address = ?').all(address) as { key: string }[];
   return { keys: rows.map((r) => r.key) };
 });
 
 app.post<{ Body: { address?: string; keys?: string[] } }>('/arc/notifications/read', async (request, reply) => {
-  const address = (request.body.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
   const keys = Array.isArray(request.body.keys) ? request.body.keys.filter((k) => typeof k === 'string') : [];
   const stmt = db.prepare('INSERT OR IGNORE INTO notif_reads (address, key) VALUES (?, ?)');
   const insertMany = db.transaction((ks: string[]) => ks.forEach((k) => stmt.run(address, k)));
@@ -3624,8 +3742,8 @@ app.post<{ Body: { address?: string; keys?: string[] } }>('/arc/notifications/re
 
 app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const address = (request.query.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
 
   const ids = (db.prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ?').all(address, address) as { trade_id: number }[]).map((r) => r.trade_id);
 
@@ -3718,8 +3836,8 @@ type TgUpdate = {
 
 app.post<{ Body: { address?: string } }>('/arc/telegram/link', async (request, reply) => {
   if (!telegramEnabled()) return reply.code(503).send({ error: 'telegram not configured' });
-  const address = (request.body?.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
   const user = db.prepare('SELECT id FROM users WHERE wallet_address = ?').get(address) as { id: string } | undefined;
   if (!user) return reply.code(404).send({ error: 'no account for this address — claim a handle first' });
   const username = await getBotUsername();
@@ -3730,16 +3848,16 @@ app.post<{ Body: { address?: string } }>('/arc/telegram/link', async (request, r
 });
 
 app.post<{ Body: { address?: string } }>('/arc/telegram/unlink', async (request, reply) => {
-  const address = (request.body?.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
   db.prepare('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL WHERE wallet_address = ?').run(address);
   return { ok: true };
 });
 
 // Linked status + which Telegram account, for the profile disconnect popover.
 app.get<{ Querystring: { address?: string } }>('/arc/telegram/status', async (request, reply) => {
-  const address = (request.query.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
   const row = db
     .prepare('SELECT telegram_chat_id, telegram_username FROM users WHERE wallet_address = ?')
     .get(address) as { telegram_chat_id: string | null; telegram_username: string | null } | undefined;
@@ -4030,8 +4148,8 @@ app.get('/arc/verifier/recent', async (_request, reply) => {
 app.get<{ Querystring: { address?: string } }>('/arc/verifier/activity', async (request, reply) => {
   const v = verifierReady(reply);
   if (!v) return;
-  const address = (request.query.address ?? '').toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x…) required' });
+  const address = requireSession(request, reply);
+  if (!address) return;
   const rows = db
     .prepare(
       `SELECT kind, amount_raw, block_time, tx_hash, log_index
@@ -4257,6 +4375,9 @@ app.get<{ Params: { address: string } }>('/arc/user/:address/stats', async (requ
   if (!escrowReady(reply)) return;
   const address = request.params.address.toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(address)) return reply.code(400).send({ error: 'address must be 0x…' });
+  // Owner sees their own financials (trade volume, verifier PnL); strangers get
+  // the trimmed public view (counts + reputation only).
+  const isSelf = optionalSession(request) === address;
 
   // Trade history (as buyer or seller).
   const ids = (db.prepare('SELECT trade_id FROM trade_index WHERE buyer = ? OR seller = ?').all(address, address) as { trade_id: number }[]).map((r) => r.trade_id);
@@ -4289,25 +4410,27 @@ app.get<{ Params: { address: string } }>('/arc/user/:address/stats', async (requ
   }
 
   // Verifier role (only if they've staked / served).
-  let verifier: { stakeUsdc: string; lockedUsdc: string; panelsServed: number; accuracy: number | null; netPnlUsdc: string } | null = null;
+  let verifier: { stakeUsdc: string; lockedUsdc: string; panelsServed: number; accuracy: number | null; netPnlUsdc?: string } | null = null;
   if (STAKED_VERIFIER_ADDRESS) {
     const vc = STAKED_VERIFIER_ADDRESS;
     try {
       const read = (fn: string) => arcClient.readContract({ address: vc, abi: stakedVerifierAbi, functionName: fn as never, args: [address as `0x${string}`] as never });
       const [stake, locked, total, correct] = (await Promise.all([read('stakeOf'), read('lockedOf'), read('totalVotes'), read('correctVotes')])) as [bigint, bigint, number, number];
-      const ev = db.prepare('SELECT kind, amount_raw FROM verifier_events WHERE module = ? AND verifier = ?').all(vc.toLowerCase(), address) as { kind: string; amount_raw: string }[];
-      let netDeposited = 0n;
-      for (const e of ev) netDeposited += e.kind === 'verifier-stake' ? BigInt(e.amount_raw) : -BigInt(e.amount_raw);
       const totalV = Number(total);
       if (stake > 0n || totalV > 0) {
-        const pnl = stake - netDeposited; // + earned (fees/slash), - net slashed
         verifier = {
           stakeUsdc: formatUnits(stake, 6),
           lockedUsdc: formatUnits(locked, 6),
           panelsServed: totalV,
           accuracy: totalV > 0 ? Number(correct) / totalV : null,
-          netPnlUsdc: (pnl < 0n ? '-' : '') + formatUnits(pnl < 0n ? -pnl : pnl, 6),
         };
+        if (isSelf) {
+          const ev = db.prepare('SELECT kind, amount_raw FROM verifier_events WHERE module = ? AND verifier = ?').all(vc.toLowerCase(), address) as { kind: string; amount_raw: string }[];
+          let netDeposited = 0n;
+          for (const e of ev) netDeposited += e.kind === 'verifier-stake' ? BigInt(e.amount_raw) : -BigInt(e.amount_raw);
+          const pnl = stake - netDeposited; // + earned (fees/slash), - net slashed
+          verifier.netPnlUsdc = (pnl < 0n ? '-' : '') + formatUnits(pnl < 0n ? -pnl : pnl, 6);
+        }
       }
     } catch {
       /* leave null */
@@ -4317,7 +4440,7 @@ app.get<{ Params: { address: string } }>('/arc/user/:address/stats', async (requ
   return {
     tradesTotal: ids.length,
     settled, refunded, disputed, cancelled, active,
-    volumeUsdc: formatUnits(volume, 6),
+    ...(isSelf ? { volumeUsdc: formatUnits(volume, 6) } : {}),
     successRate: resolved > 0 ? settled / resolved : null,
     reputation,
     verifier,

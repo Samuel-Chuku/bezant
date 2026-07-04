@@ -80,3 +80,6 @@ backend/data/
 **/*.db-journal
 **/*.db-wal
 **/*.db-shm
+
+# Firecrawl research scratch (never commit)
+.firecrawl/

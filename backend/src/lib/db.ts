@@ -129,6 +129,24 @@ db.exec(`
   );
 `);
 
+// SIWE-style auth: single-use login nonces and issued bearer sessions. Only the
+// SHA-256 of the session token is stored; the plaintext is returned once at
+// /auth/verify. expires_at is epoch ms for cheap TTL comparisons.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS auth_nonces (
+    nonce      TEXT PRIMARY KEY,
+    address    TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    address    TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_address ON sessions(address);
+`);
+
 export type UserRow = {
   id: string;
   handle: string | null;
@@ -144,21 +162,21 @@ export type UserRow = {
 export type User = {
   id: string;
   handle: string | null;
-  circleWalletId: string | null;
   walletAddress: string;
-  signingMode: SigningMode;
   agentId: string | null;
   telegramLinked: boolean;
   createdAt: string;
 };
 
+// Public user shape. Deliberately omits circle_wallet_id (custody wallet id) and
+// signing_mode — these are internal and were previously world-readable via the
+// user directory. The frontend derives signing mode client-side and never reads
+// these back.
 export function rowToUser(row: UserRow): User {
   return {
     id: row.id,
     handle: row.handle,
-    circleWalletId: row.circle_wallet_id,
     walletAddress: row.wallet_address,
-    signingMode: row.signing_mode,
     agentId: row.agent_id,
     // Expose only whether Telegram is linked, never the raw chat id.
     telegramLinked: row.telegram_chat_id != null,

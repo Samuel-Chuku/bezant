@@ -9,6 +9,7 @@ import { wagmiConfig } from '@/lib/wagmi';
 import { CircleAccountProvider } from '@/hooks/use-circle-account';
 import { TxReviewProvider } from '@/components/tx-review';
 import { TxFlowProvider } from '@/components/tx-flow';
+import { SessionManager } from '@/components/session-manager';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -19,7 +20,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <RainbowKitProvider theme={darkTheme()} modalSize="compact">
           <CircleAccountProvider>
             <TxReviewProvider>
-              <TxFlowProvider>{children}</TxFlowProvider>
+              <TxFlowProvider>
+                <SessionManager />
+                {children}
+              </TxFlowProvider>
             </TxReviewProvider>
           </CircleAccountProvider>
         </RainbowKitProvider>
