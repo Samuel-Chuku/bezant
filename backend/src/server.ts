@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, writeFileSync, statSync, createReadStream } from 'node:fs';
 import { resolve, join } from 'node:path';
 import Fastify, { type FastifyError, type FastifyReply } from 'fastify';
@@ -314,15 +314,58 @@ if (!operatorRow) {
   ).run(id, 'operator', CIRCLE_OPERATOR_WALLET_ID, CIRCLE_OPERATOR_ADDRESS, 'dev-controlled');
   app.log.info({ id, handle: 'operator' }, 'seeded operator user');
 }
+// The operator account key is sourced from env so it's stable across restarts
+// and usable by operator scripts. Reconciled on every boot so rotating the env
+// value rotates the stored hash. Fail-closed: with no key set the operator
+// cannot drive custodial routes.
+const OPERATOR_API_KEY = process.env.OPERATOR_API_KEY ?? '';
+if (OPERATOR_API_KEY) {
+  db.prepare('UPDATE users SET secret_hash = ? WHERE circle_wallet_id = ?').run(
+    accountKeyHash(OPERATOR_API_KEY),
+    CIRCLE_OPERATOR_WALLET_ID,
+  );
+} else {
+  app.log.warn(
+    'OPERATOR_API_KEY is not set - the operator account cannot authenticate to custodial signer routes',
+  );
+}
 
 type SignerRow = {
   circle_wallet_id: string | null;
   wallet_address: string;
   signing_mode: string;
+  secret_hash: string | null;
 };
 type SignerLookup = { userId?: string; handle?: string };
 
+// ── Per-account custodial key ───────────────────────────────────────────────
+// Dev-controlled accounts have their key custodied by the backend, so the
+// caller can't prove ownership with an on-chain signature. Instead each account
+// holds an opaque bearer key (returned once at creation); only its SHA-256 hash
+// is stored. Callers present it as `Authorization: Bearer <key>` on every
+// custodial signer route.
+function generateAccountKey(): string {
+  return randomBytes(32).toString('hex');
+}
+function accountKeyHash(key: string): string {
+  return createHash('sha256').update(key).digest('hex');
+}
+function extractBearer(request: { headers: Record<string, unknown> }): string | null {
+  const h = request.headers['authorization'];
+  if (typeof h !== 'string') return null;
+  const m = /^Bearer\s+(.+)$/i.exec(h.trim());
+  return m ? m[1].trim() : null;
+}
+function verifyAccountKey(provided: string | null, storedHash: string | null): boolean {
+  if (!provided || !storedHash) return false;
+  const a = Buffer.from(accountKeyHash(provided), 'hex');
+  const b = Buffer.from(storedHash, 'hex');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 function requireSigner(
+  request: { headers: Record<string, unknown> },
   reply: FastifyReply,
   lookup: SignerLookup | undefined,
 ): { circle_wallet_id: string; wallet_address: string } | null {
@@ -334,12 +377,12 @@ function requireSigner(
 
   if (userId && typeof userId === 'string') {
     row = db
-      .prepare('SELECT circle_wallet_id, wallet_address, signing_mode FROM users WHERE id = ?')
+      .prepare('SELECT circle_wallet_id, wallet_address, signing_mode, secret_hash FROM users WHERE id = ?')
       .get(userId) as SignerRow | undefined;
     identifier = `user ${userId}`;
   } else if (handle && typeof handle === 'string') {
     row = db
-      .prepare('SELECT circle_wallet_id, wallet_address, signing_mode FROM users WHERE handle = ?')
+      .prepare('SELECT circle_wallet_id, wallet_address, signing_mode, secret_hash FROM users WHERE handle = ?')
       .get(handle) as SignerRow | undefined;
     identifier = `user with handle '${handle}'`;
   } else {
@@ -357,6 +400,16 @@ function requireSigner(
   if (row.signing_mode !== 'dev-controlled' || !row.circle_wallet_id) {
     reply.code(409).send({
       error: `${identifier} has signing_mode='${row.signing_mode}' - backend cannot sign for this user. Use the /unsigned variant of this route and have the wallet sign client-side.`,
+    });
+    return null;
+  }
+
+  // The backend is about to sign with this account's custodied wallet, so the
+  // caller must prove they hold the account key. Fail-closed: an account with no
+  // stored hash can never authenticate here.
+  if (!verifyAccountKey(extractBearer(request), row.secret_hash)) {
+    reply.code(401).send({
+      error: `valid account key required for ${identifier} - send it as 'Authorization: Bearer <key>'`,
     });
     return null;
   }
@@ -487,7 +540,7 @@ app.post<{
   };
 }>('/wallet/transfer-usdc', async (request, reply) => {
   const { fromUserId, fromHandle, toUserId, toHandle, toAddress, amountUsdc } = request.body;
-  const sender = requireSigner(reply, { userId: fromUserId, handle: fromHandle });
+  const sender = requireSigner(request, reply, { userId: fromUserId, handle: fromHandle });
   if (!sender) return;
 
   let destination: string;
@@ -561,12 +614,16 @@ app.post<{ Body: { handle?: string } }>('/users', async (request, reply) => {
   }
 
   const id = randomUUID();
+  // Issue the account key once. Only its hash is stored; the plaintext is
+  // returned here and never again - the caller must use it as a bearer token on
+  // every custodial signer route for this account.
+  const accountKey = generateAccountKey();
   db.prepare(
-    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address, signing_mode) VALUES (?, ?, ?, ?, ?)`
-  ).run(id, handle, wallet.id, wallet.address, 'dev-controlled');
+    `INSERT INTO users (id, handle, circle_wallet_id, wallet_address, signing_mode, secret_hash) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, handle, wallet.id, wallet.address, 'dev-controlled', accountKeyHash(accountKey));
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
-  return reply.code(201).send(rowToUser(row));
+  return reply.code(201).send({ ...rowToUser(row), accountKey });
 });
 
 // Register a wallet the backend does NOT custody - used by the frontend after
@@ -888,7 +945,7 @@ app.post<{
   };
 }>('/arc/escrow/pacts', async (request, reply) => {
   const { provider, expiredInSeconds, description, challengeWindowSeconds } = request.body;
-  const signer = requireSigner(reply, request.body);
+  const signer = requireSigner(request, reply, request.body);
   if (!signer) return;
   if (typeof expiredInSeconds !== 'number' || expiredInSeconds < 1800) {
     return reply.code(400).send({ error: 'expiredInSeconds must be a number >= 1800 (wrapper Rule 3 floor is 30 minutes)' });
@@ -928,7 +985,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; bud
   '/arc/escrow/pacts/:id/budget',
   async (request, reply) => {
     const { budgetUsdc, challengeWindowSeconds } = request.body;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
     const amountRaw = parseUnits(budgetUsdc, 6);
@@ -957,7 +1014,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; bud
 
 app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/arc/usdc/approve', async (request, reply) => {
   const { amountUsdc } = request.body;
-  const signer = requireSigner(reply, request.body);
+  const signer = requireSigner(request, reply, request.body);
   if (!signer) return;
   const amountRaw = parseUnits(amountUsdc, 6);
 
@@ -983,7 +1040,7 @@ app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/a
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; expectedBudgetUsdc: string; expectedChallengeWindowSeconds: number } }>(
   '/arc/escrow/pacts/:id/fund',
   async (request, reply) => {
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
     const { expectedBudgetUsdc, expectedChallengeWindowSeconds } = request.body;
@@ -1019,7 +1076,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; exp
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; deliverableHash: string } }>(
   '/arc/escrow/pacts/:id/submit',
   async (request, reply) => {
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
     let deliverable: `0x${string}`;
@@ -1058,7 +1115,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; del
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/escrow/pacts/:id/complete',
   async (request, reply) => {
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
 
@@ -1084,7 +1141,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; reasonHash?: string } }>(
   '/arc/escrow/pacts/:id/reject',
   async (request, reply) => {
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
     let reason: `0x${string}`;
@@ -1117,7 +1174,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rea
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/escrow/pacts/:id/refund',
   async (request, reply) => {
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const pactId = request.params.id;
 
@@ -2736,7 +2793,7 @@ app.post<{
   Body: { userId?: string; handle?: string; seller: string; amountUsdc: string; milestone?: string; deadlineSeconds?: number; attester?: string };
 }>('/arc/trade/create', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const signer = requireSigner(reply, request.body);
+  const signer = requireSigner(request, reply, request.body);
   if (!signer) return;
   const { seller, amountUsdc, milestone, deadlineSeconds, attester } = request.body;
 
@@ -2776,7 +2833,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   '/arc/trade/:id/fund',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const id = BigInt(request.params.id);
 
@@ -2801,7 +2858,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; pro
   '/arc/trade/:id/attest',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const proofHash = keccak256(stringToBytes(request.body.proof ?? 'attested'));
     const passed = request.body.passed ?? true;
@@ -2816,7 +2873,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   '/arc/trade/:id/accept',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, acceptSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
@@ -2828,7 +2885,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; amo
   '/arc/trade/:id/counter',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
       return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
@@ -2843,7 +2900,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   '/arc/trade/:id/cancel',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, cancelSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
@@ -2855,7 +2912,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   '/arc/trade/:id/finance',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, requestFinancingSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
@@ -2867,7 +2924,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   '/arc/trade/:id/dispute',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, raiseDisputeSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
@@ -2879,7 +2936,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   '/arc/trade/:id/refund',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, refundSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
@@ -2892,7 +2949,7 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string; rel
   '/arc/trade/:id/resolve',
   async (request, reply) => {
     if (!escrowReady(reply)) return;
-    const signer = requireSigner(reply, request.body);
+    const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
     const tx = await runExec(signer.circle_wallet_id, resolveDisputeSpec(BigInt(request.params.id), Boolean(request.body.releaseToSeller)));
     return { tradeId: request.params.id, releaseToSeller: Boolean(request.body.releaseToSeller), txId: tx.id, txHash: tx.txHash, state: tx.state };
@@ -3223,7 +3280,7 @@ app.get('/arc/trades/stats', async (_request, reply) => {
 
 app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/arc/trade/pool/deposit', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const signer = requireSigner(reply, request.body);
+  const signer = requireSigner(request, reply, request.body);
   if (!signer) return;
   if (!request.body.amountUsdc || Number(request.body.amountUsdc) <= 0) {
     return reply.code(400).send({ error: 'amountUsdc must be a positive number string' });
@@ -3237,7 +3294,7 @@ app.post<{ Body: { userId?: string; handle?: string; amountUsdc: string } }>('/a
 // Withdraw by USDC amount (converted to shares) or by explicit shares.
 app.post<{ Body: { userId?: string; handle?: string; amountUsdc?: string; shares?: string } }>('/arc/trade/pool/withdraw', async (request, reply) => {
   if (!escrowReady(reply)) return;
-  const signer = requireSigner(reply, request.body);
+  const signer = requireSigner(request, reply, request.body);
   if (!signer) return;
   let shares: bigint;
   if (request.body.shares) shares = BigInt(request.body.shares);

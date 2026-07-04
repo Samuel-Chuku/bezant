@@ -105,6 +105,13 @@ if (!new Set(userColsAfter.map((c) => c.name)).has('telegram_chat_id')) {
 if (!new Set(userColsAfter.map((c) => c.name)).has('telegram_username')) {
   db.exec('ALTER TABLE users ADD COLUMN telegram_username TEXT');
 }
+// Per-account API key for dev-controlled (custodial) accounts. Stores only the
+// SHA-256 hash of the key; the plaintext is returned once at creation and never
+// again. Nullable: a dev-controlled account with no hash cannot authenticate to
+// the custodial signer routes (fail-closed).
+if (!new Set(userColsAfter.map((c) => c.name)).has('secret_hash')) {
+  db.exec('ALTER TABLE users ADD COLUMN secret_hash TEXT');
+}
 
 // One-time link tokens (deep-link `t.me/<bot>?start=<token>`) and per-key
 // dedupe of alerts already pushed to Telegram.
@@ -130,6 +137,7 @@ export type UserRow = {
   signing_mode: SigningMode;
   agent_id: string | null;
   telegram_chat_id: string | null;
+  secret_hash: string | null;
   created_at: string;
 };
 
