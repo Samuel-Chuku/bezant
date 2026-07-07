@@ -6,6 +6,7 @@ import { useBalance } from 'wagmi';
 import { BRIDGE_CHAINS, type BridgeChain } from '@/lib/bridge';
 import { truncateBalance } from '@/lib/format';
 import { ChainLogo } from '@/components/chain-logo';
+import { BridgeIcon } from '@/components/bridge-icon';
 
 // Dashboard card: the user's USDC balance on every chain in BRIDGE_CHAINS
 // (Arc + the CCTP sources), with chain logos. Polled every 15s.
@@ -14,8 +15,12 @@ export function ChainBalancesCard({ address }: { address: Address }) {
     <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">USDC across chains</div>
-        <Link href="/bridge" className="text-xs text-muted hover:text-fg">
-          Bridge ›
+        <Link
+          href="/bridge"
+          className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
+        >
+          <BridgeIcon className="h-3.5 w-3.5" />
+          Bridge
         </Link>
       </div>
       <ul className="mt-4 space-y-1">

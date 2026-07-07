@@ -57,10 +57,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         {/* Fixed background grid + crosshair canvas behind all app content. */}
         <div className="app-canvas" aria-hidden />
-        {/* Apply the saved theme before paint (dark is default, so only light needs setting). */}
+        {/* Apply the saved theme before paint. Prefer the cross-subdomain cookie
+            (so the app inherits the landing's choice), then localStorage. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem('bezant-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}`,
+            __html: `try{var m=document.cookie.match(/bezant-theme=(dark|light)/);var t=m?m[1]:localStorage.getItem('bezant-theme');if(t==='light')document.documentElement.dataset.theme='light';else if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}`,
           }}
         />
         <Providers>

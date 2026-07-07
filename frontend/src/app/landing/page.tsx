@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useReveal } from '@/hooks/use-reveal';
 import { useSigner } from '@/hooks/use-signer';
+import { persistTheme, readStoredTheme } from '@/lib/theme';
 import './landing.css';
 
 // Bezant marketing landing. Self-contained + token-scoped (.bezant-landing);
@@ -67,6 +68,13 @@ export default function LandingPage() {
   const signer = useSigner();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  // Inherit any theme already chosen (e.g. in the app), and persist the effective
+  // one to the shared cookie so the app subdomain inherits the landing's choice.
+  useEffect(() => {
+    const initial = readStoredTheme() ?? 'light';
+    setTheme(initial);
+    persistTheme(initial);
+  }, []);
   const connected = mounted && signer.isConnected;
   return (
     <div className="bezant-landing" data-theme={theme}>
@@ -74,7 +82,7 @@ export default function LandingPage() {
         <span className="wordmark">bezant<span className="dot">.</span></span>
         <nav className="nav-links"><a href="#product">Product</a><a href="#protocol">Protocol</a><a href="https://github.com/Samuel-Chuku/bezant" target="_blank" rel="noopener">Docs</a></nav>
         <div className="nav-right">
-          <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>◐</button>
+          <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => { const next = t === 'dark' ? 'light' : 'dark'; persistTheme(next); return next; })}>◐</button>
           {connected ? (
             <Link href={`${APP_URL}/`} className="solid sm">Go back to app →</Link>
           ) : (

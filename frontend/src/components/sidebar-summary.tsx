@@ -9,6 +9,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { arcTestnet } from '@/lib/chains';
 import { BRIDGE_SOURCES, type BridgeSource } from '@/lib/bridge';
 import { truncateBalance } from '@/lib/format';
+import { BridgeIcon } from '@/components/bridge-icon';
 
 const WIDGET_WIDTH = 320;
 const POS_KEY = 'arc-trade:sidebar-pos';
@@ -174,11 +175,6 @@ export function SidebarSummary() {
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-medium text-fg">Your USDC</h2>
             <div className="flex items-center gap-2.5">
-              {!showSources && (
-                <Link href="/bridge" className="text-[11px] text-primary hover:text-primary">
-                  Go to bridge →
-                </Link>
-              )}
               <button
                 type="button"
                 onClick={() => setCollapsedPersist(true)}
@@ -209,6 +205,14 @@ export function SidebarSummary() {
                 <SourceBalanceRow key={source.key} source={source} address={signer.address} />
               ))}
           </ul>
+
+          <Link
+            href="/bridge"
+            className="mt-4 flex items-start gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 text-[11px] leading-snug text-primary transition hover:bg-primary/20"
+          >
+            <span className="flex-1">Have USDC on other chains? Bring them to Arc to trade seamlessly on Bezant.</span>
+            <BridgeIcon className="mt-px h-4 w-4 flex-shrink-0" />
+          </Link>
         </aside>
       )}
     </div>

@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { persistTheme } from '@/lib/theme';
 
 // App light/dark toggle. Dark is the default brand experience; light is parity.
-// The chosen theme is persisted and applied to <html data-theme> before paint
-// by the inline script in layout.tsx (so there's no flash on reload).
-const KEY = 'bezant-theme';
-
+// The chosen theme is persisted (cookie + localStorage) and applied to
+// <html data-theme> before paint by the inline script in layout.tsx (so there's
+// no flash on reload).
 export function ThemeToggle() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
@@ -18,11 +18,7 @@ export function ThemeToggle() {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
     document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem(KEY, next);
-    } catch {
-      /* private mode / storage blocked - theme still applies for the session */
-    }
+    persistTheme(next);
   };
 
   return (

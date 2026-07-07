@@ -22,10 +22,11 @@ const TRADE_LINKS: NavItem[] = [
 ];
 
 // Desktop destinations that flank the Trades dropdown.
+// Bridge is intentionally not in the nav - it's reachable from the profile's
+// "USDC across chains" card and the floating balances widget.
 const PRIMARY_AFTER: NavItem[] = [
   { href: '/pool', label: 'Pool' },
   { href: '/verify', label: 'Verify' },
-  { href: '/bridge', label: 'Bridge' },
   { href: '/profile', label: 'Profile' },
 ];
 
