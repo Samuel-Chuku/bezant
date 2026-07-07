@@ -5,7 +5,6 @@ trade-finance protocol on [Arc](https://docs.arc.network/) (Circle's L1). Buyers
 lock USDC in escrow, sellers get paid on **verified delivery**, and every settled
 deal builds a **portable on-chain credit passport** that prices the next trade.
 
-> Repo directory is `arc-trade` (the original working title); the product is **Bezant** (bezant.trade).
 
 ---
 
