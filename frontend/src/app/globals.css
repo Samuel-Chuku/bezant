@@ -111,6 +111,10 @@
 
 html {
   scroll-behavior: smooth;
+  /* Guard against accidental horizontal scroll on mobile from any single wide
+     element. `clip` contains overflow without establishing a scroll container,
+     so it doesn't break the sticky top nav (unlike `overflow-x: hidden`). */
+  overflow-x: clip;
 }
 
 body {

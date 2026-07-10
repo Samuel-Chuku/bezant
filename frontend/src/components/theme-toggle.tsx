@@ -27,7 +27,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface/60 text-fg transition hover:border-line-strong hover:bg-surface"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface/60 text-fg transition hover:border-line-strong hover:bg-surface"
     >
       <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden>
         <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.8" />

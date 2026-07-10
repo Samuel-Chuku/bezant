@@ -97,7 +97,7 @@ export default function Home() {
         <section className="grid items-stretch gap-6 lg:grid-cols-[1.4fr_1fr]">
           <div data-tour="hero" className="flex flex-col justify-center">
             <Eyebrow>Settlement desk</Eyebrow>
-            <h1 className="mt-3 font-display text-5xl font-semibold leading-[1.02] tracking-tight sm:text-6xl">
+            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.02] tracking-tight break-words sm:text-6xl">
               Welcome back,<br />
               <span className="text-primary">{name}</span>.
             </h1>
@@ -131,7 +131,7 @@ export default function Home() {
         <section className="grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
           <div data-tour="hero">
             <Eyebrow>Settlement desk</Eyebrow>
-            <h1 className="mt-3 font-display text-5xl font-semibold leading-[1.02] tracking-tight sm:text-6xl">
+            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.02] tracking-tight break-words sm:text-6xl">
               Settle on <span className="text-primary">proof</span>.<br />Price on history.
             </h1>
             <p className="mt-4 max-w-lg text-base text-muted">

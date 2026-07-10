@@ -75,7 +75,7 @@ export function NotificationsBell() {
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"
         aria-expanded={open}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface/60 text-fg transition hover:border-line-strong hover:bg-surface hover:text-fg"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface/60 text-fg transition hover:border-line-strong hover:bg-surface hover:text-fg"
       >
         <BellGlyph />
         {unreadCount > 0 && (
