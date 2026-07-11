@@ -3,6 +3,7 @@
 // destination and the focal chain of arc-trade.
 import {
   arbitrumSepolia,
+  avalancheFuji,
   baseSepolia,
   optimismSepolia,
   sepolia,
@@ -16,6 +17,7 @@ export type BridgeChain = {
     | 'optimismSepolia'
     | 'arbitrumSepolia'
     | 'baseSepolia'
+    | 'avalancheFuji'
     | 'arcTestnet'
     | 'solanaDevnet';
   // Short name for the chain card (e.g. "Ethereum", "Base").
@@ -131,6 +133,21 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcIsNative: false,
     gasSymbol: 'ETH',
     gasFaucetUrl: 'https://www.alchemy.com/faucets/base-sepolia',
+    arcOnly: false,
+    comingSoon: false,
+    outboundComingSoon: false,
+  },
+  {
+    key: 'avalancheFuji',
+    shortName: 'Avalanche',
+    fullName: 'Avalanche Fuji',
+    wagmiChainId: avalancheFuji.id,
+    bridgeChain: 'Avalanche_Fuji',
+    cctpDomain: 1,
+    usdc: '0x5425890298aed601595a70AB815c96711a31Bc65',
+    usdcIsNative: false,
+    gasSymbol: 'AVAX',
+    gasFaucetUrl: 'https://faucet.circle.com',
     arcOnly: false,
     comingSoon: false,
     outboundComingSoon: false,

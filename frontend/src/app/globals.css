@@ -85,7 +85,7 @@
   --line-strong: 196 204 211; /* #c4ccd3 */
 
   --fg: 10 12 14; /* #0a0c0e */
-  --muted: 90 101 113; /* #5a6571 */
+  --muted: 55 64 75; /* #37404b — darker for stronger contrast (was #5a6571, read faint) */
 
   --primary: 26 138 94; /* #1a8a5e — darker mint for AA on light */
   --primary-hover: 21 112 73; /* #157049 */
@@ -120,6 +120,13 @@ html {
 body {
   @apply bg-bg text-fg antialiased min-h-screen;
   font-family: var(--font-sans);
+}
+
+/* Light mode: antialiased smoothing renders text thin/faint on light bg. Use
+   full (subpixel) smoothing so type reads crisper and a touch bolder. */
+:root[data-theme='light'] body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
 }
 
 /* ── Type role utilities (apply the full role in one class) ───────────────── */

@@ -14,7 +14,7 @@ import { sqlTimeAgo } from '@/lib/relative-time';
 import { useBalance } from 'wagmi';
 import { arcTestnet } from '@/lib/chains';
 import { useTxFlow } from '@/components/tx-flow';
-import { BridgeWidget } from '@/components/bridge-widget';
+import { FundFromChain } from '@/components/fund-from-chain';
 import { BridgeProgressModal } from '@/components/bridge-progress-modal';
 import { GatewayPayoutPanel } from '@/components/gateway-payout-panel';
 import { VerificationPanel, PanelModal } from '@/components/verification-panel';
@@ -106,7 +106,6 @@ export default function TradeDetailPage() {
   const [officerNote, setOfficerNote] = useState<{ reasons: string[]; highValue: boolean } | null>(null);
   const [financingQuote, setFinancingQuote] = useState<FinancingQuote | null>(null);
   const [counterAmount, setCounterAmount] = useState('');
-  const [showBridge, setShowBridge] = useState(false);
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
   const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
   const [isPanelist, setIsPanelist] = useState(false);
@@ -518,19 +517,13 @@ export default function TradeDetailPage() {
                 <Action onClick={doFund} busy={busy === 'fund'} disabled={!signer.isConnected}>
                   Fund {trade.estimatedDepositUsdc} USDC (approve + lock)
                 </Action>
-                <div>
-                  <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-info hover:underline">
-                    {showBridge ? 'Hide bridge' : 'Fund this bond from another chain?'}
-                  </button>
-                  {showBridge && (
-                    <div className="mt-3 rounded-xl border border-line bg-bg/40 p-3">
-                      <p className="mb-2 text-xs text-muted">
-                        Bridge the {trade.estimatedDepositUsdc} USDC you need straight to your Arc wallet via CCTP, then fund - pick a source chain and go.
-                      </p>
-                      <BridgeWidget run={bridgeRun} onRunChange={setBridgeRun} lockedAmount={trade.estimatedDepositUsdc} lockToArc />
-                    </div>
-                  )}
-                </div>
+                <FundFromChain
+                  address={signer.isConnected ? signer.address : ''}
+                  signerMode={signer.isConnected ? signer.mode : null}
+                  lockedAmount={trade.estimatedDepositUsdc}
+                  bridgeRun={bridgeRun}
+                  onBridgeRunChange={setBridgeRun}
+                />
               </div>
             )}
             {trade.status === 'Agreed' && !isBuyer && (

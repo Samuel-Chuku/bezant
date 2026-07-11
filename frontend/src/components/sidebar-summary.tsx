@@ -146,14 +146,14 @@ export function SidebarSummary() {
           onClick={() => setCollapsedPersist(false)}
           aria-label="Show balances"
           title="Show balances"
-          className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-line bg-surface/70 px-3 py-2.5 text-xs font-medium text-fg shadow-lg backdrop-blur transition hover:bg-surface"
+          className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-line bg-surface/95 px-3 py-2.5 text-xs font-medium text-fg shadow-xl backdrop-blur-md transition hover:bg-surface"
         >
           <WalletGlyph />
           USDC
           <EdgeChevron dir={side === 'right' ? 'left' : 'right'} />
         </button>
       ) : (
-        <aside className="rounded-2xl border border-line bg-surface/40 p-5 shadow-lg">
+        <aside className="rounded-2xl border border-line bg-surface/95 p-5 shadow-xl backdrop-blur-md">
           {/* Drag handle - visible only at lg+ where the widget is fixed. */}
           <div
             onPointerDown={onPointerDown}
