@@ -137,12 +137,9 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
       )}
 
       {mode === 'movearc' && (
-        <Withdraw
+        <MoveToArc
           address={address}
-          funded={offArc}
-          allChains={sources}
-          lockDest={{ key: ARC_KEY, name: 'Arc Testnet' }}
-          title="Move to Arc"
+          offArc={offArc}
           onClose={() => setMode('idle')}
           onDone={load}
           signTypedDataAsync={signTypedDataAsync}
@@ -279,6 +276,125 @@ function TopUp({
       <AmountRow amount={amount} setAmount={setAmount} disabled={busy} onGo={run} busy={busy} verb="Top up" />
     </div>
   );
+}
+
+// ── Move to Arc: sweep balances from one or more chains onto the Arc wallet ──
+// Consolidates for use in Bezant (fund bonds / pool / verifier). Each selected
+// chain is a full-balance move (one signature each), run in sequence.
+const MOVE_FEE_BUFFER = 0.11; // leave headroom for the Gateway maxFee (backend MAX_FEE=0.1)
+type MoveStatus = 'idle' | 'running' | 'done' | 'error';
+
+function MoveToArc({
+  address, offArc, onClose, onDone, signTypedDataAsync, toast, setBusy, busy,
+}: {
+  address: string;
+  offArc: UnifiedBalance['byChain'];
+  onClose: () => void;
+  onDone: () => void;
+  signTypedDataAsync: ReturnType<typeof useSignTypedData>['signTypedDataAsync'];
+  toast: ReturnType<typeof useToast>;
+  setBusy: (b: boolean) => void;
+  busy: boolean;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(offArc.map((c) => c.key)));
+  const [status, setStatus] = useState<Record<string, MoveStatus>>({});
+  const [movedTotal, setMovedTotal] = useState<number | null>(null);
+
+  const toggle = (k: string) =>
+    setSelected((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  const selectedChains = offArc.filter((c) => selected.has(c.key));
+  const selectedTotal = selectedChains.reduce((s, c) => s + Number(c.balanceUsdc), 0);
+
+  const run = async () => {
+    if (selectedChains.length === 0) { toast.error('Select at least one chain.'); return; }
+    setBusy(true);
+    let moved = 0;
+    for (const c of selectedChains) {
+      const amount = Number(c.balanceUsdc) - MOVE_FEE_BUFFER;
+      if (amount <= 0) { setStatus((s) => ({ ...s, [c.key]: 'error' })); continue; }
+      setStatus((s) => ({ ...s, [c.key]: 'running' }));
+      try {
+        const plan = await getWithdrawPlan(address, c.key, ARC_KEY, amount.toFixed(6));
+        if (plan.needsMore) throw new Error(`short ${plan.shortfallUsdc} USDC`);
+        const m = plan.typedData.message;
+        const signature = (await signTypedDataAsync({
+          domain: plan.typedData.domain,
+          types: plan.typedData.types,
+          primaryType: plan.typedData.primaryType,
+          message: { maxBlockHeight: BigInt(m.maxBlockHeight), maxFee: BigInt(m.maxFee), spec: { ...m.spec, value: BigInt(m.spec.value as string) } },
+        } as never)) as Hex;
+        const res = await submitWithdraw(plan.typedData.message, signature);
+        moved += Number(res.deliveredUsdc);
+        setStatus((s) => ({ ...s, [c.key]: 'done' }));
+        onDone();
+      } catch (err) {
+        setStatus((s) => ({ ...s, [c.key]: 'error' }));
+        toast.error(`${c.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    setMovedTotal(moved);
+    if (moved > 0) toast.success(`Moved ${moved.toFixed(2)} USDC to Arc.`);
+    setBusy(false);
+  };
+
+  if (movedTotal !== null) {
+    return (
+      <div className="mt-4 rounded-lg border border-primary/40 bg-primary/20 p-3 text-sm">
+        <p className="text-primary">✓ Moved <span className="font-medium">{movedTotal.toFixed(2)} USDC</span> to your Arc wallet — ready to fund bonds, pool, or verifier stakes.</p>
+        <button onClick={onClose} className="mt-2 text-xs text-info hover:underline">Done</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border border-line bg-bg/40 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-fg">Move to Arc</p>
+        {!busy && <CloseBtn onClick={onClose} />}
+      </div>
+      <p className="text-xs text-muted">
+        Consolidate balances onto your Arc wallet — pick the chains to sweep. One signature per chain.
+      </p>
+      <ul className="space-y-1.5">
+        {offArc.map((c) => {
+          const st = status[c.key] ?? 'idle';
+          return (
+            <li key={c.key}>
+              <label className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition ${selected.has(c.key) ? 'border-primary bg-primary/10' : 'border-line hover:border-line-strong'}`}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.key)}
+                  onChange={() => toggle(c.key)}
+                  disabled={busy}
+                  className="h-4 w-4 accent-primary"
+                />
+                <ChainLogo sourceKey={c.key as ChainLogoKey} className="h-4 w-4" />
+                <span className="text-fg">{c.name}</span>
+                <span className="ml-auto font-mono tabular-nums text-fg">{Number(c.balanceUsdc).toFixed(2)}</span>
+                <MoveStatusIcon status={st} />
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <button
+        onClick={run}
+        disabled={busy || selectedChains.length === 0}
+        className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-fg transition hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? 'Moving…' : `Move ${selectedChains.length > 1 ? `${selectedChains.length} chains` : 'to Arc'} · ${selectedTotal.toFixed(2)} USDC`}
+      </button>
+      <p className="text-[11px] text-muted">A small Gateway fee (≈0.02 USDC) applies per chain moved.</p>
+    </div>
+  );
+}
+
+function MoveStatusIcon({ status }: { status: MoveStatus }) {
+  if (status === 'running') return <span className="text-[11px] text-info">…</span>;
+  if (status === 'done') return <span className="text-[11px] text-primary">✓</span>;
+  if (status === 'error') return <span className="text-[11px] text-danger">✕</span>;
+  return null;
 }
 
 // ── Withdraw: sign a burn intent to route balance out; backend relays the mint ──

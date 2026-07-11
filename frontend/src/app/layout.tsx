@@ -53,7 +53,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const host = ((await headers()).get('host') ?? '').split(':')[0];
   const isMarketing = host === 'bezant.trade' || host === 'www.bezant.trade';
   return (
-    <html lang="en" className={`${fraunces.variable} ${bricolage.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${fraunces.variable} ${bricolage.variable} ${jetbrainsMono.variable}`}>
       <body>
         {/* Fixed background grid + crosshair canvas behind all app content. */}
         <div className="app-canvas" aria-hidden />
