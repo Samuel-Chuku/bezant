@@ -35,7 +35,6 @@ import { CommandPalette } from '@/components/command-palette';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TourButton } from '@/components/tour-button';
 import { FeedbackWidget } from '@/components/feedback-widget';
-import { UnifiedBalancePill } from '@/components/unified-balance-pill';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://bezant.trade'),
@@ -82,7 +81,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <OnboardingTour />
                 <TourButton />
                 <FeedbackWidget />
-                <UnifiedBalancePill />
               </>
             )}
           </ToastProvider>

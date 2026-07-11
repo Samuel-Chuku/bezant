@@ -10,6 +10,7 @@ import { arcTestnet } from '@/lib/chains';
 import { BRIDGE_SOURCES, type BridgeSource } from '@/lib/bridge';
 import { truncateBalance } from '@/lib/format';
 import { BridgeIcon } from '@/components/bridge-icon';
+import { getUnifiedBalance } from '@/lib/api';
 
 const WIDGET_WIDTH = 320;
 const POS_KEY = 'arc-trade:sidebar-pos';
@@ -206,6 +207,10 @@ export function SidebarSummary() {
               ))}
           </ul>
 
+          {/* Circle Gateway unified balance - one balance spendable on any chain
+              (EOA-only). Links to the full top-up / move / withdraw panel. */}
+          {signer.mode === 'external' && <UnifiedBalanceLine address={signer.address} />}
+
           <Link
             href="/bridge"
             className="mt-4 flex items-start gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 text-[11px] leading-snug text-primary transition hover:bg-primary/20"
@@ -216,6 +221,40 @@ export function SidebarSummary() {
         </aside>
       )}
     </div>
+  );
+}
+
+// Compact unified-balance line for the widget - total across chains, links to
+// the full panel on /profile. Pending (unfinalized deposits) shown when present.
+function UnifiedBalanceLine({ address }: { address: Address }) {
+  const [total, setTotal] = useState<number | null>(null);
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const fetchBal = () =>
+      getUnifiedBalance(address)
+        .then((b) => { if (live) { setTotal(Number(b.totalUsdc)); setPending(Number(b.pendingUsdc)); } })
+        .catch(() => {});
+    fetchBal();
+    const t = setInterval(fetchBal, 20_000);
+    return () => { live = false; clearInterval(t); };
+  }, [address]);
+
+  return (
+    <Link
+      href="/profile"
+      title="Circle Gateway unified balance — one balance, any chain"
+      className="mt-2 flex items-center justify-between rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 text-xs transition hover:bg-primary/20"
+    >
+      <div>
+        <div className="font-medium text-primary">Unified balance</div>
+        <div className="text-[10px] text-muted">one balance · any chain</div>
+      </div>
+      <div className="text-right">
+        <div className="font-mono text-sm tabular-nums text-fg">{total === null ? '…' : total.toFixed(2)} <span className="text-[10px] text-muted">USDC</span></div>
+        {pending > 0 && <div className="font-mono text-[10px] text-warn">+{pending.toFixed(2)} confirming</div>}
+      </div>
+    </Link>
   );
 }
 

@@ -5,13 +5,17 @@
 // withdraw it out to any chain. EOA-only (Gateway rejects passkey/1271 sigs), so
 // wagmi is always the active signer here and we drive source-chain txs directly.
 import { useCallback, useEffect, useState } from 'react';
-import { parseUnits, type Hex } from 'viem';
-import { useConfig, useSignTypedData } from 'wagmi';
+import Link from 'next/link';
+import { parseUnits, type Address, type Hex } from 'viem';
+import { useConfig, useSignTypedData, useBalance } from 'wagmi';
 import { switchChain, writeContract, waitForTransactionReceipt } from '@wagmi/core';
 import { useToast } from '@/components/toast';
 import { useTxFlow, type FlowStep } from '@/components/tx-flow';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
+import { BridgeIcon } from '@/components/bridge-icon';
+import { BRIDGE_CHAINS, type BridgeChain } from '@/lib/bridge';
+import { truncateBalance } from '@/lib/format';
 import {
   getUnifiedBalance,
   getGatewaySources,
@@ -70,12 +74,17 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
         <div className="font-mono text-3xl font-semibold tabular-nums text-primary">
           {bal ? total.toFixed(2) : '—'} <span className="text-sm font-normal text-muted">USDC</span>
         </div>
-        <div className="text-xs text-muted">
-          spendable across chains{pending > 0 && <span> · <span className="text-warn">{pending.toFixed(2)} pending</span></span>}
-        </div>
+        <div className="text-xs text-muted">spendable on any chain</div>
       </div>
 
-      {/* Per-chain breakdown (only chains that hold something) */}
+      {/* Confirming: Circle credits deposits only after on-chain finality. */}
+      {pending > 0 && (
+        <div className="mt-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+          <span className="font-mono font-medium">{pending.toFixed(2)} USDC</span> confirming on-chain — shows once finalized (a few min; up to ~15 on Ethereum).
+        </div>
+      )}
+
+      {/* Per-chain Gateway balance (only chains that hold something) */}
       {funded.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {funded.map((c) => (
@@ -83,10 +92,13 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
               <ChainLogo sourceKey={c.key as ChainLogoKey} className="h-4 w-4" />
               <span className="text-fg">{c.name}</span>
               <span className="ml-auto font-mono tabular-nums text-fg">{Number(c.balanceUsdc).toFixed(2)}</span>
-              {Number(c.pendingUsdc) > 0 && <span className="font-mono text-[11px] text-warn">+{Number(c.pendingUsdc).toFixed(2)}</span>}
+              {Number(c.pendingUsdc) > 0 && <span className="font-mono text-[11px] text-warn">+{Number(c.pendingUsdc).toFixed(2)} confirming</span>}
             </li>
           ))}
         </ul>
+      )}
+      {funded.length === 0 && pending === 0 && (
+        <p className="mt-2 text-xs text-muted">No unified balance yet — <span className="text-fg">Top up</span> from a chain where you hold USDC to get started.</p>
       )}
 
       {mode === 'idle' && (
@@ -157,7 +169,50 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
       <p className="mt-3 text-[11px] leading-snug text-muted">
         One USDC balance, any chain. Top up from another chain, <span className="text-fg">move it to Arc</span> to fund bonds / pool / verifier stakes, or withdraw it out. A small Gateway fee (≈0.02 USDC) applies per move.
       </p>
+
+      {/* Wallet balances per chain - what's in your wallet (not yet in Gateway).
+          Top up moves wallet USDC into the unified balance above. */}
+      {mode === 'idle' && (
+        <div className="mt-4 border-t border-line pt-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">In your wallet</div>
+            <Link href="/bridge" className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
+              <BridgeIcon className="h-3 w-3" /> Bridge
+            </Link>
+          </div>
+          <ul className="mt-2 space-y-0.5">
+            {BRIDGE_CHAINS.map((chain) => (
+              <WalletRow key={chain.key} chain={chain} address={address as Address} />
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
+  );
+}
+
+// One chain's USDC balance held in the user's wallet (distinct from the Gateway
+// unified balance above). Mirrors ChainBalancesCard's row, compact.
+function WalletRow({ chain, address }: { chain: BridgeChain; address: Address }) {
+  const queryable = chain.wagmiChainId !== undefined && !chain.comingSoon;
+  const { data, isLoading } = useBalance({
+    address,
+    chainId: chain.wagmiChainId,
+    token: chain.usdcIsNative ? undefined : chain.usdc,
+    query: { enabled: queryable, refetchInterval: 15_000 },
+  });
+  const formatted = isLoading ? '…' : data ? truncateBalance(data.formatted, 2) : '0';
+  const has = !!data && Number(data.formatted) > 0;
+  return (
+    <li className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs">
+      <ChainLogo sourceKey={chain.key} className="h-4 w-4 flex-shrink-0" />
+      <span className="truncate text-fg">{chain.fullName}</span>
+      {chain.comingSoon ? (
+        <span className="ml-auto rounded bg-warn/12 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-warn">Soon</span>
+      ) : (
+        <span className={`ml-auto font-mono tabular-nums ${has ? 'text-fg' : 'text-muted'}`}>{formatted} <span className="text-[9px] text-muted">USDC</span></span>
+      )}
+    </li>
   );
 }
 

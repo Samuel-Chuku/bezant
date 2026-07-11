@@ -149,9 +149,13 @@ export default function ProfilePage() {
           <RecentActivity />
         </div>
         {signer.mode !== 'external' && <SendPanel />}
-        {/* Unified balance is EOA-only (Gateway rejects passkey/1271 sigs). */}
-        {signer.mode === 'external' && <UnifiedBalancePanel address={signer.address} />}
-        <ChainBalancesCard address={signer.address} />
+        {/* EOA: one merged "Your USDC" card (Gateway unified balance + wallet
+            per-chain). Passkey: wallet-only card (Gateway is EOA-only). */}
+        {signer.mode === 'external' ? (
+          <UnifiedBalancePanel address={signer.address} />
+        ) : (
+          <ChainBalancesCard address={signer.address} />
+        )}
       </div>
     </main>
   );
