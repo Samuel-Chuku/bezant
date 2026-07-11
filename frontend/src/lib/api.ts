@@ -172,6 +172,70 @@ export async function setPayoutPref(tradeId: string, seller: string, destination
   await jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/payout/pref`, { seller, destinationKey });
 }
 
+// ── Circle Gateway: the unified balance (top up / use / withdraw) ────────────
+
+export type UnifiedBalance = {
+  address: string;
+  totalUsdc: string;   // spendable across all chains
+  pendingUsdc: string; // deposited, not yet finalized
+  byChain: Array<{ key: string; name: string; domain: number; balanceUsdc: string; pendingUsdc: string }>;
+};
+
+export type GatewaySource = {
+  key: string;
+  name: string;
+  domain: number;
+  chainId: number;
+  usdc: `0x${string}`;
+  gatewayWallet: `0x${string}`;
+};
+
+export type GatewaySpendPlan = {
+  address: string;
+  source: { key: string; name: string; domain: number; chainId: number };
+  destination: { key: string; name: string; domain: number; chainId: number };
+  amountUsdc: string;
+  recipient: `0x${string}`;
+  contracts: { gatewayWallet: `0x${string}`; sourceUsdc: `0x${string}` };
+  sourceBalanceUsdc: string;
+  requiredUsdc: string;
+  needsMore: boolean;
+  shortfallUsdc: string;
+  typedData: {
+    domain: { name: string; version: string };
+    types: Record<string, ReadonlyArray<{ name: string; type: string }>>;
+    primaryType: string;
+    message: GatewayBurnMessage;
+  };
+};
+
+export async function getUnifiedBalance(address: string): Promise<UnifiedBalance> {
+  return jsonFetch<UnifiedBalance>('GET', `/arc/gateway/unified-balance?address=${encodeURIComponent(address)}`);
+}
+
+export async function getGatewaySources(): Promise<GatewaySource[]> {
+  const res = await jsonFetch<{ sources: GatewaySource[] }>('GET', '/arc/gateway/sources');
+  return res.sources;
+}
+
+export async function getWithdrawPlan(
+  address: string,
+  sourceKey: string,
+  destinationKey: string,
+  amountUsdc: string,
+): Promise<GatewaySpendPlan> {
+  const q = new URLSearchParams({ address, sourceKey, destinationKey, amountUsdc });
+  return jsonFetch<GatewaySpendPlan>('GET', `/arc/gateway/withdraw/plan?${q.toString()}`);
+}
+
+export async function submitWithdraw(
+  message: GatewayBurnMessage,
+  signature: `0x${string}`,
+): Promise<GatewayPayoutResult> {
+  const res = await jsonFetch<{ result: GatewayPayoutResult }>('POST', '/arc/gateway/withdraw/submit', { message, signature });
+  return res.result;
+}
+
 export type UserStats = {
   tradesTotal: number;
   settled: number;

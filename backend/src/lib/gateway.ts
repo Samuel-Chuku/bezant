@@ -11,6 +11,7 @@
 import {
   createPublicClient,
   createWalletClient,
+  defineChain,
   http,
   pad,
   zeroAddress,
@@ -50,6 +51,27 @@ export const GATEWAY_DESTINATIONS: GatewayDestination[] = [
   { key: 'sepolia', name: 'Ethereum Sepolia', domain: 0, chainId: sepolia.id, usdc: getAddress('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'), chain: sepolia },
 ];
 
+// Arc as a Gateway chain - both a deposit source and a mint destination (for
+// cross-chain FUNDING, which mints USDC onto Arc). Same GatewayDestination shape
+// so the burn/relay machinery treats it uniformly.
+const ARC_CHAIN: Chain = defineChain({
+  id: 5042002,
+  name: 'Arc Testnet',
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+  rpcUrls: { default: { http: [process.env.ARC_RPC_URL ?? 'https://rpc.testnet.arc.network'] } },
+  blockExplorers: { default: { name: 'Arcscan', url: 'https://testnet.arcscan.app' } },
+  testnet: true,
+});
+export const ARC_AS_CHAIN: GatewayDestination = { key: 'arcTestnet', name: 'Arc Testnet', domain: ARC_DOMAIN, chainId: 5042002, usdc: ARC_USDC, chain: ARC_CHAIN };
+// Every chain a balance can live on or move to: Arc + the destinations.
+export const ALL_GATEWAY_CHAINS: GatewayDestination[] = [ARC_AS_CHAIN, ...GATEWAY_DESTINATIONS];
+const chainByKey = (key: string) => {
+  const c = ALL_GATEWAY_CHAINS.find((x) => x.key === key);
+  if (!c) throw new Error(`Unknown chain '${key}'. Supported: ${ALL_GATEWAY_CHAINS.map((x) => x.key).join(', ')}`);
+  return c;
+};
+const chainByDomain = (domain: number) => ALL_GATEWAY_CHAINS.find((x) => x.domain === domain);
+
 const ERC20_ABI = [
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ name: 'o', type: 'address' }, { name: 's', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -65,7 +87,6 @@ const destByKey = (key: string) => {
   if (!d) throw new Error(`Unknown destination '${key}'. Supported: ${GATEWAY_DESTINATIONS.map((x) => x.key).join(', ')}`);
   return d;
 };
-const destByDomain = (domain: number) => GATEWAY_DESTINATIONS.find((x) => x.domain === domain);
 
 // EIP-712 type set for burn intents (viem/client shape - EIP712Domain omitted;
 // viem derives it from `domain`). Circle's signTypedData wants EIP712Domain
@@ -84,17 +105,28 @@ const BURN_INTENT_TYPES = {
 const EIP712_DOMAIN = { name: 'GatewayWallet', version: '1' } as const;
 
 // Burn-intent message with all numeric values as strings (JSON-safe; both viem
-// and Gateway hash the equivalent uints identically).
-function buildBurnIntentMessage(opts: { destination: GatewayDestination; depositor: Address; recipient: Address; amountAtomic: bigint }) {
+// and Gateway hash the equivalent uints identically). Source defaults to Arc
+// (the payout case); funding/withdraw pass an explicit source chain. A non-zero
+// `destinationCaller` locks who may submit the mint (used by the one-click
+// router so nobody front-runs the composed fund).
+function buildBurnIntentMessage(opts: {
+  destination: GatewayDestination;
+  depositor: Address;
+  recipient: Address;
+  amountAtomic: bigint;
+  source?: GatewayDestination;
+  destinationCaller?: Address;
+}) {
+  const source = opts.source ?? ARC_AS_CHAIN;
   return {
     maxBlockHeight: maxUint256.toString(),
     maxFee: MAX_FEE.toString(),
     spec: {
-      version: 1, sourceDomain: ARC_DOMAIN, destinationDomain: opts.destination.domain,
+      version: 1, sourceDomain: source.domain, destinationDomain: opts.destination.domain,
       sourceContract: addressToBytes32(GATEWAY_WALLET), destinationContract: addressToBytes32(GATEWAY_MINTER),
-      sourceToken: addressToBytes32(ARC_USDC), destinationToken: addressToBytes32(opts.destination.usdc),
+      sourceToken: addressToBytes32(source.usdc), destinationToken: addressToBytes32(opts.destination.usdc),
       sourceDepositor: addressToBytes32(opts.depositor), destinationRecipient: addressToBytes32(opts.recipient),
-      sourceSigner: addressToBytes32(opts.depositor), destinationCaller: addressToBytes32(zeroAddress),
+      sourceSigner: addressToBytes32(opts.depositor), destinationCaller: addressToBytes32(opts.destinationCaller ?? zeroAddress),
       value: opts.amountAtomic.toString(), salt: ('0x' + randomBytes(32).toString('hex')) as Hex, hookData: '0x' as Hex,
     },
   };
@@ -115,6 +147,41 @@ export async function gatewayUnifiedBalance(depositor: Address, domain = ARC_DOM
   if (!res.ok) throw new Error(`Gateway /balances → HTTP ${res.status}: ${await res.text()}`);
   const data = (await res.json()) as { balances?: Array<{ domain: number; balance: string }> };
   return parseFloat(data.balances?.find((b) => b.domain === domain)?.balance ?? '0');
+}
+
+// Every chain a user can hold a Gateway balance on (Arc + the destinations,
+// which double as deposit sources). Used for the unified-balance breakdown.
+export const GATEWAY_SOURCES = ALL_GATEWAY_CHAINS.map((c) => ({ key: c.key, name: c.name, domain: c.domain }));
+
+export type UnifiedBalanceBreakdown = {
+  totalUsdc: string;   // spendable (available) across all chains
+  pendingUsdc: string; // deposited but not yet finalized by Gateway
+  byChain: Array<{ key: string; name: string; domain: number; balanceUsdc: string; pendingUsdc: string }>;
+};
+
+// The TRUE unified balance: Circle's /balances aggregated across every source
+// domain. `balance` is spendable now; `pendingBatch` is a deposit still being
+// finalized. The single-domain gatewayUnifiedBalance() above is kept for the
+// deposit-credit poll; this one drives the profile/widget display.
+export async function gatewayUnifiedBalanceBreakdown(depositor: Address): Promise<UnifiedBalanceBreakdown> {
+  const res = await fetch(`${GATEWAY_API}/balances`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: 'USDC', sources: GATEWAY_SOURCES.map((s) => ({ depositor, domain: s.domain })) }),
+  });
+  if (!res.ok) throw new Error(`Gateway /balances → HTTP ${res.status}: ${await res.text()}`);
+  const data = (await res.json()) as { balances?: Array<{ domain: number; balance: string; pendingBatch?: string }> };
+  const byDomain = new Map((data.balances ?? []).map((b) => [b.domain, b]));
+  let total = 0;
+  let pending = 0;
+  const byChain = GATEWAY_SOURCES.map((s) => {
+    const b = byDomain.get(s.domain);
+    const bal = parseFloat(b?.balance ?? '0');
+    const pend = parseFloat(b?.pendingBatch ?? '0');
+    total += bal;
+    pending += pend;
+    return { key: s.key, name: s.name, domain: s.domain, balanceUsdc: bal.toFixed(6), pendingUsdc: pend.toFixed(6) };
+  });
+  return { totalUsdc: total.toFixed(6), pendingUsdc: pending.toFixed(6), byChain };
 }
 
 // Which destinations Gateway currently supports (registry ∩ live /info domains).
@@ -171,6 +238,74 @@ export async function buildPayoutPlan(opts: { depositorAddress: Address; destina
   };
 }
 
+// ── Generic spend (withdraw + fund-a-trade-from-balance) ────────────────────
+
+// Chains a balance can sit on or move to, with the addresses the frontend needs
+// to deposit (top up) on each: approve + deposit into GatewayWallet.
+export function gatewaySourcesInfo() {
+  return ALL_GATEWAY_CHAINS.map((c) => ({
+    key: c.key, name: c.name, domain: c.domain, chainId: c.chainId,
+    usdc: c.usdc, gatewayWallet: GATEWAY_WALLET,
+  }));
+}
+
+export type SpendPlan = {
+  source: { key: string; name: string; domain: number; chainId: number };
+  destination: { key: string; name: string; domain: number; chainId: number };
+  amountUsdc: string;
+  recipient: Address;
+  contracts: { gatewayWallet: Address; sourceUsdc: Address };
+  // Existing Gateway balance on the SOURCE chain, and whether it's short. Unlike
+  // the payout plan, spend does NOT auto-deposit - the user tops up separately.
+  sourceBalanceUsdc: string;
+  requiredUsdc: string;   // amount + fee buffer the source balance must reach
+  needsMore: boolean;
+  shortfallUsdc: string;  // how much more to top up on the source chain (0 if ok)
+  typedData: { domain: typeof EIP712_DOMAIN; types: typeof BURN_INTENT_TYPES; primaryType: 'BurnIntent'; message: BurnIntentMessage };
+};
+
+// Spend an existing unified balance from `sourceKey` to `destinationKey`.
+// Withdraw: destination is any chain, recipient = the user. Fund-a-trade:
+// destination = Arc, recipient = the buyer (2-sig) or the router (1-click, with
+// destinationCaller locking the relayer as submitter).
+export async function buildSpendPlan(opts: {
+  depositorAddress: Address;
+  sourceKey: string;
+  destinationKey: string;
+  recipient: Address;
+  amountUsdc: string;
+  destinationCaller?: Address;
+}): Promise<SpendPlan> {
+  const source = chainByKey(opts.sourceKey);
+  const destination = chainByKey(opts.destinationKey);
+  const depositor = getAddress(opts.depositorAddress);
+  const recipient = getAddress(opts.recipient);
+  const amount = parseUnits(opts.amountUsdc, 6);
+  if (amount <= 0n) throw new Error('amountUsdc must be positive');
+
+  const required = amount + MAX_FEE;
+  const sourceBalance = await gatewayUnifiedBalance(depositor, source.domain);
+  const sourceAtomic = parseUnits(sourceBalance.toFixed(6), 6);
+  const needsMore = sourceAtomic < required;
+
+  const message = buildBurnIntentMessage({
+    source, destination, depositor, recipient, amountAtomic: amount,
+    destinationCaller: opts.destinationCaller,
+  });
+  return {
+    source: { key: source.key, name: source.name, domain: source.domain, chainId: source.chainId },
+    destination: { key: destination.key, name: destination.name, domain: destination.domain, chainId: destination.chainId },
+    amountUsdc: opts.amountUsdc,
+    recipient,
+    contracts: { gatewayWallet: GATEWAY_WALLET, sourceUsdc: source.usdc },
+    sourceBalanceUsdc: sourceBalance.toString(),
+    requiredUsdc: formatUnits(required, 6),
+    needsMore,
+    shortfallUsdc: formatUnits(needsMore ? required - sourceAtomic : 0n, 6),
+    typedData: { domain: EIP712_DOMAIN, types: BURN_INTENT_TYPES, primaryType: 'BurnIntent', message },
+  };
+}
+
 export type GatewayPayoutResult = {
   destination: { key: string; name: string; domain: number };
   recipient: Address;
@@ -185,7 +320,7 @@ export type GatewayPayoutResult = {
 // Submit a signed burn intent: get the attestation from Gateway, relay the mint
 // on the destination (chosen from the message), confirm the recipient is paid.
 export async function submitTransferAndRelayMint(message: BurnIntentMessage, signature: Hex): Promise<GatewayPayoutResult> {
-  const dest = destByDomain(message.spec.destinationDomain);
+  const dest = chainByDomain(message.spec.destinationDomain);
   if (!dest) throw new Error(`Unsupported destinationDomain ${message.spec.destinationDomain}`);
   const recipient = getAddress(('0x' + message.spec.destinationRecipient.slice(-40)) as Hex);
 

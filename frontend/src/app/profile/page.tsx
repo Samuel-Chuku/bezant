@@ -12,6 +12,7 @@ import { SendPanel } from '@/components/send-panel';
 import { Avatar } from '@/components/avatar';
 import { PoolYieldStrip } from '@/components/pool-yield';
 import { ChainBalancesCard } from '@/components/chain-balances-card';
+import { UnifiedBalancePanel } from '@/components/unified-balance-panel';
 import { StruckButton } from '@/components/ui';
 import { ConnectTelegram } from '@/components/connect-telegram';
 import { useSessionVersion } from '@/components/session-manager';
@@ -148,6 +149,8 @@ export default function ProfilePage() {
           <RecentActivity />
         </div>
         {signer.mode !== 'external' && <SendPanel />}
+        {/* Unified balance is EOA-only (Gateway rejects passkey/1271 sigs). */}
+        {signer.mode === 'external' && <UnifiedBalancePanel address={signer.address} />}
         <ChainBalancesCard address={signer.address} />
       </div>
     </main>

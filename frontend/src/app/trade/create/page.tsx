@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { parseEventLogs } from 'viem';
-import { usePublicClient } from 'wagmi';
+import { usePublicClient, useChainId, useSwitchChain } from 'wagmi';
 import { useSigner } from '@/hooks/use-signer';
 import { buildCreateTradeUnsigned, resolveAddress, getUserByHandle, getVerifierInfo, type VerifierInfo } from '@/lib/api';
 import { arcTestnet } from '@/lib/chains';
+import { friendlyTxError } from '@/lib/tx-error';
 import { shortAddress } from '@/lib/format';
 import { useToast } from '@/components/toast';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { PassportPanel } from '@/components/passport-panel';
 import { BridgeWidget } from '@/components/bridge-widget';
+import { GatewayFundOption } from '@/components/gateway-fund-option';
 import { StruckButton } from '@/components/ui';
 import { INITIAL_RUN, type BridgeRun } from '@/lib/bridge-run';
 
@@ -74,6 +76,11 @@ export default function CreateTradePage() {
   const toast = useToast();
   const router = useRouter();
   const publicClient = usePublicClient({ chainId: arcTestnet.id });
+  const wagmiChainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  // External wallets can drift off Arc (e.g. after bridging); block the strike
+  // and offer a one-tap switch instead of letting a raw chain-mismatch surface.
+  const isOffArc = signer.isConnected && signer.mode === 'external' && wagmiChainId !== arcTestnet.id;
 
   const [sellerInput, setSellerInput] = useState('');
   const [amountUsdc, setAmountUsdc] = useState('');
@@ -81,7 +88,7 @@ export default function CreateTradePage() {
   const [deadlineValue, setDeadlineValue] = useState(7);
   const [deadlineUnit, setDeadlineUnit] = useState<DeadlineUnit>('days');
   const [submission, setSubmission] = useState<Submission>({ status: 'idle' });
-  const [showBridge, setShowBridge] = useState(false);
+  const [fundVia, setFundVia] = useState<'none' | 'bridge' | 'gateway'>('none');
   const [bridgeRun, setBridgeRun] = useState<BridgeRun>(INITIAL_RUN);
   const [verifyMode, setVerifyMode] = useState<'officer' | 'panel'>('officer');
   const [verifier, setVerifier] = useState<VerifierInfo | null>(null);
@@ -215,7 +222,7 @@ export default function CreateTradePage() {
       toast.success(`Bond #${tradeId} struck`, { href: arcExplorerTxUrl(txHash), hrefLabel: 'view tx' });
       router.push(`/trade/${tradeId}`);
     } catch (err) {
-      setSubmission({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+      setSubmission({ status: 'error', message: friendlyTxError(err) });
     }
   };
 
@@ -404,23 +411,44 @@ export default function CreateTradePage() {
 
             {signer.isConnected && (
               <div>
-                <button onClick={() => setShowBridge((s) => !s)} className="text-sm text-info hover:underline">
-                  {showBridge ? 'Hide bridge' : 'Fund this bond from another chain?'}
+                <button onClick={() => setFundVia((v) => (v === 'none' ? 'bridge' : 'none'))} className="text-sm text-info hover:underline">
+                  {fundVia !== 'none' ? 'Hide' : 'Fund this bond from another chain?'}
                 </button>
-                {showBridge && (
-                  <div className="mt-3 rounded-xl border border-line bg-bg/40 p-3">
-                    <p className="mb-2 text-xs text-muted">
+                {fundVia !== 'none' && (
+                  <div className="mt-3 space-y-3 rounded-xl border border-line bg-bg/40 p-3">
+                    <p className="text-xs text-muted">
                       Striking a bond locks nothing — your deposit is taken when you fund, after the seller agrees.
-                      {amountUsdc && Number(amountUsdc) > 0
-                        ? ` Bridge the ${amountUsdc} USDC to your Arc wallet now so it's ready the moment the bond is agreed.`
-                        : ` Bridge USDC to your Arc wallet now so it's ready the moment the bond is agreed.`}
+                      Get USDC onto your Arc wallet now so it&apos;s ready the moment the bond is agreed.
                     </p>
-                    <BridgeWidget
-                      run={bridgeRun}
-                      onRunChange={setBridgeRun}
-                      lockedAmount={amountUsdc && Number(amountUsdc) > 0 ? amountUsdc : undefined}
-                      lockToArc
-                    />
+                    {/* Two ways to bring funds to Arc: CCTP bridge, or route from a
+                        Circle Gateway unified balance (EOA-only). Clickable cards. */}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FundCard
+                        active={fundVia === 'bridge'}
+                        onClick={() => setFundVia('bridge')}
+                        title="CCTP Bridge"
+                        desc="Burn-and-mint USDC from another chain to your Arc wallet."
+                      />
+                      {signer.mode === 'external' && (
+                        <FundCard
+                          active={fundVia === 'gateway'}
+                          onClick={() => setFundVia('gateway')}
+                          title="Unified Balance"
+                          desc="Route from your Circle Gateway balance held across chains."
+                        />
+                      )}
+                    </div>
+                    {fundVia === 'bridge' && (
+                      <BridgeWidget
+                        run={bridgeRun}
+                        onRunChange={setBridgeRun}
+                        lockedAmount={amountUsdc && Number(amountUsdc) > 0 ? amountUsdc : undefined}
+                        lockToArc
+                      />
+                    )}
+                    {fundVia === 'gateway' && signer.mode === 'external' && (
+                      <GatewayFundOption address={signer.address} defaultAmount={amountUsdc && Number(amountUsdc) > 0 ? amountUsdc : undefined} />
+                    )}
                   </div>
                 )}
               </div>
@@ -446,9 +474,20 @@ export default function CreateTradePage() {
         )}
 
         {atLast ? (
-          <StruckButton onClick={submit} disabled={isBusy || !signer.isConnected} icon={<PlusIcon />}>
-            {isBusy ? 'Striking…' : 'Strike the bond'}
-          </StruckButton>
+          isOffArc ? (
+            <button
+              type="button"
+              onClick={() => switchChain({ chainId: arcTestnet.id })}
+              className="inline-flex items-center gap-2 rounded-lg border border-warn/50 bg-warn/12 px-4 py-2 text-sm font-medium text-warn transition hover:bg-warn/60"
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-warn" />
+              Switch to Arc to strike →
+            </button>
+          ) : (
+            <StruckButton onClick={submit} disabled={isBusy || !signer.isConnected} icon={<PlusIcon />}>
+              {isBusy ? 'Striking…' : 'Strike the bond'}
+            </StruckButton>
+          )
         ) : (
           <StruckButton onClick={goNext} icon={<ArrowIcon />}>
             Continue
@@ -488,6 +527,21 @@ function Stepper({ steps, activeIdx }: { steps: { key: string; label: string }[]
         );
       })}
     </ol>
+  );
+}
+
+function FundCard({ active, onClick, title, desc }: { active: boolean; onClick: () => void; title: string; desc: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-4 py-3.5 text-left transition ${
+        active ? 'border-primary bg-surface text-fg' : 'border-line text-muted hover:border-line-strong'
+      }`}
+    >
+      <div className="text-sm font-medium text-fg">{title}</div>
+      <div className="mt-1 text-xs text-muted">{desc}</div>
+    </button>
   );
 }
 

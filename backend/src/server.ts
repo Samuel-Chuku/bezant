@@ -48,7 +48,7 @@ import {
 } from './lib/db.js';
 import { tradeEscrowAbi } from './lib/abis/trade-escrow.js';
 import { financingPoolAbi } from './lib/abis/financing-pool.js';
-import { listGatewayDestinations, buildPayoutPlan, submitTransferAndRelayMint, gatewayUnifiedBalance } from './lib/gateway.js';
+import { listGatewayDestinations, buildPayoutPlan, submitTransferAndRelayMint, gatewayUnifiedBalance, gatewayUnifiedBalanceBreakdown, gatewaySourcesInfo, buildSpendPlan } from './lib/gateway.js';
 import {
   TRADE_ESCROW_ADDRESS,
   getTrade,
@@ -3416,6 +3416,51 @@ app.get<{ Querystring: { address?: string } }>('/arc/gateway/balance', async (re
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x) is required' });
   try {
     return { address, unifiedBalanceUsdc: (await gatewayUnifiedBalance(address as `0x${string}`)).toString() };
+  } catch (err) {
+    return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// The user's TRUE unified balance across every Gateway chain (Arc + sources).
+// Drives the profile card + floating widget: spendable total, pending, per-chain.
+app.get<{ Querystring: { address?: string } }>('/arc/gateway/unified-balance', async (request, reply) => {
+  const address = request.query.address;
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x) is required' });
+  try {
+    return { address, ...(await gatewayUnifiedBalanceBreakdown(address as `0x${string}`)) };
+  } catch (err) {
+    return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// Chains a user can deposit into (top up their unified balance) or withdraw to,
+// with the USDC + GatewayWallet addresses the frontend needs to build approve +
+// deposit txs on each source chain.
+app.get('/arc/gateway/sources', async () => ({ sources: gatewaySourcesInfo() }));
+
+// WITHDRAW: route an existing unified balance out to any chain (recipient = the
+// user). Spends existing balance - no auto-deposit; short balances report it.
+// 1) plan → the burn-intent typed data to sign.
+app.get<{ Querystring: { address?: string; sourceKey?: string; destinationKey?: string; amountUsdc?: string } }>(
+  '/arc/gateway/withdraw/plan',
+  async (request, reply) => {
+    const { address, sourceKey, destinationKey, amountUsdc } = request.query;
+    if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return reply.code(400).send({ error: 'address query param (0x) is required' });
+    if (!sourceKey || !destinationKey || !amountUsdc) return reply.code(400).send({ error: 'sourceKey, destinationKey, amountUsdc are required' });
+    try {
+      const plan = await buildSpendPlan({ depositorAddress: address as `0x${string}`, sourceKey, destinationKey, recipient: address as `0x${string}`, amountUsdc });
+      return { address, ...plan };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+// 2) submit → the signed burn intent; backend relays the destination mint.
+app.post<{ Body: { message?: unknown; signature?: string } }>('/arc/gateway/withdraw/submit', async (request, reply) => {
+  const { message, signature } = request.body;
+  if (!message || !signature) return reply.code(400).send({ error: 'message and signature are required' });
+  try {
+    return { result: await submitTransferAndRelayMint(message as never, signature as `0x${string}`) };
   } catch (err) {
     return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
   }
