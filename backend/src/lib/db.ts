@@ -270,6 +270,21 @@ db.exec(`
     PRIMARY KEY (pact_id, hash)
   );
 
+  -- Optional file attachment for a standalone-trade delivery. The seller commits
+  -- keccak256(bytes) in their signed delivery doc; the bytes are uploaded here and
+  -- any trade party (buyer/seller/panelist/arbitrator) can download + hash-verify.
+  CREATE TABLE IF NOT EXISTS trade_deliverables (
+    trade_id    INTEGER NOT NULL,
+    hash        TEXT NOT NULL,
+    file_name   TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    size_bytes  INTEGER NOT NULL,
+    file_path   TEXT NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (trade_id, hash)
+  );
+
   -- CCTP V2 inbound bridge arrivals on Arc. Indexed from USDC Transfer
   -- events where from = 0x0 (mints), filtered to tx hashes that also
   -- emit MessageReceived from the MessageTransmitter - so we only record
@@ -465,6 +480,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);
+
+// Idempotent file-attachment columns on the trade delivery-doc tables, so an
+// existing DB migrates cleanly when optional file upload is enabled. file_hash
+// is the committed keccak256(bytes); file_name/file_mime are display metadata.
+for (const t of ['officer_reviews', 'verification_docs'] as const) {
+  const cols = new Set(
+    (db.prepare(`SELECT name FROM pragma_table_info('${t}')`).all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!cols.has('file_hash')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_hash TEXT`);
+  if (!cols.has('file_name')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_name TEXT`);
+  if (!cols.has('file_mime')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_mime TEXT`);
+}
 
 // Idempotent ALTER TABLE migration for pre-M28 databases that already have
 // the deliverables table without the file columns. Guard each ADD with a

@@ -2637,6 +2637,10 @@ const READ_CHALLENGE_WINDOW_SECONDS = 24 * 60 * 60;
 const DELIVERABLE_FILES_DIR = resolve(process.cwd(), 'data', 'deliverables');
 mkdirSync(DELIVERABLE_FILES_DIR, { recursive: true });
 
+// Separate on-disk store for standalone-trade delivery file attachments.
+const TRADE_DELIVERABLE_FILES_DIR = resolve(process.cwd(), 'data', 'trade-deliverables');
+mkdirSync(TRADE_DELIVERABLE_FILES_DIR, { recursive: true });
+
 function isHexBytes32(s: string): boolean {
   return /^0x[0-9a-fA-F]{64}$/.test(s);
 }
@@ -2698,6 +2702,81 @@ async function verifyDeliverableReadAuth(
   const v = viewer.toLowerCase();
   if (v !== pactRow.client && v !== pactRow.provider && v !== pactRow.evaluator) {
     reply.code(403).send({ error: 'not a party to this pact' });
+    return null;
+  }
+  return v;
+}
+
+// Parties-only read auth for a standalone trade's delivery file. Same signed-
+// challenge scheme as the pact deliverable auth, namespaced to the trade; the
+// party set is buyer, seller, any drawn panel verifier, or the arbitrator.
+async function verifyTradeReadAuth(
+  request: import('fastify').FastifyRequest,
+  reply: FastifyReply,
+  tradeId: string,
+): Promise<string | null> {
+  const viewer = request.headers['x-arc-viewer'];
+  const sig = request.headers['x-arc-sig'];
+  const tsStr = request.headers['x-arc-ts'];
+  if (typeof viewer !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(viewer)) {
+    reply.code(401).send({ error: 'x-arc-viewer header (address) is required' });
+    return null;
+  }
+  if (typeof sig !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig)) {
+    reply.code(401).send({ error: 'x-arc-sig header (hex signature) is required' });
+    return null;
+  }
+  if (typeof tsStr !== 'string' || !/^\d+$/.test(tsStr)) {
+    reply.code(401).send({ error: 'x-arc-ts header (unix seconds) is required' });
+    return null;
+  }
+  const ts = Number(tsStr);
+  if (Math.abs(Math.floor(Date.now() / 1000) - ts) > READ_CHALLENGE_WINDOW_SECONDS) {
+    reply.code(401).send({ error: 'challenge timestamp expired or too far in the future' });
+    return null;
+  }
+  const message = `arc-trade:read-trade-delivery:${tradeId}:${ts}`;
+  let valid = false;
+  try {
+    valid = await arcClient.verifyMessage({
+      address: viewer as `0x${string}`,
+      message,
+      signature: sig as `0x${string}`,
+    });
+  } catch {
+    valid = false;
+  }
+  if (!valid) {
+    reply.code(401).send({ error: 'invalid signature for viewer' });
+    return null;
+  }
+
+  const nTradeId = Number(tradeId);
+  const idx = db
+    .prepare('SELECT buyer, seller FROM trade_index WHERE trade_id = ?')
+    .get(nTradeId) as { buyer: string; seller: string } | undefined;
+  if (!idx) {
+    reply.code(404).send({ error: 'trade not indexed yet - try again in a few seconds' });
+    return null;
+  }
+  const v = viewer.toLowerCase();
+  let allowed = v === idx.buyer.toLowerCase() || v === idx.seller.toLowerCase();
+  if (!allowed) {
+    const panelist = db
+      .prepare('SELECT 1 FROM verification_assignments WHERE trade_id = ? AND verifier = ?')
+      .get(nTradeId, v);
+    if (panelist) allowed = true;
+  }
+  if (!allowed) {
+    try {
+      const arb = await getArbitrator();
+      if (arb && v === arb.toLowerCase()) allowed = true;
+    } catch {
+      /* arbitrator unreadable - fall through to deny */
+    }
+  }
+  if (!allowed) {
+    reply.code(403).send({ error: 'not a party to this trade' });
     return null;
   }
   return v;
@@ -2897,6 +2976,157 @@ app.get<{
     .header('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
   return reply.send(createReadStream(absolutePath));
 });
+
+// ─── Trade delivery file (optional attachment on the trade delivery step) ───
+// The seller commits keccak256(bytes) inside their signed delivery doc (officer
+// or panel path); the bytes are uploaded here (content-addressed, seller-only)
+// and any trade party can download + hash-verify. Same disk/streaming pattern
+// as the pact deliverable, but a separate store and trade-scoped read auth.
+app.post<{
+  Params: { id: string };
+  Body: { fileBase64?: string; fileName?: string; mime?: string; uploadedBy?: string };
+}>(
+  '/arc/trade/:id/delivery-file',
+  { bodyLimit: UPLOAD_BODY_LIMIT_BYTES },
+  async (request, reply) => {
+    const tradeId = request.params.id;
+    if (!/^\d+$/.test(tradeId)) return reply.code(400).send({ error: 'id must be a numeric trade id' });
+    const { fileBase64, fileName, mime, uploadedBy } = request.body ?? {};
+    if (typeof fileBase64 !== 'string' || fileBase64.length === 0) {
+      return reply.code(400).send({ error: 'fileBase64 is required' });
+    }
+    if (typeof fileName !== 'string' || fileName.length === 0 || fileName.length > 255) {
+      return reply.code(400).send({ error: 'fileName is required (1..255 chars)' });
+    }
+    if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('\0')) {
+      return reply.code(400).send({ error: 'fileName must not contain path separators or nulls' });
+    }
+    if (typeof uploadedBy !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(uploadedBy)) {
+      return reply.code(400).send({ error: 'uploadedBy must be a 0x-prefixed 20-byte hex address' });
+    }
+
+    const nTradeId = Number(tradeId);
+    // The seller must have committed this file's hash in their signed delivery
+    // doc (officer or panel path); the upload must match that hash.
+    const committed =
+      (db.prepare('SELECT file_hash FROM officer_reviews WHERE trade_id = ?').get(nTradeId) as
+        | { file_hash: string | null }
+        | undefined)?.file_hash ??
+      (db.prepare('SELECT file_hash FROM verification_docs WHERE trade_id = ?').get(nTradeId) as
+        | { file_hash: string | null }
+        | undefined)?.file_hash ??
+      null;
+    if (!committed) {
+      return reply
+        .code(409)
+        .send({ error: 'no delivery file was committed for this trade - submit the delivery doc with a file first' });
+    }
+
+    const idx = db.prepare('SELECT seller FROM trade_index WHERE trade_id = ?').get(nTradeId) as
+      | { seller: string }
+      | undefined;
+    if (!idx) return reply.code(404).send({ error: 'trade not indexed yet' });
+    if (uploadedBy.toLowerCase() !== idx.seller.toLowerCase()) {
+      return reply.code(403).send({ error: 'only the seller may upload the delivery file' });
+    }
+
+    const safeMime =
+      typeof mime === 'string' && mime.length > 0 && mime.length < 256 ? mime : 'application/octet-stream';
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(fileBase64, 'base64');
+    } catch {
+      return reply.code(400).send({ error: 'fileBase64 is not valid base64' });
+    }
+    if (bytes.length === 0) return reply.code(400).send({ error: 'decoded file is empty' });
+    if (bytes.length > DELIVERABLE_FILE_MAX_BYTES) {
+      return reply.code(413).send({ error: `file exceeds ${DELIVERABLE_FILE_MAX_BYTES} byte limit`, sizeBytes: bytes.length });
+    }
+    const computed = keccak256(bytes).toLowerCase();
+    if (computed !== committed.toLowerCase()) {
+      return reply.code(400).send({ error: 'file does not match the committed delivery hash', computed });
+    }
+
+    const existing = db
+      .prepare('SELECT hash FROM trade_deliverables WHERE trade_id = ? AND hash = ?')
+      .get(nTradeId, computed);
+    if (existing) return reply.code(409).send({ error: 'delivery file already uploaded' });
+
+    const dir = join(TRADE_DELIVERABLE_FILES_DIR, tradeId);
+    mkdirSync(dir, { recursive: true });
+    const relativePath = join(tradeId, `${computed}.bin`);
+    writeFileSync(join(TRADE_DELIVERABLE_FILES_DIR, relativePath), bytes);
+    db.prepare(
+      `INSERT INTO trade_deliverables (trade_id, hash, file_name, mime, size_bytes, file_path, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(nTradeId, computed, fileName, safeMime, bytes.length, relativePath, uploadedBy.toLowerCase());
+    return reply.code(201).send({ tradeId, hash: computed, fileName, mime: safeMime, sizeBytes: bytes.length });
+  },
+);
+
+app.get<{ Params: { id: string }; Querystring: { hash?: string } }>(
+  '/arc/trade/:id/delivery-file',
+  async (request, reply) => {
+    const tradeId = request.params.id;
+    if (!/^\d+$/.test(tradeId)) return reply.code(400).send({ error: 'id must be a numeric trade id' });
+    const hash = request.query.hash;
+    if (typeof hash !== 'string' || !isHexBytes32(hash)) {
+      return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
+    }
+    const ok = await verifyTradeReadAuth(request, reply, tradeId);
+    if (!ok) return;
+    const row = db
+      .prepare(
+        'SELECT trade_id, hash, file_name, mime, size_bytes, uploaded_by, uploaded_at FROM trade_deliverables WHERE trade_id = ? AND hash = ?',
+      )
+      .get(Number(tradeId), hash.toLowerCase()) as
+      | { trade_id: number; hash: string; file_name: string; mime: string; size_bytes: number; uploaded_by: string; uploaded_at: string }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: 'no delivery file stored for this hash' });
+    return {
+      tradeId: String(row.trade_id),
+      hash: row.hash,
+      fileName: row.file_name,
+      mime: row.mime,
+      sizeBytes: row.size_bytes,
+      uploadedBy: row.uploaded_by,
+      uploadedAt: row.uploaded_at,
+    };
+  },
+);
+
+app.get<{ Params: { id: string }; Querystring: { hash?: string } }>(
+  '/arc/trade/:id/delivery-file/download',
+  async (request, reply) => {
+    const tradeId = request.params.id;
+    if (!/^\d+$/.test(tradeId)) return reply.code(400).send({ error: 'id must be a numeric trade id' });
+    const hash = request.query.hash;
+    if (typeof hash !== 'string' || !isHexBytes32(hash)) {
+      return reply.code(400).send({ error: 'hash query param must be a 0x-prefixed 32-byte hex string' });
+    }
+    const ok = await verifyTradeReadAuth(request, reply, tradeId);
+    if (!ok) return;
+    const row = db
+      .prepare('SELECT file_name, mime, file_path FROM trade_deliverables WHERE trade_id = ? AND hash = ?')
+      .get(Number(tradeId), hash.toLowerCase()) as
+      | { file_name: string; mime: string; file_path: string }
+      | undefined;
+    if (!row || !row.file_path) return reply.code(404).send({ error: 'no delivery file stored for this hash' });
+    const absolutePath = join(TRADE_DELIVERABLE_FILES_DIR, row.file_path);
+    let size: number;
+    try {
+      size = statSync(absolutePath).size;
+    } catch {
+      return reply.code(500).send({ error: 'stored file missing from disk' });
+    }
+    const encodedName = encodeURIComponent(row.file_name);
+    reply
+      .header('Content-Type', row.mime ?? 'application/octet-stream')
+      .header('Content-Length', String(size))
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+    return reply.send(createReadStream(absolutePath));
+  },
+);
 
 
 // --------------------------------------------------------------------------
@@ -3640,8 +3870,17 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
     db.prepare('INSERT OR REPLACE INTO pending_attestations (trade_id, proof_hash, finalize_at) VALUES (?, ?, ?)')
       .run(Number(id), decision.proofHash, finalizeAt);
     // Snapshot the review so the trade page can show it after settlement.
-    db.prepare('INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence) VALUES (?, ?, ?, ?)')
-      .run(Number(id), document.content, JSON.stringify(decision.reasons ?? []), decision.confidence ?? null);
+    db.prepare(
+      'INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence, file_hash, file_name, file_mime) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      Number(id),
+      document.content,
+      JSON.stringify(decision.reasons ?? []),
+      decision.confidence ?? null,
+      typeof document.fileHash === 'string' && isHexBytes32(document.fileHash) ? document.fileHash.toLowerCase() : null,
+      typeof document.fileName === 'string' ? document.fileName.slice(0, 255) : null,
+      typeof document.fileMime === 'string' ? document.fileMime.slice(0, 255) : null,
+    );
     return {
       tradeId: request.params.id,
       decision: 'pass',
@@ -4286,12 +4525,12 @@ app.post<{ Params: { id: string } }>('/arc/trade/:id/verification/fund/unsigned'
 // Seller submits delivery for a staked-panel trade → operator assigns the panel
 // (commits the doc hash on-chain) and stores the doc for the panel to review.
 // Seller-signature gated (same as officer-attest).
-app.post<{ Params: { id: string }; Body: { content?: string; signature?: string; ts?: number } }>(
+app.post<{ Params: { id: string }; Body: { content?: string; fileHash?: string; fileName?: string; fileMime?: string; signature?: string; ts?: number } }>(
   '/arc/trade/:id/verification/assign',
   async (request, reply) => {
     const v = verifierReady(reply);
     if (!v || !escrowReady(reply)) return;
-    const { content, signature, ts } = request.body ?? {};
+    const { content, fileHash, fileName, fileMime, signature, ts } = request.body ?? {};
     if (!content || content.trim().length < 20) {
       return reply.code(400).send({ error: 'delivery document (content ≥ 20 chars) required' });
     }
@@ -4310,7 +4549,15 @@ app.post<{ Params: { id: string }; Body: { content?: string; signature?: string;
         fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
       });
       const tx = await waitForCircleTx(exec.data!.id);
-      db.prepare('INSERT OR REPLACE INTO verification_docs (trade_id, content) VALUES (?, ?)').run(Number(request.params.id), content);
+      db.prepare(
+        'INSERT OR REPLACE INTO verification_docs (trade_id, content, file_hash, file_name, file_mime) VALUES (?, ?, ?, ?, ?)',
+      ).run(
+        Number(request.params.id),
+        content,
+        typeof fileHash === 'string' && isHexBytes32(fileHash) ? fileHash.toLowerCase() : null,
+        typeof fileName === 'string' ? fileName.slice(0, 255) : null,
+        typeof fileMime === 'string' ? fileMime.slice(0, 255) : null,
+      );
       // Record panel membership so each drawn verifier can be alerted there's a
       // vote to cast (the module has no verifier→trades reverse index).
       const id = BigInt(request.params.id);
@@ -4358,7 +4605,7 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'slashBps' }),
   ]);
   const [assigned, resolved, deadline, passes, fails, cast, fee] = vstate as readonly [boolean, boolean, bigint, number, number, number, bigint];
-  const doc = db.prepare('SELECT content FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string } | undefined;
+  const doc = db.prepare('SELECT content, file_hash, file_name, file_mime FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string; file_hash: string | null; file_name: string | null; file_mime: string | null } | undefined;
   const addr = (request.query.address ?? '').toLowerCase();
   const isAddr = /^0x[0-9a-f]{40}$/.test(addr);
   // App-layer secret ballot: while voting is open, hide the running split + each
@@ -4378,6 +4625,9 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     slashBps: Number(slashBps),
     panel: panel as readonly string[],
     document: doc?.content ?? null,
+    fileHash: doc?.file_hash ?? null,
+    fileName: doc?.file_name ?? null,
+    fileMime: doc?.file_mime ?? null,
   };
   // Each panelist's decision (0 none, 1 confirm, 2 reject, -1 voted-but-hidden) + handle.
   const members = panel as readonly string[];
@@ -4410,8 +4660,8 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
 // reasons), so the trade page can show an honest "document validated" view.
 app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (request) => {
   const row = db
-    .prepare('SELECT document, reasons, confidence, created_at FROM officer_reviews WHERE trade_id = ?')
-    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string } | undefined;
+    .prepare('SELECT document, reasons, confidence, created_at, file_hash, file_name, file_mime FROM officer_reviews WHERE trade_id = ?')
+    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string; file_hash: string | null; file_name: string | null; file_mime: string | null } | undefined;
   if (!row) return { exists: false };
   let reasons: string[] = [];
   try {
@@ -4419,7 +4669,7 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (requ
   } catch {
     /* leave empty */
   }
-  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at };
+  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at, fileHash: row.file_hash, fileName: row.file_name, fileMime: row.file_mime };
 });
 
 // Profile dashboard stats: trade history summary + reputation + verifier role.

@@ -24,6 +24,12 @@ export type DeliveryDoc = {
   carrier?: string;
   origin?: string;
   destination?: string;
+  // Optional file attachment. `fileHash` = keccak256 of the file bytes; it rides
+  // inside this doc so it's covered by the on-chain proof hash (JSON.stringify).
+  // The bytes are uploaded separately to /arc/trade/:id/delivery-file.
+  fileHash?: string;
+  fileName?: string;
+  fileMime?: string;
 };
 
 export type OfficerDecision = {
