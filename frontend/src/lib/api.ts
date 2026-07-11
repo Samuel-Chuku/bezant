@@ -1,3 +1,4 @@
+import { keccak256 } from 'viem';
 import { clearSession, getSessionToken } from './session';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
@@ -1009,6 +1010,11 @@ export type DeliveryDoc = {
   carrier?: string;
   origin?: string;
   destination?: string;
+  // Optional file attachment: keccak256 of the bytes (anchored via the proof
+  // hash) + display metadata. Bytes upload separately via uploadTradeDeliveryFile.
+  fileHash?: string;
+  fileName?: string;
+  fileMime?: string;
 };
 
 export async function getTrade(tradeId: string): Promise<TradeState> {
@@ -1072,6 +1078,9 @@ export type VerificationState = {
   slashBps?: number;
   panel: string[];
   document: string | null;
+  fileHash?: string | null;
+  fileName?: string | null;
+  fileMime?: string | null;
   myVote?: number; // 0 none, 1 confirm, 2 reject
   decisions?: { address: string; handle: string | null; vote: number }[];
 };
@@ -1127,7 +1136,7 @@ export async function getVerification(tradeId: string, address?: string): Promis
   return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/verification${q}`);
 }
 
-export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string };
+export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string; fileHash?: string | null; fileName?: string | null; fileMime?: string | null };
 
 // Trade Officer (automated) review snapshot for an officer-route trade.
 export async function getOfficerReview(tradeId: string): Promise<OfficerReview> {
@@ -1147,8 +1156,13 @@ export async function buildVerificationResolveUnsigned(tradeId: string): Promise
 }
 
 // Seller submits the delivery doc for a staked-panel trade (seller-sig gated).
-export async function assignVerification(tradeId: string, content: string, auth: { signature: string; ts: number }): Promise<{ assigned: boolean; txHash?: string }> {
-  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/assign`, { content, ...auth });
+export async function assignVerification(
+  tradeId: string,
+  content: string,
+  auth: { signature: string; ts: number },
+  file?: { fileHash: string; fileName: string; fileMime: string },
+): Promise<{ assigned: boolean; txHash?: string }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/assign`, { content, ...file, ...auth });
 }
 
 export function verifyAssignAuthMessage(tradeId: string, ts: number): string {
@@ -1341,6 +1355,94 @@ export async function officerAttest(
 // backend's verifyActionSig format).
 export function officerAttestAuthMessage(tradeId: string, ts: number): string {
   return `arc-trade:officer-attest:${tradeId}:${ts}`;
+}
+
+// ── Trade delivery file (optional attachment on the trade delivery step) ──────
+export function readTradeDeliveryChallenge(tradeId: string, ts: number): string {
+  return `arc-trade:read-trade-delivery:${tradeId}:${ts}`;
+}
+
+// Signed read-challenge for a trade's delivery file, cached like the pact one so
+// a party signs once per ~day rather than on every download.
+export async function getOrCreateTradeReadAuth(
+  tradeId: string,
+  viewer: string,
+  signMessage: (msg: string) => Promise<string>,
+): Promise<{ viewer: string; sig: string; ts: number }> {
+  const CACHE_TTL_SECONDS = 23 * 60 * 60;
+  const cacheKey = `arc:trade-deliv-sig:${tradeId}:${viewer.toLowerCase()}`;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      try {
+        const cached = JSON.parse(raw) as { sig: string; ts: number };
+        if (nowSec - cached.ts < CACHE_TTL_SECONDS && cached.sig && cached.ts) {
+          return { viewer, sig: cached.sig, ts: cached.ts };
+        }
+      } catch {
+        /* bad cache - fall through to a fresh sign */
+      }
+    }
+  }
+  const ts = nowSec;
+  const sig = await signMessage(readTradeDeliveryChallenge(tradeId, ts));
+  if (typeof window !== 'undefined') localStorage.setItem(cacheKey, JSON.stringify({ sig, ts }));
+  return { viewer, sig, ts };
+}
+
+// Seller uploads the delivery file bytes (base64-in-JSON). The hash must match
+// what the seller committed in their signed delivery doc; the server refuses
+// mismatches.
+export async function uploadTradeDeliveryFile(input: {
+  tradeId: string;
+  fileName: string;
+  mime: string;
+  fileBase64: string;
+  uploadedBy: string;
+}): Promise<{ tradeId: string; hash: string; fileName: string; mime: string; sizeBytes: number }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(input.tradeId)}/delivery-file`, {
+    fileBase64: input.fileBase64,
+    fileName: input.fileName,
+    mime: input.mime,
+    uploadedBy: input.uploadedBy,
+  });
+}
+
+// Parties fetch the raw bytes; the caller recomputes the hash before saving.
+export async function downloadTradeDeliveryFile(
+  tradeId: string,
+  hash: string,
+  auth: { viewer: string; sig: string; ts: number },
+): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE}/arc/trade/${encodeURIComponent(tradeId)}/delivery-file/download?hash=${encodeURIComponent(hash)}`,
+    { headers: { 'x-arc-viewer': auth.viewer, 'x-arc-sig': auth.sig, 'x-arc-ts': String(auth.ts) } },
+  );
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j.error) message = j.error;
+    } catch {
+      /* keep HTTP fallback */
+    }
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return res.blob();
+}
+
+// Read a File into base64 + its keccak256 hash (chunked to dodge the call-stack
+// limit on large files). Shared by the trade delivery submit + panel flows.
+export async function fileToBase64AndHash(file: File): Promise<{ base64: string; hash: `0x${string}` }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const hash = keccak256(bytes);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return { base64: btoa(binary), hash };
 }
 
 export type TradeListItem = {

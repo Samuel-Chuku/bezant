@@ -18,9 +18,12 @@ import {
   buildVerificationResolveUnsigned,
   assignVerification,
   verifyAssignAuthMessage,
+  fileToBase64AndHash,
+  uploadTradeDeliveryFile,
   type VerificationState,
   type UnsignedTx,
 } from '@/lib/api';
+import { DeliveryFileButton } from '@/components/delivery-file-button';
 
 export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange }: { tradeId: string; buyer: string; seller: string; amountUsdc: string; onChange: () => void }) {
   const signer = useSigner();
@@ -28,6 +31,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
   const txFlow = useTxFlow();
   const [v, setV] = useState<VerificationState | null>(null);
   const [doc, setDoc] = useState('');
+  const [panelFile, setPanelFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingVote, setPendingVote] = useState<boolean | null>(null); // verdict awaiting confirmation
   const [showPanel, setShowPanel] = useState(false);
@@ -96,9 +100,24 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
     try {
       const ts = Date.now();
       const signature = await signer.signMessage(verifyAssignAuthMessage(tradeId, ts));
-      await assignVerification(tradeId, doc, { signature, ts });
+      let fileBase64: string | null = null;
+      let file: { fileHash: string; fileName: string; fileMime: string } | undefined;
+      if (panelFile) {
+        const { base64, hash } = await fileToBase64AndHash(panelFile);
+        file = { fileHash: hash, fileName: panelFile.name, fileMime: panelFile.type || 'application/octet-stream' };
+        fileBase64 = base64;
+      }
+      await assignVerification(tradeId, doc, { signature, ts }, file);
+      if (panelFile && file && fileBase64) {
+        try {
+          await uploadTradeDeliveryFile({ tradeId, fileName: file.fileName, mime: file.fileMime, fileBase64, uploadedBy: signer.address });
+        } catch (upErr) {
+          toast.error(`Submitted, but the file upload failed: ${upErr instanceof Error ? upErr.message : String(upErr)}`);
+        }
+      }
       toast.success('Submitted - the panel has been drawn and is voting');
       setDoc('');
+      setPanelFile(null);
       await refresh();
       onChange();
     } catch (e) {
@@ -167,6 +186,11 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
           <div className="space-y-2">
             <p className="text-xs text-muted">Submit your delivery document - a staked panel will review it and vote.</p>
             <textarea value={doc} onChange={(e) => setDoc(e.target.value)} rows={3} placeholder="Paste your bill of lading / tracking / customs document…" className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm" />
+            <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span className="cursor-pointer rounded-md border border-line px-2.5 py-1 text-fg transition hover:border-line-strong">Attach a file (optional)</span>
+              <input type="file" className="hidden" onChange={(e) => setPanelFile(e.target.files?.[0] ?? null)} />
+              {panelFile ? <span className="truncate text-fg">{panelFile.name}</span> : <span>the panel can download &amp; verify it</span>}
+            </label>
             <button onClick={submitToPanel} disabled={busy} className="rounded-md bg-info px-3 py-1.5 text-sm font-medium text-white hover:bg-info disabled:opacity-50">{busy ? 'Submitting…' : 'Submit to the panel'}</button>
           </div>
         ) : (
@@ -204,6 +228,10 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
           <summary className="cursor-pointer text-xs text-muted">Delivery document</summary>
           <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-fg">{v.document}</pre>
         </details>
+      )}
+
+      {v.fileHash && v.fileName && (
+        <DeliveryFileButton tradeId={tradeId} fileHash={v.fileHash} fileName={v.fileName} />
       )}
 
       {onPanel && !v.resolved && (

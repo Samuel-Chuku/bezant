@@ -5,8 +5,9 @@
 // check - the delivery *information* was validated, not independently verified.
 import { createPortal } from 'react-dom';
 import type { OfficerReview } from '@/lib/api';
+import { DeliveryFileButton } from '@/components/delivery-file-button';
 
-export function OfficerReviewModal({ review, onClose }: { review: OfficerReview; onClose: () => void }) {
+export function OfficerReviewModal({ review, tradeId, onClose }: { review: OfficerReview; tradeId: string; onClose: () => void }) {
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
@@ -47,6 +48,12 @@ export function OfficerReviewModal({ review, onClose }: { review: OfficerReview;
             <summary className="cursor-pointer text-xs text-muted">Submitted document</summary>
             <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-fg">{review.document}</pre>
           </details>
+        )}
+
+        {review.fileHash && review.fileName && (
+          <div className="mt-3">
+            <DeliveryFileButton tradeId={tradeId} fileHash={review.fileHash} fileName={review.fileName} />
+          </div>
         )}
 
         {typeof review.confidence === 'number' && (

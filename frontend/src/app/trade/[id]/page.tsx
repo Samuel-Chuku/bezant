@@ -41,6 +41,9 @@ import {
   buildFeedbackUnsigned,
   triggerFeedbackBoost,
   officerAttestAuthMessage,
+  fileToBase64AndHash,
+  uploadTradeDeliveryFile,
+  type DeliveryDoc,
   getUserByAddress,
   getVerifierInfo,
   getVerification,
@@ -99,6 +102,7 @@ export default function TradeDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<string | null>(null);
   const [doc, setDoc] = useState('');
+  const [deliveryFile, setDeliveryFile] = useState<File | null>(null);
   const [officerNote, setOfficerNote] = useState<{ reasons: string[]; highValue: boolean } | null>(null);
   const [financingQuote, setFinancingQuote] = useState<FinancingQuote | null>(null);
   const [counterAmount, setCounterAmount] = useState('');
@@ -251,10 +255,34 @@ export default function TradeDetailPage() {
       // by a wallet signature the backend verifies against the trade's seller.
       const ts = Date.now();
       const signature = await signer.signMessage(officerAttestAuthMessage(id, ts));
-      const r = await officerAttest(id, { kind: 'bill_of_lading', content: doc }, { signature, ts });
+      const docObj: DeliveryDoc = { kind: 'bill_of_lading', content: doc };
+      let fileBase64: string | null = null;
+      if (deliveryFile) {
+        const { base64, hash } = await fileToBase64AndHash(deliveryFile);
+        docObj.fileHash = hash;
+        docObj.fileName = deliveryFile.name;
+        docObj.fileMime = deliveryFile.type || 'application/octet-stream';
+        fileBase64 = base64;
+      }
+      const r = await officerAttest(id, docObj, { signature, ts });
       if (r.decision === 'pass') {
         // Officer approved → buyer challenge window opens; the finalizer settles after it elapses.
+        // The file hash is now recorded on-chain-anchored, so upload the bytes for parties to fetch.
+        if (deliveryFile && fileBase64) {
+          try {
+            await uploadTradeDeliveryFile({
+              tradeId: id,
+              fileName: deliveryFile.name,
+              mime: deliveryFile.type || 'application/octet-stream',
+              fileBase64,
+              uploadedBy: signer.address,
+            });
+          } catch (upErr) {
+            toast.error(`Delivery accepted, but the file upload failed: ${upErr instanceof Error ? upErr.message : String(upErr)}`);
+          }
+        }
         setOfficerNote(null);
+        setDeliveryFile(null);
         toast.success('Delivery accepted - the buyer has a short window to dispute, then it settles automatically');
         await refresh();
       } else {
@@ -541,6 +569,11 @@ export default function TradeDetailPage() {
                     placeholder="Paste your bill of lading / tracking / customs document - must name the document type and include a real reference number, e.g. 'Bill of Lading MAEU123456789 - 2000kg textiles, Jebel Ali → Lagos, carrier Maersk'."
                     className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
                   />
+                  <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <span className="cursor-pointer rounded-md border border-line px-2.5 py-1 text-fg transition hover:border-line-strong">Attach a file (optional)</span>
+                    <input type="file" className="hidden" onChange={(e) => setDeliveryFile(e.target.files?.[0] ?? null)} />
+                    {deliveryFile ? <span className="truncate text-fg">{deliveryFile.name}</span> : <span>PDF, image, or scan — any party can download &amp; verify it</span>}
+                  </label>
                   <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
                   {officerNote && (
                     <div className={`rounded-lg border p-3 text-sm ${officerNote.highValue ? 'border-info/50 bg-info/20 text-info' : 'border-warn/50 bg-warn/20 text-warn'}`}>
@@ -715,7 +748,7 @@ export default function TradeDetailPage() {
       )}
 
       {showPanelModal && verification && <PanelModal v={verification} me={me} onClose={() => setShowPanelModal(false)} />}
-      {showOfficerModal && officerReview?.exists && <OfficerReviewModal review={officerReview} onClose={() => setShowOfficerModal(false)} />}
+      {showOfficerModal && officerReview?.exists && <OfficerReviewModal review={officerReview} tradeId={id} onClose={() => setShowOfficerModal(false)} />}
 
       <BridgeProgressModal
         run={bridgeRun}
