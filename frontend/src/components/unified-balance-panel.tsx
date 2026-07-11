@@ -318,8 +318,8 @@ function MoveToArc({
   busy: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(offArc.map((c) => c.key)));
-  const maxMovableAll = offArc.reduce((s, c) => s + chainCap(c.balanceUsdc), 0);
-  const [amount, setAmount] = useState<string>(() => maxMovableAll.toFixed(2));
+  // Start empty so the user enters an amount - not a pre-filled sweep of everything.
+  const [amount, setAmount] = useState<string>('');
   const [status, setStatus] = useState<Record<string, MoveStatus>>({});
   const [movedTotal, setMovedTotal] = useState<number | null>(null);
 

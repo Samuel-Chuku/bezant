@@ -4514,8 +4514,10 @@ app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (requ
   const v = STAKED_VERIFIER_ADDRESS;
   const read = (functionName: string, args: unknown[] = []) =>
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: functionName as never, args: args as never });
-  const [panelSize, feeBps, slashBps, bondBps, minStake, voteWindow, count] = await Promise.all([
+  const [panelSize, feeBps, slashBps, bondBps, minStake, voteWindow, count, tvl] = await Promise.all([
     read('panelSize'), read('feeBps'), read('slashBps'), read('bondBps'), read('minStake'), read('voteWindow'), read('verifierCount'),
+    // Total value in the pool = all USDC the module custodies (stakes + locked bonds).
+    arcClient.readContract({ address: USDC_ADDRESS, abi: erc20Abi as Abi, functionName: 'balanceOf', args: [v] }),
   ]);
   const out: Record<string, unknown> = {
     configured: true,
@@ -4527,6 +4529,7 @@ app.get<{ Querystring: { address?: string } }>('/arc/verifier/info', async (requ
     minStakeUsdc: formatUnits(minStake as bigint, 6),
     voteWindowSeconds: Number(voteWindow),
     verifierCount: Number(count),
+    totalStakeUsdc: formatUnits(tvl as bigint, 6),
   };
   const addr = (request.query.address ?? '').toLowerCase();
   if (/^0x[0-9a-f]{40}$/.test(addr)) {

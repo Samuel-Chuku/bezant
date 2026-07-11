@@ -46,7 +46,7 @@ export default function VerifyPage() {
   const [stakeAmt, setStakeAmt] = useState('');
   const [unstakeAmt, setUnstakeAmt] = useState('');
   const [filter, setFilter] = useState<Filter>('pending');
-  const [tab, setTab] = useState<'queue' | 'stake' | 'activity'>('queue');
+  const [tab, setTab] = useState<'stake' | 'activity'>('stake');
   const { items: assignments, loaded: assignmentsLoaded } = useVerifierAssignments();
 
   const refresh = useCallback(async () => {
@@ -123,9 +123,8 @@ export default function VerifyPage() {
         <div className="mt-8">
           <ContextTabs
             tabs={[
-              { key: 'queue', label: 'My verifications', badge: assignments.filter((a) => a.status === 'pending').length },
               { key: 'stake', label: 'Stake' },
-              { key: 'activity', label: 'Activity' },
+              { key: 'activity', label: 'Panel activity' },
             ]}
             active={tab}
             onChange={(k) => setTab(k as typeof tab)}
@@ -133,65 +132,26 @@ export default function VerifyPage() {
         </div>
       )}
 
-      {info?.configured && tab === 'queue' && (signer.isConnected ? (
-        <section className="bz-fadein mt-6 bz-frame rounded-xl border border-line bg-surface p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-medium text-fg">My verifications</h2>
-            <PillSelect
-              value={filter}
-              onChange={(v) => setFilter(v as Filter)}
-              options={FILTERS.map((f) => ({
-                value: f.key,
-                label: f.label,
-                badge: f.key === 'all' ? assignments.length : assignments.filter((a) => inFilter(a, f.key)).length,
-              }))}
-            />
-          </div>
-
-          {(() => {
-            const shown = assignments.filter((a) => inFilter(a, filter));
-            if (!assignmentsLoaded) return <p className="mt-4 text-sm text-muted">Loading…</p>;
-            if (shown.length === 0) return <p className="mt-4 rounded-xl border border-line bg-surface-2 px-3 py-8 text-center text-sm text-muted">{EMPTY[filter]}</p>;
-            return (
-              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface-2">
-                {shown.map((a) => (
-                  <li key={a.tradeId} className="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-surface">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <VerifyGlyph />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-fg">Bond #{a.tradeId}</span>
-                        <StatusPill status={a.status} />
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      {a.status === 'pending' && <CountdownChip unix={a.deadline} label="Closes" />}
-                      <Link
-                        href={`/trade/${a.tradeId}`}
-                        className={a.status === 'pending'
-                          ? 'rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-primary-hover'
-                          : 'rounded-md border border-line px-3 py-1.5 text-xs text-fg transition hover:border-line-strong'}
-                      >
-                        {a.status === 'pending' ? 'Review & vote' : 'View'}
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            );
-          })()}
-        </section>
-      ) : (
-        <p className="bz-fadein mt-6 bz-frame rounded-xl border border-line bg-surface p-5 text-sm text-muted">Connect a wallet to see the panels you&apos;ve been drawn onto.</p>
-      ))}
-
       {!info?.configured ? (
         <p className="mt-8 bz-frame rounded-xl border border-line bg-surface p-5 text-sm text-muted">
           The staked verifier isn&apos;t deployed on this network yet.
         </p>
       ) : tab === 'stake' ? (
-        <div className="bz-fadein mt-6 grid gap-5 sm:grid-cols-2">
+        <div className="bz-fadein mt-6 space-y-5">
+          {/* Pool TVL */}
+          <section className="bz-frame rounded-xl border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-muted">Total staked · pool TVL</div>
+                <div className="mt-1 font-mono text-3xl font-semibold tabular-nums text-primary">
+                  {info.totalStakeUsdc ?? '—'} <span className="text-sm font-normal text-muted">USDC</span>
+                </div>
+              </div>
+              <div className="text-sm text-muted">{info.verifierCount ?? 0} verifier{info.verifierCount === 1 ? '' : 's'} staked</div>
+            </div>
+          </section>
+
+          <div className="grid gap-5 sm:grid-cols-2">
           {/* Economics */}
           <section className="bz-frame rounded-xl border border-line bg-surface p-5">
             <div className="text-[11px] uppercase tracking-wide text-muted">Panel economics</div>
@@ -202,7 +162,6 @@ export default function VerifyPage() {
               <Row label="Slash on bad vote">{(info.slashBps ?? 0) / 100}% of bond</Row>
               <Row label="Min stake">{info.minStakeUsdc} USDC</Row>
               <Row label="Vote window">{Math.round((info.voteWindowSeconds ?? 0) / 60)} min</Row>
-              <Row label="Verifiers">{info.verifierCount}</Row>
             </dl>
           </section>
 
@@ -251,12 +210,74 @@ export default function VerifyPage() {
               </div>
             )}
           </section>
+          </div>
         </div>
       ) : null}
 
       {info?.configured && tab === 'activity' && (
         <div className="bz-fadein mt-6"><RecentVerifierStakes /></div>
       )}
+
+      {/* Verifications — its own card, always below the tab content */}
+      {info?.configured && (signer.isConnected ? (
+        <section className="bz-fadein mt-6 bz-frame rounded-xl border border-line bg-surface p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center text-sm font-medium text-fg">
+              My verifications
+              {assignments.filter((a) => a.status === 'pending').length > 0 && (
+                <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                  {assignments.filter((a) => a.status === 'pending').length} pending
+                </span>
+              )}
+            </h2>
+            <PillSelect
+              value={filter}
+              onChange={(v) => setFilter(v as Filter)}
+              options={FILTERS.map((f) => ({
+                value: f.key,
+                label: f.label,
+                badge: f.key === 'all' ? assignments.length : assignments.filter((a) => inFilter(a, f.key)).length,
+              }))}
+            />
+          </div>
+
+          {(() => {
+            const shown = assignments.filter((a) => inFilter(a, filter));
+            if (!assignmentsLoaded) return <p className="mt-4 text-sm text-muted">Loading…</p>;
+            if (shown.length === 0) return <p className="mt-4 rounded-xl border border-line bg-surface-2 px-3 py-8 text-center text-sm text-muted">{EMPTY[filter]}</p>;
+            return (
+              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface-2">
+                {shown.map((a) => (
+                  <li key={a.tradeId} className="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-surface">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <VerifyGlyph />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-fg">Bond #{a.tradeId}</span>
+                        <StatusPill status={a.status} />
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {a.status === 'pending' && <CountdownChip unix={a.deadline} label="Closes" />}
+                      <Link
+                        href={`/trade/${a.tradeId}`}
+                        className={a.status === 'pending'
+                          ? 'rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-primary-hover'
+                          : 'rounded-md border border-line px-3 py-1.5 text-xs text-fg transition hover:border-line-strong'}
+                      >
+                        {a.status === 'pending' ? 'Review & vote' : 'View'}
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+        </section>
+      ) : (
+        <p className="bz-fadein mt-6 bz-frame rounded-xl border border-line bg-surface p-5 text-sm text-muted">Connect a wallet to see the panels you&apos;ve been drawn onto.</p>
+      ))}
     </main>
   );
 }

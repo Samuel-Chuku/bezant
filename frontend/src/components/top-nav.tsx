@@ -28,6 +28,7 @@ const PRIMARY_AFTER: NavItem[] = [
   { href: '/pool', label: 'Pool' },
   { href: '/verify', label: 'Verify' },
   { href: '/profile', label: 'Profile' },
+  { href: '/activity', label: 'Activity' },
 ];
 
 // Mobile drawer is a flat list - expand the Trades group inline.

@@ -1127,6 +1127,7 @@ export type VerifierInfo = {
   minStakeUsdc?: string;
   voteWindowSeconds?: number;
   verifierCount?: number;
+  totalStakeUsdc?: string; // pool TVL - all USDC the module holds
   myStakeUsdc?: string;
   myLockedUsdc?: string;
 };
