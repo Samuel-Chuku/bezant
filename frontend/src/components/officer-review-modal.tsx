@@ -52,7 +52,7 @@ export function OfficerReviewModal({ review, tradeId, onClose }: { review: Offic
 
         {review.fileHash && review.fileName && (
           <div className="mt-3">
-            <DeliveryFileButton tradeId={tradeId} fileHash={review.fileHash} fileName={review.fileName} />
+            <DeliveryFileButton tradeId={tradeId} fileHash={review.fileHash} fileName={review.fileName} fileMime={review.fileMime} fileSize={review.fileSize} />
           </div>
         )}
 

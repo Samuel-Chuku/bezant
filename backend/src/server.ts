@@ -3871,7 +3871,7 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
       .run(Number(id), decision.proofHash, finalizeAt);
     // Snapshot the review so the trade page can show it after settlement.
     db.prepare(
-      'INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence, file_hash, file_name, file_mime) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence, file_hash, file_name, file_mime, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       Number(id),
       document.content,
@@ -3880,6 +3880,7 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
       typeof document.fileHash === 'string' && isHexBytes32(document.fileHash) ? document.fileHash.toLowerCase() : null,
       typeof document.fileName === 'string' ? document.fileName.slice(0, 255) : null,
       typeof document.fileMime === 'string' ? document.fileMime.slice(0, 255) : null,
+      typeof document.fileSize === 'number' && Number.isFinite(document.fileSize) ? Math.floor(document.fileSize) : null,
     );
     return {
       tradeId: request.params.id,
@@ -4525,12 +4526,12 @@ app.post<{ Params: { id: string } }>('/arc/trade/:id/verification/fund/unsigned'
 // Seller submits delivery for a staked-panel trade → operator assigns the panel
 // (commits the doc hash on-chain) and stores the doc for the panel to review.
 // Seller-signature gated (same as officer-attest).
-app.post<{ Params: { id: string }; Body: { content?: string; fileHash?: string; fileName?: string; fileMime?: string; signature?: string; ts?: number } }>(
+app.post<{ Params: { id: string }; Body: { content?: string; fileHash?: string; fileName?: string; fileMime?: string; fileSize?: number; signature?: string; ts?: number } }>(
   '/arc/trade/:id/verification/assign',
   async (request, reply) => {
     const v = verifierReady(reply);
     if (!v || !escrowReady(reply)) return;
-    const { content, fileHash, fileName, fileMime, signature, ts } = request.body ?? {};
+    const { content, fileHash, fileName, fileMime, fileSize, signature, ts } = request.body ?? {};
     if (!content || content.trim().length < 20) {
       return reply.code(400).send({ error: 'delivery document (content ≥ 20 chars) required' });
     }
@@ -4550,13 +4551,14 @@ app.post<{ Params: { id: string }; Body: { content?: string; fileHash?: string; 
       });
       const tx = await waitForCircleTx(exec.data!.id);
       db.prepare(
-        'INSERT OR REPLACE INTO verification_docs (trade_id, content, file_hash, file_name, file_mime) VALUES (?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO verification_docs (trade_id, content, file_hash, file_name, file_mime, file_size) VALUES (?, ?, ?, ?, ?, ?)',
       ).run(
         Number(request.params.id),
         content,
         typeof fileHash === 'string' && isHexBytes32(fileHash) ? fileHash.toLowerCase() : null,
         typeof fileName === 'string' ? fileName.slice(0, 255) : null,
         typeof fileMime === 'string' ? fileMime.slice(0, 255) : null,
+        typeof fileSize === 'number' && Number.isFinite(fileSize) ? Math.floor(fileSize) : null,
       );
       // Record panel membership so each drawn verifier can be alerted there's a
       // vote to cast (the module has no verifier→trades reverse index).
@@ -4605,7 +4607,7 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     arcClient.readContract({ address: v, abi: stakedVerifierAbi, functionName: 'slashBps' }),
   ]);
   const [assigned, resolved, deadline, passes, fails, cast, fee] = vstate as readonly [boolean, boolean, bigint, number, number, number, bigint];
-  const doc = db.prepare('SELECT content, file_hash, file_name, file_mime FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string; file_hash: string | null; file_name: string | null; file_mime: string | null } | undefined;
+  const doc = db.prepare('SELECT content, file_hash, file_name, file_mime, file_size FROM verification_docs WHERE trade_id = ?').get(Number(request.params.id)) as { content: string; file_hash: string | null; file_name: string | null; file_mime: string | null; file_size: number | null } | undefined;
   const addr = (request.query.address ?? '').toLowerCase();
   const isAddr = /^0x[0-9a-f]{40}$/.test(addr);
   // App-layer secret ballot: while voting is open, hide the running split + each
@@ -4628,6 +4630,7 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
     fileHash: doc?.file_hash ?? null,
     fileName: doc?.file_name ?? null,
     fileMime: doc?.file_mime ?? null,
+    fileSize: doc?.file_size ?? null,
   };
   // Each panelist's decision (0 none, 1 confirm, 2 reject, -1 voted-but-hidden) + handle.
   const members = panel as readonly string[];
@@ -4660,8 +4663,8 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
 // reasons), so the trade page can show an honest "document validated" view.
 app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (request) => {
   const row = db
-    .prepare('SELECT document, reasons, confidence, created_at, file_hash, file_name, file_mime FROM officer_reviews WHERE trade_id = ?')
-    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string; file_hash: string | null; file_name: string | null; file_mime: string | null } | undefined;
+    .prepare('SELECT document, reasons, confidence, created_at, file_hash, file_name, file_mime, file_size FROM officer_reviews WHERE trade_id = ?')
+    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string; file_hash: string | null; file_name: string | null; file_mime: string | null; file_size: number | null } | undefined;
   if (!row) return { exists: false };
   let reasons: string[] = [];
   try {
@@ -4669,7 +4672,7 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (requ
   } catch {
     /* leave empty */
   }
-  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at, fileHash: row.file_hash, fileName: row.file_name, fileMime: row.file_mime };
+  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at, fileHash: row.file_hash, fileName: row.file_name, fileMime: row.file_mime, fileSize: row.file_size };
 });
 
 // Profile dashboard stats: trade history summary + reputation + verifier role.

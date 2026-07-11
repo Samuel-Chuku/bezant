@@ -491,6 +491,7 @@ for (const t of ['officer_reviews', 'verification_docs'] as const) {
   if (!cols.has('file_hash')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_hash TEXT`);
   if (!cols.has('file_name')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_name TEXT`);
   if (!cols.has('file_mime')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_mime TEXT`);
+  if (!cols.has('file_size')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_size INTEGER`);
 }
 
 // Idempotent ALTER TABLE migration for pre-M28 databases that already have

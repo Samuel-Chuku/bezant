@@ -262,6 +262,7 @@ export default function TradeDetailPage() {
         docObj.fileHash = hash;
         docObj.fileName = deliveryFile.name;
         docObj.fileMime = deliveryFile.type || 'application/octet-stream';
+        docObj.fileSize = deliveryFile.size;
         fileBase64 = base64;
       }
       const r = await officerAttest(id, docObj, { signature, ts });

@@ -30,6 +30,7 @@ export type DeliveryDoc = {
   fileHash?: string;
   fileName?: string;
   fileMime?: string;
+  fileSize?: number;
 };
 
 export type OfficerDecision = {

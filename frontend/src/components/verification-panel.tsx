@@ -101,10 +101,10 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
       const ts = Date.now();
       const signature = await signer.signMessage(verifyAssignAuthMessage(tradeId, ts));
       let fileBase64: string | null = null;
-      let file: { fileHash: string; fileName: string; fileMime: string } | undefined;
+      let file: { fileHash: string; fileName: string; fileMime: string; fileSize: number } | undefined;
       if (panelFile) {
         const { base64, hash } = await fileToBase64AndHash(panelFile);
-        file = { fileHash: hash, fileName: panelFile.name, fileMime: panelFile.type || 'application/octet-stream' };
+        file = { fileHash: hash, fileName: panelFile.name, fileMime: panelFile.type || 'application/octet-stream', fileSize: panelFile.size };
         fileBase64 = base64;
       }
       await assignVerification(tradeId, doc, { signature, ts }, file);
@@ -231,7 +231,7 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
       )}
 
       {v.fileHash && v.fileName && (
-        <DeliveryFileButton tradeId={tradeId} fileHash={v.fileHash} fileName={v.fileName} />
+        <DeliveryFileButton tradeId={tradeId} fileHash={v.fileHash} fileName={v.fileName} fileMime={v.fileMime} fileSize={v.fileSize} />
       )}
 
       {onPanel && !v.resolved && (

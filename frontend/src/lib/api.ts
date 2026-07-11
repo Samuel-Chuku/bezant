@@ -1015,6 +1015,7 @@ export type DeliveryDoc = {
   fileHash?: string;
   fileName?: string;
   fileMime?: string;
+  fileSize?: number;
 };
 
 export async function getTrade(tradeId: string): Promise<TradeState> {
@@ -1081,6 +1082,7 @@ export type VerificationState = {
   fileHash?: string | null;
   fileName?: string | null;
   fileMime?: string | null;
+  fileSize?: number | null;
   myVote?: number; // 0 none, 1 confirm, 2 reject
   decisions?: { address: string; handle: string | null; vote: number }[];
 };
@@ -1136,7 +1138,7 @@ export async function getVerification(tradeId: string, address?: string): Promis
   return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/verification${q}`);
 }
 
-export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string; fileHash?: string | null; fileName?: string | null; fileMime?: string | null };
+export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string; fileHash?: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null };
 
 // Trade Officer (automated) review snapshot for an officer-route trade.
 export async function getOfficerReview(tradeId: string): Promise<OfficerReview> {
@@ -1160,7 +1162,7 @@ export async function assignVerification(
   tradeId: string,
   content: string,
   auth: { signature: string; ts: number },
-  file?: { fileHash: string; fileName: string; fileMime: string },
+  file?: { fileHash: string; fileName: string; fileMime: string; fileSize: number },
 ): Promise<{ assigned: boolean; txHash?: string }> {
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/verification/assign`, { content, ...file, ...auth });
 }
