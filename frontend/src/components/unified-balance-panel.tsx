@@ -278,11 +278,32 @@ function TopUp({
   );
 }
 
-// ── Move to Arc: sweep balances from one or more chains onto the Arc wallet ──
-// Consolidates for use in Bezant (fund bonds / pool / verifier). Each selected
-// chain is a full-balance move (one signature each), run in sequence.
-const MOVE_FEE_BUFFER = 0.11; // leave headroom for the Gateway maxFee (backend MAX_FEE=0.1)
+// ── Move to Arc: consolidate a chosen AMOUNT onto the Arc wallet ──
+// The target is drawn greedily across the eligible chains (largest balance
+// first), so e.g. "move 40" from balances of 20/15/15 pulls 20 + 15 + 5. Each
+// contributing chain is one signature, run in sequence.
+const MOVE_FEE_BUFFER = 0.11; // per-chain headroom for the Gateway maxFee (backend MAX_FEE=0.1)
 type MoveStatus = 'idle' | 'running' | 'done' | 'error';
+type Alloc = { key: string; name: string; amount: number };
+
+// Max value movable out of one chain (balance minus the reserved fee).
+const chainCap = (balanceUsdc: string) => Math.max(0, Number(balanceUsdc) - MOVE_FEE_BUFFER);
+
+// Greedily allocate `target` across chains, biggest cap first.
+function allocate(chains: UnifiedBalance['byChain'], target: number): { allocs: Alloc[]; shortfall: number } {
+  const sorted = [...chains].sort((a, b) => chainCap(b.balanceUsdc) - chainCap(a.balanceUsdc));
+  let remaining = target;
+  const allocs: Alloc[] = [];
+  for (const c of sorted) {
+    if (remaining <= 1e-6) break;
+    const cap = chainCap(c.balanceUsdc);
+    if (cap <= 1e-6) continue;
+    const take = Math.min(remaining, cap);
+    allocs.push({ key: c.key, name: c.name, amount: take });
+    remaining -= take;
+  }
+  return { allocs, shortfall: Math.max(0, remaining) };
+}
 
 function MoveToArc({
   address, offArc, onClose, onDone, signTypedDataAsync, toast, setBusy, busy,
@@ -297,6 +318,8 @@ function MoveToArc({
   busy: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(offArc.map((c) => c.key)));
+  const maxMovableAll = offArc.reduce((s, c) => s + chainCap(c.balanceUsdc), 0);
+  const [amount, setAmount] = useState<string>(() => maxMovableAll.toFixed(2));
   const [status, setStatus] = useState<Record<string, MoveStatus>>({});
   const [movedTotal, setMovedTotal] = useState<number | null>(null);
 
@@ -304,18 +327,21 @@ function MoveToArc({
     setSelected((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   const selectedChains = offArc.filter((c) => selected.has(c.key));
-  const selectedTotal = selectedChains.reduce((s, c) => s + Number(c.balanceUsdc), 0);
+  const maxMovable = selectedChains.reduce((s, c) => s + chainCap(c.balanceUsdc), 0);
+  const amountNum = Number(amount) || 0;
+  const { allocs, shortfall } = allocate(selectedChains, amountNum);
+  const allocByKey = Object.fromEntries(allocs.map((a) => [a.key, a.amount]));
+  const overCap = amountNum > maxMovable + 1e-6;
 
   const run = async () => {
-    if (selectedChains.length === 0) { toast.error('Select at least one chain.'); return; }
+    if (amountNum <= 0) { toast.error('Enter an amount.'); return; }
+    if (overCap || shortfall > 1e-6) { toast.error(`Most you can move from the selected chains is ${maxMovable.toFixed(2)} USDC (a small fee is reserved per chain).`); return; }
     setBusy(true);
     let moved = 0;
-    for (const c of selectedChains) {
-      const amount = Number(c.balanceUsdc) - MOVE_FEE_BUFFER;
-      if (amount <= 0) { setStatus((s) => ({ ...s, [c.key]: 'error' })); continue; }
-      setStatus((s) => ({ ...s, [c.key]: 'running' }));
+    for (const a of allocs) {
+      setStatus((s) => ({ ...s, [a.key]: 'running' }));
       try {
-        const plan = await getWithdrawPlan(address, c.key, ARC_KEY, amount.toFixed(6));
+        const plan = await getWithdrawPlan(address, a.key, ARC_KEY, a.amount.toFixed(6));
         if (plan.needsMore) throw new Error(`short ${plan.shortfallUsdc} USDC`);
         const m = plan.typedData.message;
         const signature = (await signTypedDataAsync({
@@ -326,11 +352,11 @@ function MoveToArc({
         } as never)) as Hex;
         const res = await submitWithdraw(plan.typedData.message, signature);
         moved += Number(res.deliveredUsdc);
-        setStatus((s) => ({ ...s, [c.key]: 'done' }));
+        setStatus((s) => ({ ...s, [a.key]: 'done' }));
         onDone();
       } catch (err) {
-        setStatus((s) => ({ ...s, [c.key]: 'error' }));
-        toast.error(`${c.name}: ${err instanceof Error ? err.message : String(err)}`);
+        setStatus((s) => ({ ...s, [a.key]: 'error' }));
+        toast.error(`${a.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     setMovedTotal(moved);
@@ -354,11 +380,36 @@ function MoveToArc({
         {!busy && <CloseBtn onClick={onClose} />}
       </div>
       <p className="text-xs text-muted">
-        Consolidate balances onto your Arc wallet — pick the chains to sweep. One signature per chain.
+        Enter an amount — we draw it from your eligible chains (largest first). Each chain touched is one signature.
       </p>
+
+      {/* Amount + Max */}
+      <div className="flex items-end gap-2">
+        <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
+          Amount (USDC)
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            disabled={busy}
+            inputMode="decimal"
+            className={`rounded-md border bg-bg px-2 py-1.5 text-sm text-fg ${overCap ? 'border-danger' : 'border-line'}`}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => setAmount(maxMovable.toFixed(2))}
+          disabled={busy}
+          className="rounded-md border border-line px-2.5 py-1.5 text-xs text-muted transition hover:text-fg"
+        >
+          Max {maxMovable.toFixed(2)}
+        </button>
+      </div>
+
+      {/* Eligible chains + how much each contributes to the entered amount */}
       <ul className="space-y-1.5">
         {offArc.map((c) => {
           const st = status[c.key] ?? 'idle';
+          const draw = allocByKey[c.key];
           return (
             <li key={c.key}>
               <label className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition ${selected.has(c.key) ? 'border-primary bg-primary/10' : 'border-line hover:border-line-strong'}`}>
@@ -371,21 +422,24 @@ function MoveToArc({
                 />
                 <ChainLogo sourceKey={c.key as ChainLogoKey} className="h-4 w-4" />
                 <span className="text-fg">{c.name}</span>
-                <span className="ml-auto font-mono tabular-nums text-fg">{Number(c.balanceUsdc).toFixed(2)}</span>
+                <span className="ml-auto font-mono text-[11px] tabular-nums text-muted">{Number(c.balanceUsdc).toFixed(2)}</span>
+                {draw ? <span className="font-mono text-[11px] tabular-nums text-primary">→ {draw.toFixed(2)}</span> : <span className="w-10" />}
                 <MoveStatusIcon status={st} />
               </label>
             </li>
           );
         })}
       </ul>
+
       <button
         onClick={run}
-        disabled={busy || selectedChains.length === 0}
+        disabled={busy || amountNum <= 0 || overCap}
         className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-fg transition hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? 'Moving…' : `Move ${selectedChains.length > 1 ? `${selectedChains.length} chains` : 'to Arc'} · ${selectedTotal.toFixed(2)} USDC`}
+        {busy ? 'Moving…' : `Move ${amountNum > 0 ? amountNum.toFixed(2) : '0.00'} USDC to Arc${allocs.length > 1 ? ` · ${allocs.length} chains` : ''}`}
       </button>
-      <p className="text-[11px] text-muted">A small Gateway fee (≈0.02 USDC) applies per chain moved.</p>
+      {overCap && <p className="text-[11px] text-danger">Max movable from the selected chains is {maxMovable.toFixed(2)} USDC (a small fee is reserved per chain).</p>}
+      <p className="text-[11px] text-muted">A small Gateway fee (≈0.02 USDC) applies per chain touched.</p>
     </div>
   );
 }
