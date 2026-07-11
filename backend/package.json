@@ -10,6 +10,7 @@
     "smoke:trade": "tsx scripts/smoke-trade.ts",
     "smoke:dispute": "tsx scripts/smoke-dispute.ts",
     "smoke:officer": "tsx scripts/smoke-officer.ts",
+    "smoke:delivery-file": "tsx scripts/smoke-delivery-file.ts",
     "demo:progressive": "tsx scripts/demo-progressive.ts",
     "gateway:poc": "tsx scripts/gateway-poc.ts",
     "gateway:poc:operator": "tsx scripts/gateway-poc-operator.ts",
