@@ -3157,8 +3157,20 @@ async function runExec(walletId: string, spec: ExecSpec) {
 
 app.get<{ Params: { id: string } }>('/arc/trade/:id', async (request, reply) => {
   if (!escrowReady(reply)) return;
+  // Single trades are public on-chain but kept private through our API: only a
+  // party (buyer/seller), a drawn panel verifier, or the arbitrator may read one.
+  // Trade ids are sequential, so an ungated read would let anyone enumerate
+  // everyone's amounts + counterparties.
+  const viewer = requireSession(request, reply);
+  if (!viewer) return; // 401 already sent
   const id = BigInt(request.params.id);
   const [t, arbitrator] = await Promise.all([getTrade(id), getArbitrator()]);
+  const isParty =
+    viewer === t.buyer.toLowerCase() ||
+    viewer === t.seller.toLowerCase() ||
+    viewer === (arbitrator ?? '').toLowerCase() ||
+    !!db.prepare('SELECT 1 FROM verification_assignments WHERE trade_id = ? AND verifier = ?').get(Number(id), viewer);
+  if (!isParty) return reply.code(403).send({ error: 'this trade is private to its parties' });
   // Open buyer challenge window (officer approved, not yet settled), if any.
   const pending = db.prepare('SELECT finalize_at FROM pending_attestations WHERE trade_id = ?').get(Number(id)) as
     | { finalize_at: number }

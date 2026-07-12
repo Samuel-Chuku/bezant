@@ -20,6 +20,7 @@ const COLS: { title: string; links: { label: string; href: string; ext?: boolean
     title: 'Account',
     links: [
       { label: 'Profile', href: '/profile' },
+      { label: 'Reputation', href: '/reputation' },
       { label: 'Activity', href: '/activity' },
       { label: 'Strike a bond', href: '/trade/create' },
     ],

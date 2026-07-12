@@ -28,6 +28,7 @@ const PRIMARY_AFTER: NavItem[] = [
   { href: '/pool', label: 'Pool' },
   { href: '/verify', label: 'Verify' },
   { href: '/profile', label: 'Profile' },
+  { href: '/reputation', label: 'Reputation' },
   { href: '/activity', label: 'Activity' },
 ];
 
