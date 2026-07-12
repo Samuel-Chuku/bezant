@@ -43,7 +43,7 @@ export function FeedbackWidget() {
         createPortal(
           <div className="fixed inset-0 z-[70] flex items-end justify-center px-4 py-4 sm:items-center">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} aria-hidden />
-            <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-xl">
+            <div className="bz-frame relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-xl">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-fg">Send feedback</h2>
                 <button
