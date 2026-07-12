@@ -348,19 +348,28 @@ export default function CreateTradePage() {
                 className={`rounded-xl border px-4 py-4 text-left transition ${verifyMode === 'officer' ? 'border-primary bg-surface text-fg' : 'border-line text-muted hover:border-line-strong'}`}
               >
                 <div className="text-base font-medium text-fg">Trade Officer</div>
-                <div className="mt-1 text-sm text-muted">Fast — an automated agent attests delivery.</div>
+                <div className="mt-1 text-sm text-muted">Fast — an automated agent checks the delivery documents. No people involved.</div>
               </button>
               <button
                 type="button"
                 onClick={() => setVerifyMode('panel')}
                 className={`rounded-xl border px-4 py-4 text-left transition ${verifyMode === 'panel' ? 'border-primary bg-surface text-fg' : 'border-line text-muted hover:border-line-strong'}`}
               >
-                <div className="text-base font-medium text-fg">Staked panel</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-medium text-fg">Staked panel</span>
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Real people</span>
+                </div>
                 <div className="mt-1 text-sm text-muted">
-                  Decentralized — a {verifier.panelSize}-verifier panel votes. +{(verifier.feeBps ?? 0) / 100}% fee.
+                  A {verifier.panelSize}-person staked panel of human verifiers reviews and votes. +{(verifier.feeBps ?? 0) / 100}% fee.
                 </div>
               </button>
             </div>
+            <p className="mt-3 text-xs leading-relaxed text-muted">
+              The Trade Officer is a documentary check — it confirms the paperwork looks authentic, not that the goods
+              physically arrived. If you want <span className="text-fg">real verification from real people</span>, choose the
+              staked panel: human verifiers stake USDC, review the delivery, and are slashed for a bad call. Recommended for
+              high-value or physical-goods trades.
+            </p>
           </div>
         )}
 
