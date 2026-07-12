@@ -59,8 +59,8 @@ earning the financing fee. Idle reserves earn USYC yield in the meantime.
 
 ## Key features
 
-- **Bonds** — USDC escrow (ERC-8183) between buyer and seller; releases on
-  attested delivery.
+- **Bonds** — a purpose-built **standalone USDC escrow** between buyer and seller
+  (Bezant's own contract, not a wrapper); releases on attested delivery.
 - **Credit passport** — settled bonds write to a portable ERC-8004 identity;
   history tiers the required deposit (100% → 40% floor).
 - **Verified delivery** — automated Trade Officer or a stake-weighted verifier
@@ -74,6 +74,59 @@ earning the financing fee. Idle reserves earn USYC yield in the meantime.
 
 Escrow, passports, and the financing pool are on-chain smart contracts on Arc
 (Circle's USDC L1) — fully auditable, with USDC as the only unit of account.
+
+## Full lifecycle, end to end
+
+A worked example of one bond from sign-in to settlement — including the paths a
+short demo can't show (financing, disputes, cross-chain, reputation). Figures use
+a **200 USDC** bond with a buyer at the **40% deposit tier**.
+
+**0. Sign in.** Email + passkey (a Circle smart account) or connect an external
+wallet. No password; the backend never holds your keys.
+
+**1. Strike (buyer).** Propose the seller, amount (200 USDC), delivery milestone,
+deadline, and verification mode (Trade Officer or staked panel). Nothing is locked
+— it's a proposal. Either side can counter the amount; one side accepts to lock
+terms.
+
+**2. Fund (buyer).** The buyer locks a **passport-priced deposit** — a fraction of
+the bond set by their settled-bond history (100% for a first-timer, down to a 40%
+floor). At 40% that's **80 USDC**. If their USDC is on another chain, they bring it
+to Arc in-flow — **CCTP bridge** or their **Circle Gateway unified balance** — no
+detour. The escrowed deposit earns USYC yield while idle.
+
+**3. Finance the seller (optional).** Rather than wait for delivery + challenge
+window, the seller can draw an **advance from the financing pool** the moment
+escrow is funded: **80% of the deposit** (64 USDC gross) minus a history-priced fee
+(1–3%; ~0.64 at 1%), netting **~63.36 USDC** upfront. LPs fund the pool and earn the
+fee; the advance is repaid from the deposit at settlement.
+
+**4. Deliver (seller).** The seller uploads the delivery document (e.g. bill of
+lading); it's content-addressed and its hash is committed on-chain.
+
+**5. Verify.** Either an automated **Trade Officer** attests pass/fail on-chain, or
+— for higher-value deals — a **stake-weighted panel** of verifiers is drawn and
+votes; the majority decides. Honest voters split the buyer's fee plus stake slashed
+from wrong votes / no-shows. A **buyer challenge window** opens after a pass.
+
+**6. Settle.** With no dispute in the window, escrow **releases to the seller**
+automatically. USYC yield splits buyer 40% / pool 30% / seller 30%, the pool is
+**repaid its advance**, and **both passports gain a settled bond** — lowering the
+deposit each party posts next time.
+
+**7. Dispute (if raised).** A challenge routes to the panel (or arbitrator).
+Disputer and defender post bonds; the panel votes; the loser's bond is
+redistributed to the winner plus honest evaluators. A defaulted advance is written
+off against LPs (socialized loss).
+
+**8. Reputation.** Settled bonds write a portable **ERC-8004** credit history; after
+a deal either party can rate the counterparty, and a trusted-operator endorsement
+can boost a strong record. Reputation is public — **ratings only**, never amounts
+or deal details (those stay private to the parties).
+
+**9. Cross-chain payout (optional).** The seller can route proceeds off Arc to any
+supported chain via **Circle Gateway** (one unified USDC balance spendable across
+chains), or hold on Arc.
 
 ## Try it
 
