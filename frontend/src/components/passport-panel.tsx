@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { getPassport, type PassportSnapshot } from '@/lib/api';
 
-// Credit passport snapshot: the buyer's earned deposit level + track record.
+// Credit passport snapshot: the buyer's settled-bond track record, which sets
+// their credit standing (financing fee tier now, buyer credit later). Note: the
+// buyer escrows the FULL trade amount - reputation drives terms, not principal.
 export function PassportPanel({ address }: { address?: string }) {
   const [p, setP] = useState<PassportSnapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -27,15 +29,14 @@ export function PassportPanel({ address }: { address?: string }) {
       {err && <p className="mt-1 text-sm text-danger">{err}</p>}
       {p && (
         <div className="mt-2 flex items-center gap-8 text-sm">
-          <Stat value={`${p.depositPct}%`} label="next deposit" highlight />
-          <Stat value={String(p.completedTrades)} label="completed" />
+          <Stat value={String(p.completedTrades)} label="settled bonds" highlight />
           {p.failedTrades > 0 && <Stat value={String(p.failedTrades)} label="failed" danger />}
         </div>
       )}
       {p && (
         <p className="mt-3 text-xs text-muted">
-          Deposit earns down with settled bonds (40% floor at 30). You&apos;re at {p.completedTrades} clean
-          {p.completedTrades === 1 ? ' bond' : ' bonds'}.
+          Your settled-bond track record is your credit standing — it sets your financing terms and grows as you settle
+          cleanly. You&apos;re at {p.completedTrades} clean {p.completedTrades === 1 ? 'bond' : 'bonds'}.
         </p>
       )}
     </div>

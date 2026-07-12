@@ -42,8 +42,6 @@ import {
   triggerFeedbackBoost,
   getTradeRating,
   recordTradeRating,
-  getPassport,
-  type PassportSnapshot,
   officerAttestAuthMessage,
   fileToBase64AndHash,
   uploadTradeDeliveryFile,
@@ -549,7 +547,6 @@ export default function TradeDetailPage() {
             {/* AGREED - buyer funds */}
             {trade.status === 'Agreed' && isBuyer && !preFundingExpired && (
               <div className="space-y-3">
-                <DepositDiscountNote buyer={trade.buyer} amountUsdc={trade.amountUsdc} depositUsdc={trade.estimatedDepositUsdc} />
                 <Action onClick={doFund} busy={busy === 'fund'} disabled={!signer.isConnected}>
                   Fund {trade.estimatedDepositUsdc} USDC (approve + lock)
                 </Action>
@@ -921,46 +918,6 @@ function short(addr: string): string {
 
 // Thumbs up/down on the counterparty after settlement. Only renders when the
 // counterparty has linked an ERC-8004 agentId (reputation is agentId-based).
-// Explains the passport-priced deposit: the full trade amount vs the (usually
-// smaller) collateral the buyer actually locks, and why it's discounted. The
-// discount itself is enforced on-chain in fund(); this is transparency only.
-function DepositDiscountNote({ buyer, amountUsdc, depositUsdc }: { buyer: string; amountUsdc: string; depositUsdc: string }) {
-  const [passport, setPassport] = useState<PassportSnapshot | null>(null);
-
-  useEffect(() => {
-    getPassport(buyer).then(setPassport).catch(() => {});
-  }, [buyer]);
-
-  const full = Number(amountUsdc);
-  const dep = Number(depositUsdc);
-  if (!Number.isFinite(full) || !Number.isFinite(dep) || full <= 0) return null;
-
-  const pct = Math.round((dep / full) * 100);
-  const saved = (full - dep).toFixed(2).replace(/\.0+$/, '');
-  const bonds = passport ? `${passport.completedTrades} settled bond${passport.completedTrades === 1 ? '' : 's'}` : null;
-
-  // No discount yet (full deposit) - nudge toward earning it down instead.
-  if (dep >= full - 1e-9) {
-    return (
-      <p className="rounded-lg border border-line bg-bg/40 px-3 py-2 text-xs text-muted">
-        Deposit is the full <span className="text-fg">{amountUsdc} USDC</span>{bonds ? ` (${bonds})` : ''} — settle bonds to earn it down to a 40% floor.
-      </p>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted">
-      <div className="text-fg">
-        Full amount <span className="font-medium">{amountUsdc} USDC</span> · you lock{' '}
-        <span className="font-medium text-primary">{depositUsdc} USDC</span> ({pct}%)
-      </div>
-      <p className="mt-1">
-        Discounted by your credit passport{bonds ? ` — ${bonds}` : ''}, so you post {saved} USDC less collateral than the full amount.
-      </p>
-    </div>
-  );
-}
-
 function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: string; rater: string; counterparty: string; onRate: (agentId: string, positive: boolean) => Promise<void> }) {
   const toast = useToast();
   const [agentId, setAgentId] = useState<string | null | undefined>(undefined); // undefined = loading

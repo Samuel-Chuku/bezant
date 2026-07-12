@@ -132,10 +132,11 @@ contract TradeEscrow {
         return trades[id].status;
     }
 
-    /// @notice Deposit the buyer would lock if they funded now (passport-priced).
+    /// @notice What the buyer locks if they fund now: the full trade amount, so
+    /// the seller is paid in full at settlement (this is a trade platform, not a
+    /// collateral-discount one). Reputation drives financing terms, not principal.
     function estimatedDeposit(uint256 id) external view returns (uint256) {
-        Trade storage t = trades[id];
-        return (t.amount * passport.depositBps(t.buyer)) / 10000;
+        return trades[id].amount;
     }
 
     // ----------------------------------------------------------- negotiation --
@@ -199,7 +200,10 @@ contract TradeEscrow {
         if (t.status != Status.Agreed) revert BadStatus();
         if (msg.sender != t.buyer) revert NotBuyer();
 
-        uint256 deposit = (t.amount * passport.depositBps(t.buyer)) / 10000;
+        // Buyer escrows the FULL trade amount so the seller is paid in full on
+        // settlement. The passport no longer discounts the escrowed principal -
+        // it drives the seller's financing fee tier (and, later, buyer credit).
+        uint256 deposit = t.amount;
         t.deposit = deposit;
         usdc.transferFrom(msg.sender, address(this), deposit);
         if (address(yieldVault) != address(0)) {
