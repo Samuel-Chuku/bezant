@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast';
 import { CountdownChip, CountdownBanner } from '@/components/countdown';
 import { HandleAddr } from '@/components/handle-addr';
 import { StepCue } from '@/components/step-cue';
-import { describeTradeStep } from '@/lib/trade-status';
+import { describeTradeStep, isPreFundingExpired } from '@/lib/trade-status';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { sqlTimeAgo } from '@/lib/relative-time';
 import { useBalance } from 'wagmi';
@@ -40,6 +40,8 @@ import {
   buildResolveDisputeUnsigned,
   buildFeedbackUnsigned,
   triggerFeedbackBoost,
+  getTradeRating,
+  recordTradeRating,
   officerAttestAuthMessage,
   fileToBase64AndHash,
   uploadTradeDeliveryFile,
@@ -312,6 +314,9 @@ export default function TradeDetailPage() {
   const myTurn = !!trade && trade.status === 'Proposing' && (isBuyer || isSeller) && !myOffer;
   const isArbitrator = !!trade && me === trade.arbitrator.toLowerCase();
   const deadlinePassed = !!trade && Date.now() / 1000 > trade.deadline;
+  // Pre-funding (Proposing/Agreed) trades past their deadline are dead: no fund
+  // / accept, only close. Suppresses the action cue and swaps in an Expired block.
+  const preFundingExpired = !!trade && isPreFundingExpired(trade);
   const isTerminal = !!trade && ['Released', 'Cancelled', 'Refunded'].includes(trade.status);
   // Only the trade's parties (+ the arbitrator, who may need to resolve a
   // dispute) see the details; everyone else sees just the deadline. NOTE: this
@@ -435,18 +440,31 @@ export default function TradeDetailPage() {
               </button>
             )}
             {!isPanelTrade && officerReview?.exists && (
-              <button onClick={() => setShowOfficerModal(true)} className="mt-3 text-xs text-primary hover:text-primary">
-                View Trade Officer review →
+              <button
+                onClick={() => setShowOfficerModal(true)}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition hover:border-primary/60 hover:bg-primary/15"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 13h6M9 17h4" />
+                </svg>
+                View Trade Officer verdict
               </button>
             )}
           </div>
 
           {/* On Funded panel trades the VerificationPanel conveys the real state
               (pay fee → submit → panel voting), so skip the officer-centric cue. */}
-          {step && !(isPanelTrade && trade.status === 'Funded') && (
-            <div className="mt-4">
-              <StepCue step={step} />
+          {preFundingExpired ? (
+            <div className="mt-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-danger">
+              <span className="inline-block h-2 w-2 rounded-full bg-danger" aria-hidden />
+              Expired — this bond can no longer be funded. Close it to reclaim.
             </div>
+          ) : (
+            step && !(isPanelTrade && trade.status === 'Funded') && (
+              <div className="mt-4">
+                <StepCue step={step} />
+              </div>
+            )
           )}
 
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
@@ -474,8 +492,23 @@ export default function TradeDetailPage() {
           )}
 
           <div className="mt-8 space-y-4">
+            {/* EXPIRED (pre-funding) - only close is allowed; no fund/accept. */}
+            {preFundingExpired && (
+              <div className="space-y-3 rounded-xl border border-danger/40 bg-danger/10 p-4">
+                <p className="text-sm text-fg">
+                  This bond expired on {new Date(trade.deadline * 1000).toLocaleString()} without being funded.
+                  {(isBuyer || isSeller) ? ' Close it to release both sides and free it up to re-strike.' : ''}
+                </p>
+                {(isBuyer || isSeller) && (
+                  <Action onClick={doCancel} busy={busy === 'cancel'} variant="ghost">
+                    Close bond
+                  </Action>
+                )}
+              </div>
+            )}
+
             {/* PROPOSING - negotiation */}
-            {trade.status === 'Proposing' && (
+            {trade.status === 'Proposing' && !preFundingExpired && (
               <div className="space-y-3">
                 <p className="text-sm text-fg">
                   Standing offer: <strong>{trade.amountUsdc} USDC</strong>, proposed by the <strong>{offerBy}</strong>.
@@ -512,7 +545,7 @@ export default function TradeDetailPage() {
             )}
 
             {/* AGREED - buyer funds */}
-            {trade.status === 'Agreed' && isBuyer && (
+            {trade.status === 'Agreed' && isBuyer && !preFundingExpired && (
               <div className="space-y-3">
                 <Action onClick={doFund} busy={busy === 'fund'} disabled={!signer.isConnected}>
                   Fund {trade.estimatedDepositUsdc} USDC (approve + lock)
@@ -526,7 +559,7 @@ export default function TradeDetailPage() {
                 />
               </div>
             )}
-            {trade.status === 'Agreed' && !isBuyer && (
+            {trade.status === 'Agreed' && !isBuyer && !preFundingExpired && (
               <Waiting>Agreed at {trade.amountUsdc} USDC. Waiting for the buyer to fund.</Waiting>
             )}
 
@@ -563,10 +596,26 @@ export default function TradeDetailPage() {
                     placeholder="Paste your bill of lading / tracking / customs document - must name the document type and include a real reference number, e.g. 'Bill of Lading MAEU123456789 - 2000kg textiles, Jebel Ali → Lagos, carrier Maersk'."
                     className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm"
                   />
-                  <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <span className="cursor-pointer rounded-md border border-line px-2.5 py-1 text-fg transition hover:border-line-strong">Attach a file (optional)</span>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-line-strong bg-bg/40 px-4 py-3 transition hover:border-primary/60 hover:bg-primary/5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                      </svg>
+                    </span>
+                    <span className="min-w-0">
+                      {deliveryFile ? (
+                        <>
+                          <span className="block truncate text-sm font-medium text-fg">{deliveryFile.name}</span>
+                          <span className="block text-xs text-muted">Click to replace · attached to this delivery</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="block text-sm font-medium text-fg">Attach a delivery file <span className="font-normal text-muted">(optional)</span></span>
+                          <span className="block text-xs text-muted">PDF, image, or scan — any party can download &amp; verify it</span>
+                        </>
+                      )}
+                    </span>
                     <input type="file" className="hidden" onChange={(e) => setDeliveryFile(e.target.files?.[0] ?? null)} />
-                    {deliveryFile ? <span className="truncate text-fg">{deliveryFile.name}</span> : <span>PDF, image, or scan — any party can download &amp; verify it</span>}
                   </label>
                   <Action onClick={doSubmitDelivery} busy={busy === 'attest'}>Submit to Trade Officer</Action>
                   {officerNote && (
@@ -879,7 +928,11 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
     getUserByAddress(counterparty)
       .then((u) => setAgentId(u?.agentId ?? null))
       .catch(() => setAgentId(null));
-  }, [counterparty]);
+    // Persisted rating: if this party already rated on this trade, don't re-prompt.
+    getTradeRating(tradeId)
+      .then((r) => { if (r.rated) setRated(r.positive ?? true); })
+      .catch(() => {});
+  }, [counterparty, tradeId]);
 
   if (agentId === undefined) return null;
   if (agentId === null) {
@@ -890,7 +943,12 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
     );
   }
   if (rated !== null) {
-    return <p className="text-xs text-primary">Thanks - you left {rated ? '👍' : '👎'} feedback.</p>;
+    return (
+      <p className="rounded-lg border border-line bg-bg/40 px-4 py-3 text-xs text-primary">
+        Thanks — you left {rated ? '👍 positive' : '👎 negative'} feedback. It&apos;s written to your counterparty&apos;s
+        on-chain reputation and {rated ? 'strengthens' : 'weakens'} their standing on future trades.
+      </p>
+    );
   }
 
   const rate = async (positive: boolean) => {
@@ -898,7 +956,8 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
     try {
       await onRate(agentId, positive);
       setRated(positive);
-      toast.success('Feedback submitted');
+      recordTradeRating(tradeId, positive).catch(() => {}); // best-effort: mark done so it won't re-show
+      toast.success(positive ? 'Positive rating recorded on-chain' : 'Rating recorded on-chain');
       // A 👍 on a settled trade earns a trusted operator endorsement (1.2×).
       // Best-effort: the 👍 already landed; don't surface boost failures.
       if (positive) {
@@ -914,12 +973,18 @@ function RateCounterparty({ tradeId, rater, counterparty, onRate }: { tradeId: s
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-line bg-bg/40 px-4 py-3">
-      <span className="text-sm text-fg">Rate your counterparty</span>
-      <div className="ml-auto flex gap-2">
-        <button onClick={() => rate(true)} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-primary hover:text-primary disabled:opacity-50">👍</button>
-        <button onClick={() => rate(false)} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-danger hover:text-danger disabled:opacity-50">👎</button>
+    <div className="rounded-lg border border-line bg-bg/40 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-fg">Rate your counterparty</span>
+        <div className="ml-auto flex gap-2">
+          <button onClick={() => rate(true)} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-primary hover:text-primary disabled:opacity-50">👍</button>
+          <button onClick={() => rate(false)} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-danger hover:text-danger disabled:opacity-50">👎</button>
+        </div>
       </div>
+      <p className="mt-1.5 text-xs text-muted">
+        Your rating is written to their <span className="text-fg">on-chain reputation (ERC-8004)</span> — a 👍 lifts their
+        standing (and future financing terms), a 👎 lowers it. One rating per trade.
+      </p>
     </div>
   );
 }

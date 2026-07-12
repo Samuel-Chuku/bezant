@@ -16,6 +16,14 @@ export type TradeStepInput = {
 
 export type TradeStep = { line: string; forMe: boolean };
 
+// A pre-funding trade (Proposing / Agreed) whose deadline has passed is dead:
+// it can't be funded or accepted anymore - the only move left is close (cancel).
+// No blinking "your turn" cue should show for it; the UI marks it Expired.
+export function isPreFundingExpired(t: { status: string; deadline: number }): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  return (t.status === 'Proposing' || t.status === 'Agreed') && now > t.deadline;
+}
+
 export function describeTradeStep(t: TradeStepInput, me: string | null): TradeStep | null {
   const meLower = me?.toLowerCase() ?? null;
   const isBuyer = meLower === t.buyer.toLowerCase();
@@ -23,6 +31,9 @@ export function describeTradeStep(t: TradeStepInput, me: string | null): TradeSt
   const isParty = isBuyer || isSeller;
   const myOffer = meLower === t.lastProposer.toLowerCase();
   const now = Math.floor(Date.now() / 1000);
+
+  // Expired pre-funding trades carry no next-action cue - close is the only path.
+  if (isPreFundingExpired(t)) return null;
 
   switch (t.status) {
     case 'Proposing': {

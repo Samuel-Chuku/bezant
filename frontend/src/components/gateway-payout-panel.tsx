@@ -16,6 +16,7 @@ import { useToast } from '@/components/toast';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { useTxFlow, type FlowStep } from '@/components/tx-flow';
+import { PoweredByCircle } from '@/components/powered-by-circle';
 import {
   getGatewayDestinations,
   getGatewayPayoutPlan,
@@ -174,6 +175,7 @@ export function GatewayPayoutPanel({
         {pref && (
           <p className="text-xs text-primary">✓ We&apos;ll route your payout to {destName(pref)} right after settlement.</p>
         )}
+        <PoweredByCircle product="Gateway" />
       </div>
     );
   }
@@ -312,6 +314,7 @@ function RouteFootnote({ signerMode }: { signerMode: 'external' | 'circle' | nul
         <p className="text-xs text-warn">Passkey wallets can’t route cross-chain yet - connect an external wallet.</p>
       )}
       <p className="text-[11px] text-muted">A small Gateway fee (≈0.02 USDC) is taken on top of the amount.</p>
+      <PoweredByCircle product="Gateway" />
     </>
   );
 }

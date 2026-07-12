@@ -7,7 +7,7 @@ import { getTradesByAddress, type TradeListItem } from '@/lib/api';
 import { HandleAddr } from '@/components/handle-addr';
 import { CountdownChip } from '@/components/countdown';
 import { StepCue } from '@/components/step-cue';
-import { describeTradeStep } from '@/lib/trade-status';
+import { describeTradeStep, isPreFundingExpired } from '@/lib/trade-status';
 import { StruckButton, StatePill } from '@/components/ui';
 import { TelegramNudge } from '@/components/telegram-nudge';
 
@@ -102,6 +102,7 @@ export default function TradesPage() {
           <div className="space-y-2">
             {shown.map((t) => {
               const step = describeTradeStep(t, signer.isConnected ? signer.address : null);
+              const expired = isPreFundingExpired(t);
               const live = !TERMINAL.has(t.status);
               return (
                 <Link
@@ -136,10 +137,17 @@ export default function TradesPage() {
                     </span>
                   </div>
 
-                  {step && (
-                    <div className="mt-2">
-                      <StepCue step={step} compact />
+                  {expired ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-danger">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-danger" aria-hidden />
+                      Expired — close to reclaim
                     </div>
+                  ) : (
+                    step && (
+                      <div className="mt-2">
+                        <StepCue step={step} compact />
+                      </div>
+                    )
                   )}
                 </Link>
               );

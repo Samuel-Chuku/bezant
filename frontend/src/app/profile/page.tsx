@@ -145,7 +145,7 @@ export default function ProfilePage() {
         <LpPositionCard address={signer.address} />
         {stats?.verifier && <VerifierBlock v={stats.verifier} />}
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 lg:h-full">
           <RecentActivity />
         </div>
         {signer.mode !== 'external' && <SendPanel />}
@@ -339,12 +339,12 @@ function RecentActivity() {
 
   const live = items.filter((it) => it.category !== 'pact');
   const needsAction = (it: NotificationItem) => it.kind === 'action' || it.kind === 'deadline';
-  const actions = live.filter(needsAction).slice(0, 2);
-  const events = live.filter((it) => !needsAction(it)).slice(0, 5 - actions.length);
+  const actions = live.filter(needsAction).slice(0, 3);
+  const events = live.filter((it) => !needsAction(it)).slice(0, 9 - actions.length);
   const recent = [...actions, ...events];
 
   return (
-    <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
+    <div className="bz-frame flex h-full flex-col rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Recent activity</div>
         <Link href="/activity" className="text-xs text-muted hover:text-fg">
@@ -353,8 +353,8 @@ function RecentActivity() {
       </div>
 
       {isLoading && recent.length === 0 ? (
-        <div className="mt-3 space-y-2.5">
-          {[0, 1, 2].map((i) => (
+        <div className="mt-3 flex-1 space-y-2.5">
+          {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="flex animate-pulse items-center gap-2.5">
               <span className="h-1.5 w-1.5 rounded-full bg-surface-2" />
               <span className="h-3 flex-1 rounded bg-surface-2" />
@@ -362,9 +362,9 @@ function RecentActivity() {
           ))}
         </div>
       ) : recent.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">No activity yet.</p>
+        <p className="mt-3 flex-1 text-sm text-muted">No activity yet.</p>
       ) : (
-        <ul className="mt-3 divide-y divide-line/70">
+        <ul className="mt-3 flex-1 divide-y divide-line/70">
           {recent.map((it, i) => (
             <ActivityRow key={`${it.key}-${i}`} item={it} onClick={() => router.push(it.href ?? '/activity')} />
           ))}

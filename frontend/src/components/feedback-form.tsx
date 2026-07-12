@@ -43,7 +43,11 @@ export function FeedbackForm({ onDone }: { onDone?: () => void }) {
     try {
       const res = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // text/plain keeps this a CORS "simple request" so the browser skips the
+        // preflight OPTIONS call - the usual cause of a bare "Failed to fetch"
+        // against an n8n webhook. The body is still a JSON string; n8n exposes it
+        // under $json.body (parse with JSON.parse if your workflow reads fields).
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({
           app: 'bezant',
           type,
@@ -67,9 +71,16 @@ export function FeedbackForm({ onDone }: { onDone?: () => void }) {
 
   if (status === 'sent') {
     return (
-      <div className="space-y-3 py-2 text-center">
-        <p className="text-sm font-medium text-fg">Thanks — feedback sent.</p>
-        <p className="text-xs text-muted">We read every note.</p>
+      <div className="flex flex-col items-center gap-3 py-4 text-center bz-fadein">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-fg">Feedback sent</p>
+          <p className="mt-1 text-xs text-muted">Thanks — we read every note.</p>
+        </div>
         {onDone && (
           <Button variant="secondary" size="sm" onClick={onDone}>
             Close

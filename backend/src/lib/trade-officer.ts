@@ -43,6 +43,10 @@ export type OfficerDecision = {
   proofHash: `0x${string}`;
   confidence: number; // 0..1
   reasons: string[];
+  // Which examiner produced this verdict, surfaced in the review so parties (and
+  // we) can tell whether the LLM ran or the deterministic fallback did.
+  engine: 'llm' | 'deterministic';
+  model?: string; // the LLM model id, when engine === 'llm'
 };
 
 // The on-chain proof committed by attest(). Same doc → same hash on every path
@@ -81,6 +85,7 @@ export async function decideDelivery(
       proofHash: proofHashOf(doc),
       confidence: 0,
       reasons: [`high-value trade (${trade.amountUsdc} USDC ≥ ${HIGH_VALUE_USDC}) - routed to a human reviewer`],
+      engine: 'deterministic',
     };
   }
   const llm = await llmVerifyDelivery(trade, doc);
@@ -111,13 +116,14 @@ export function evaluateDelivery(
       proofHash,
       confidence: 0,
       reasons: [`high-value trade (${trade.amountUsdc} USDC ≥ ${HIGH_VALUE_USDC}) - routed to a human reviewer`],
+      engine: 'deterministic',
     };
   }
 
   if (hasContent && hasRef && hasKeyword) {
-    return { decision: 'pass', proofHash, confidence: 0.9, reasons: ['documentary check passed'] };
+    return { decision: 'pass', proofHash, confidence: 0.9, reasons: ['documentary check passed'], engine: 'deterministic' };
   }
 
   // Documentary issue → the seller can correct it and resubmit; never an auto-fail.
-  return { decision: 'escalate', category: 'documentary', resubmittable: true, proofHash, confidence: 0.3, reasons };
+  return { decision: 'escalate', category: 'documentary', resubmittable: true, proofHash, confidence: 0.3, reasons, engine: 'deterministic' };
 }

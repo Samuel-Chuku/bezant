@@ -477,6 +477,17 @@ db.exec(`
     PRIMARY KEY (trade_id, agent_id)
   );
 
+  -- One counterparty rating per (trade, rater), so a settled trade's 👍/👎 sticks
+  -- across refreshes and can't be left twice. The on-chain ERC-8004 feedback is
+  -- the source of truth for reputation; this is just the "have I rated?" record.
+  CREATE TABLE IF NOT EXISTS trade_ratings (
+    trade_id   INTEGER NOT NULL,
+    rater      TEXT NOT NULL,
+    positive   INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (trade_id, rater)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_recipient ON bridge_inbound_events(recipient);
   CREATE INDEX IF NOT EXISTS idx_bridge_inbound_block ON bridge_inbound_events(block_number);
 `);
@@ -492,6 +503,16 @@ for (const t of ['officer_reviews', 'verification_docs'] as const) {
   if (!cols.has('file_name')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_name TEXT`);
   if (!cols.has('file_mime')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_mime TEXT`);
   if (!cols.has('file_size')) db.exec(`ALTER TABLE ${t} ADD COLUMN file_size INTEGER`);
+}
+
+// Which examiner produced the officer verdict (llm | deterministic) + the model
+// id when the LLM ran. Added late, so migrate idempotently on existing DBs.
+{
+  const cols = new Set(
+    (db.prepare(`SELECT name FROM pragma_table_info('officer_reviews')`).all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!cols.has('engine')) db.exec(`ALTER TABLE officer_reviews ADD COLUMN engine TEXT`);
+  if (!cols.has('model')) db.exec(`ALTER TABLE officer_reviews ADD COLUMN model TEXT`);
 }
 
 // Idempotent ALTER TABLE migration for pre-M28 databases that already have

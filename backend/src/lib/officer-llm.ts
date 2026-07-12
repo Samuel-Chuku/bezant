@@ -108,7 +108,7 @@ export async function llmVerifyDelivery(
     const confidence = typeof verdict.confidence === 'number' ? Math.max(0, Math.min(1, verdict.confidence)) : 0.5;
 
     if (verdict.decision === 'pass') {
-      return { decision: 'pass', proofHash, confidence, reasons: reasons.length ? reasons : ['documentary check passed (LLM)'] };
+      return { decision: 'pass', proofHash, confidence, reasons: reasons.length ? reasons : ['documentary check passed'], engine: 'llm', model };
     }
     const category = verdict.category === 'mismatch' ? 'mismatch' : 'documentary';
     return {
@@ -118,6 +118,8 @@ export async function llmVerifyDelivery(
       proofHash,
       confidence,
       reasons: reasons.length ? reasons : ['document could not be verified'],
+      engine: 'llm',
+      model,
     };
   } catch {
     return null; // network/timeout/parse → deterministic fallback

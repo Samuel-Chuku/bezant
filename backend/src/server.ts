@@ -3913,6 +3913,8 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
         resubmittable: decision.resubmittable ?? false,
         confidence: decision.confidence,
         reasons: decision.reasons,
+        engine: decision.engine,
+        model: decision.model ?? null,
         note:
           decision.category === 'high_value'
             ? 'withheld - high-value trade routed to a human reviewer'
@@ -3928,7 +3930,7 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
       .run(Number(id), decision.proofHash, finalizeAt);
     // Snapshot the review so the trade page can show it after settlement.
     db.prepare(
-      'INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence, file_hash, file_name, file_mime, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR REPLACE INTO officer_reviews (trade_id, document, reasons, confidence, file_hash, file_name, file_mime, file_size, engine, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       Number(id),
       document.content,
@@ -3938,6 +3940,8 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
       typeof document.fileName === 'string' ? document.fileName.slice(0, 255) : null,
       typeof document.fileMime === 'string' ? document.fileMime.slice(0, 255) : null,
       typeof document.fileSize === 'number' && Number.isFinite(document.fileSize) ? Math.floor(document.fileSize) : null,
+      decision.engine,
+      decision.model ?? null,
     );
     return {
       tradeId: request.params.id,
@@ -3947,6 +3951,8 @@ app.post<{ Params: { id: string }; Body: { document: DeliveryDoc; signature?: st
       finalizeAt,
       confidence: decision.confidence,
       reasons: decision.reasons,
+      engine: decision.engine,
+      model: decision.model ?? null,
       proofHash: decision.proofHash,
     };
   },
@@ -4108,12 +4114,14 @@ app.get<{ Querystring: { address?: string } }>('/arc/trades/notifications', asyn
     const isSeller = t.seller.toLowerCase() === address;
     const myOffer = t.lastProposer.toLowerCase() === address;
 
-    // Pending action for me (sorts to top as "fresh").
+    // Pending action for me (sorts to top as "fresh"). A pre-funding trade past
+    // its deadline is dead (only close is left), so it raises no action nag.
+    const expired = Date.now() / 1000 > t.deadline;
     let action: string | null = null;
-    if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer) {
+    if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer && !expired) {
       const offerBy = t.lastProposer.toLowerCase() === t.buyer.toLowerCase() ? 'buyer' : 'seller';
       action = `Trade #${id} - respond to the ${offerBy}'s offer of ${formatUnits(t.amount, 6)} USDC`;
-    } else if (t.status === 'Agreed' && isBuyer) {
+    } else if (t.status === 'Agreed' && isBuyer && !expired) {
       action = `Trade #${id} - fund the escrow`;
     } else if (t.status === 'Funded' && isSeller) {
       action = `Trade #${id} - submit your delivery document`;
@@ -4333,11 +4341,13 @@ async function computeUserAlerts(address: string): Promise<UserAlert[]> {
       const isBuyer = t.buyer.toLowerCase() === address;
       const isSeller = t.seller.toLowerCase() === address;
       const myOffer = t.lastProposer.toLowerCase() === address;
+      // Expired pre-funding trades raise no action alert (close is the only move).
+      const expired = Date.now() / 1000 > t.deadline;
       let action: string | null = null;
-      if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer) {
+      if (t.status === 'Proposing' && (isBuyer || isSeller) && !myOffer && !expired) {
         const offerBy = t.lastProposer.toLowerCase() === t.buyer.toLowerCase() ? 'buyer' : 'seller';
         action = `Trade #${id} — respond to the ${offerBy}'s offer of ${formatUnits(t.amount, 6)} USDC`;
-      } else if (t.status === 'Agreed' && isBuyer) {
+      } else if (t.status === 'Agreed' && isBuyer && !expired) {
         action = `Trade #${id} — fund the escrow`;
       } else if (t.status === 'Funded' && isSeller) {
         action = `Trade #${id} — submit your delivery document`;
@@ -4723,8 +4733,8 @@ app.get<{ Params: { id: string }; Querystring: { address?: string } }>('/arc/tra
 // reasons), so the trade page can show an honest "document validated" view.
 app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (request) => {
   const row = db
-    .prepare('SELECT document, reasons, confidence, created_at, file_hash, file_name, file_mime, file_size FROM officer_reviews WHERE trade_id = ?')
-    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string; file_hash: string | null; file_name: string | null; file_mime: string | null; file_size: number | null } | undefined;
+    .prepare('SELECT document, reasons, confidence, created_at, file_hash, file_name, file_mime, file_size, engine, model FROM officer_reviews WHERE trade_id = ?')
+    .get(Number(request.params.id)) as { document: string; reasons: string; confidence: number | null; created_at: string; file_hash: string | null; file_name: string | null; file_mime: string | null; file_size: number | null; engine: string | null; model: string | null } | undefined;
   if (!row) return { exists: false };
   let reasons: string[] = [];
   try {
@@ -4732,7 +4742,36 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/officer-review', async (requ
   } catch {
     /* leave empty */
   }
-  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at, fileHash: row.file_hash, fileName: row.file_name, fileMime: row.file_mime, fileSize: row.file_size };
+  return { exists: true, document: row.document, reasons, confidence: row.confidence, at: row.created_at, fileHash: row.file_hash, fileName: row.file_name, fileMime: row.file_mime, fileSize: row.file_size, engine: row.engine, model: row.model };
+});
+
+// Whether the connected user already rated their counterparty on this trade,
+// so the UI hides the 👍/👎 prompt after one rating (and across refreshes).
+app.get<{ Params: { id: string } }>('/arc/trade/:id/rating', async (request, reply) => {
+  const rater = requireSession(request, reply);
+  if (!rater) return;
+  const row = db
+    .prepare('SELECT positive FROM trade_ratings WHERE trade_id = ? AND rater = ?')
+    .get(Number(request.params.id), rater) as { positive: number } | undefined;
+  return row ? { rated: true, positive: row.positive === 1 } : { rated: false };
+});
+
+// Record that the connected user rated their counterparty on this trade. The
+// rating itself lives on-chain (ERC-8004); this just marks it done so it can't
+// be repeated. Only a party to the trade may record, once.
+app.post<{ Params: { id: string }; Body: { positive?: boolean } }>('/arc/trade/:id/rating', async (request, reply) => {
+  if (!escrowReady(reply)) return;
+  const rater = requireSession(request, reply);
+  if (!rater) return;
+  const id = BigInt(request.params.id);
+  const trade = await getTrade(id);
+  if (rater !== trade.buyer.toLowerCase() && rater !== trade.seller.toLowerCase()) {
+    return reply.code(403).send({ error: 'only a party to this trade can rate' });
+  }
+  const positive = request.body?.positive === true;
+  db.prepare('INSERT OR IGNORE INTO trade_ratings (trade_id, rater, positive) VALUES (?, ?, ?)')
+    .run(Number(id), rater, positive ? 1 : 0);
+  return { rated: true, positive };
 });
 
 // Profile dashboard stats: trade history summary + reputation + verifier role.

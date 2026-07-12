@@ -1115,6 +1115,16 @@ export async function triggerFeedbackBoost(tradeId: string, agentId: string, rat
   return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/feedback/boost`, { agentId, rater });
 }
 
+// Have I already rated my counterparty on this trade? (session-scoped)
+export async function getTradeRating(tradeId: string): Promise<{ rated: boolean; positive?: boolean }> {
+  return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/rating`);
+}
+
+// Mark the counterparty rating as recorded for this trade, so it isn't re-shown.
+export async function recordTradeRating(tradeId: string, positive: boolean): Promise<{ rated: boolean; positive: boolean }> {
+  return jsonFetch('POST', `/arc/trade/${encodeURIComponent(tradeId)}/rating`, { positive });
+}
+
 // ── Staked verifier (Arm 2) ─────────────────────────────────────────────────
 
 export type VerifierInfo = {
@@ -1203,7 +1213,7 @@ export async function getVerification(tradeId: string, address?: string): Promis
   return jsonFetch('GET', `/arc/trade/${encodeURIComponent(tradeId)}/verification${q}`);
 }
 
-export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string; fileHash?: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null };
+export type OfficerReview = { exists: boolean; document?: string; reasons?: string[]; confidence?: number | null; at?: string; fileHash?: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null; engine?: 'llm' | 'deterministic' | null; model?: string | null };
 
 // Trade Officer (automated) review snapshot for an officer-route trade.
 export async function getOfficerReview(tradeId: string): Promise<OfficerReview> {
