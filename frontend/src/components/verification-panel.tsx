@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
-import { CountdownChip } from '@/components/countdown';
+import { CountdownBanner } from '@/components/countdown';
 import { shortAddress } from '@/lib/format';
 import {
   getVerification,
@@ -203,10 +203,10 @@ export function VerificationPanel({ tradeId, buyer, seller, amountUsdc, onChange
   // ── Assigned: panel is voting (or awaiting timeout resolution) ──
   return (
     <div className={card}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-info">Staked panel - verifying delivery</p>
-        {!expired && !v.resolved && <CountdownChip unix={v.deadline} label="Voting closes" />}
-      </div>
+      <p className="text-sm text-info">Staked panel - verifying delivery</p>
+
+      {!expired && !v.resolved && <CountdownBanner unix={v.deadline} label="Voting closes in" />}
+
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         <span>Panel of {v.panel.length}</span>
         {v.resolved ? (
