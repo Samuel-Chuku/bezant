@@ -40,15 +40,7 @@ export function OfficerReviewModal({ review, tradeId, onClose }: { review: Offic
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
             <span className="uppercase tracking-wide">Reviewed by</span>
-            {review.engine === 'llm' ? (
-              <span className="rounded-full bg-info/15 px-2 py-0.5 font-medium text-info">
-                AI examiner{review.model ? ` · ${review.model}` : ''}
-              </span>
-            ) : review.engine === 'deterministic' ? (
-              <span className="rounded-full bg-muted/30 px-2 py-0.5 font-medium text-fg">Deterministic rules</span>
-            ) : (
-              <span className="rounded-full bg-muted/30 px-2 py-0.5 font-medium text-fg">Trade Officer</span>
-            )}
+            <span className="rounded-full bg-info/15 px-2 py-0.5 font-medium text-info">Trade Officer</span>
             {typeof review.confidence === 'number' && <span>· {Math.round(review.confidence * 100)}% confidence</span>}
           </div>
         </div>

@@ -107,6 +107,38 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
   const offArc = funded.filter((c) => c.key !== ARC_KEY && Number(c.balanceUsdc) > 0);
   const offArcTotal = offArc.reduce((s, c) => s + Number(c.balanceUsdc), 0);
 
+  // Balance already held in Gateway ON Arc. "Move to Arc" only consolidates
+  // OFF-Arc chains, so this portion had no way out - it sat stuck in Gateway
+  // custody, unusable for funding bonds. "Add to balance" withdraws it (Arc→Arc,
+  // recipient = the user) into the Arc wallet where Bezant can spend it.
+  const arcGatewayBal = availFor(ARC_KEY);
+  const addToBalance = useCallback(async () => {
+    const amt = arcGatewayBal - MOVE_FEE_BUFFER;
+    if (amt <= 0) {
+      toast.error('Arc balance is too small to move (a small Gateway fee is reserved).');
+      return;
+    }
+    setBusy(true);
+    try {
+      const plan = await getWithdrawPlan(address, ARC_KEY, ARC_KEY, amt.toFixed(6));
+      if (plan.needsMore) throw new Error(`short ${plan.shortfallUsdc} USDC`);
+      const m = plan.typedData.message;
+      const signature = (await signTypedDataAsync({
+        domain: plan.typedData.domain,
+        types: plan.typedData.types,
+        primaryType: plan.typedData.primaryType,
+        message: { maxBlockHeight: BigInt(m.maxBlockHeight), maxFee: BigInt(m.maxFee), spec: { ...m.spec, value: BigInt(m.spec.value as string) } },
+      } as never)) as Hex;
+      const res = await submitWithdraw(plan.typedData.message, signature);
+      toast.success(`Added ${Number(res.deliveredUsdc).toFixed(2)} USDC to your Arc wallet.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [arcGatewayBal, address, signTypedDataAsync, toast, load]);
+
   return (
     <div className="bz-frame rounded-2xl border border-line bg-surface p-6">
       <div className="flex items-center justify-between">
@@ -171,12 +203,28 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
 
       {mode === 'idle' && (
         <div className="mt-4 space-y-2">
+          {/* Withdraw the Arc-held Gateway balance into the Arc wallet so it can
+              actually fund bonds / pool / stakes. Shown only when there's Arc
+              unified balance sitting in Gateway. */}
+          {arcGatewayBal > 0.01 && (
+            <button
+              onClick={addToBalance}
+              disabled={busy || arcGatewayBal <= MOVE_FEE_BUFFER}
+              className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-fg transition hover:opacity-90 disabled:opacity-40"
+            >
+              {busy ? 'Working…' : `Add to balance · ${arcGatewayBal.toFixed(2)} USDC on Arc`}
+            </button>
+          )}
           {/* Consolidate off-Arc balance onto the Arc wallet, where it funds
               trades, pool deposits, and verifier stakes. */}
           <button
             onClick={() => setMode('movearc')}
             disabled={offArcTotal <= 0}
-            className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-fg transition hover:opacity-90 disabled:opacity-40"
+            className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-40 ${
+              arcGatewayBal > 0.01
+                ? 'border border-line text-fg hover:border-line-strong'
+                : 'bg-primary text-primary-fg hover:opacity-90'
+            }`}
           >
             Move to Arc{offArcTotal > 0 ? ` · ${offArcTotal.toFixed(2)} available` : ''}
           </button>

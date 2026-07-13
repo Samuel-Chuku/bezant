@@ -13,7 +13,6 @@ import { shortAddress } from '@/lib/format';
 import { useToast } from '@/components/toast';
 import { arcExplorerTxUrl } from '@/lib/explorers';
 import { PassportPanel } from '@/components/passport-panel';
-import { FundFromChain } from '@/components/fund-from-chain';
 import { StruckButton } from '@/components/ui';
 
 const PlusIcon = () => (
@@ -413,14 +412,6 @@ export default function CreateTradePage() {
                 </div>
               ))}
             </div>
-
-            {signer.isConnected && (
-              <FundFromChain
-                address={signer.address}
-                signerMode={signer.mode}
-                lockedAmount={amountUsdc && Number(amountUsdc) > 0 ? amountUsdc : undefined}
-              />
-            )}
           </div>
         )}
       </div>
