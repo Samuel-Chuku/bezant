@@ -6,6 +6,7 @@ import { useSigner } from '@/hooks/use-signer';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
 import { useVerifierAssignments } from '@/hooks/use-verifier-assignments';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 import { RecentVerifierStakes } from '@/components/recent-verifier-stakes';
 import { CountdownChip } from '@/components/countdown';
 import { StruckButton, ContextTabs, ContextHeader, PillSelect } from '@/components/ui';
@@ -60,6 +61,7 @@ export default function VerifyPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  useOnChainRefresh(refresh); // live stake / TVL after stake / unstake / vote
 
   const send = async (u: UnsignedTx, review: boolean) => {
     if (!signer.isConnected) throw new Error('Connect a wallet first.');

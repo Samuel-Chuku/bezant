@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 /**
@@ -24,6 +24,23 @@ import { useQueryClient } from '@tanstack/react-query';
 // (e.g. the notifications feed which is plain fetch + useState) can hook in
 // without us having to migrate them. See use-notifications.ts.
 export const CHAIN_REFRESH_EVENT = 'arc-trade:chain-refresh';
+
+/**
+ * Subscribe a refetch to CHAIN_REFRESH_EVENT, which fires after every on-chain
+ * action settles (see use-signer) and after a bridge completes. Lets plain
+ * fetch+useState views (verifier info, pool stats, passport, balances, bond
+ * lists) update the instant an action confirms - no manual refresh.
+ *
+ * Pass a STABLE callback (wrap your loader in useCallback) so it doesn't
+ * resubscribe every render.
+ */
+export function useOnChainRefresh(onRefresh: () => void) {
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.addEventListener(CHAIN_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(CHAIN_REFRESH_EVENT, onRefresh);
+  }, [onRefresh]);
+}
 
 export function useRefreshChainData() {
   const qc = useQueryClient();

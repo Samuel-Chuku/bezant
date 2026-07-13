@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSigner } from '@/hooks/use-signer';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 import { useToast } from '@/components/toast';
 import { useTxFlow } from '@/components/tx-flow';
 import { PoolYieldStrip } from '@/components/pool-yield';
@@ -39,6 +40,7 @@ export function PoolPanel() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  useOnChainRefresh(refresh); // live-update after deposit/withdraw settles
 
   const runFlow = async (kind: Action, amount: string) => {
     if (!signer.isConnected) return;

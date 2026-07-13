@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSigner } from '@/hooks/use-signer';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 import { getTradesByAddress, type TradeListItem } from '@/lib/api';
 import { HandleAddr } from '@/components/handle-addr';
 import { CountdownChip } from '@/components/countdown';
@@ -51,6 +52,7 @@ export default function TradesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useOnChainRefresh(load); // reflect newly struck/funded/cancelled bonds live
 
   const shown = useMemo(() => (trades ?? []).filter((t) => inFilter(t.status, filter)), [trades, filter]);
 

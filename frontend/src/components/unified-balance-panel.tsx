@@ -10,6 +10,7 @@ import { parseUnits, type Address, type Hex } from 'viem';
 import { useConfig, useSignTypedData, useBalance } from 'wagmi';
 import { switchChain, writeContract, waitForTransactionReceipt } from '@wagmi/core';
 import { useToast } from '@/components/toast';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 import { useTxFlow, type FlowStep } from '@/components/tx-flow';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
@@ -55,9 +56,19 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
     load();
     getGatewaySources().then(setSources).catch(() => {});
   }, [load]);
+  useOnChainRefresh(load); // reflect top-up / move / withdraw the instant they settle
 
   const total = bal ? Number(bal.totalUsdc) : 0;
   const pending = bal ? Number(bal.pendingUsdc) : 0;
+
+  // While a deposit is confirming, poll so the balance credits itself on
+  // finality - no manual refresh. The effect re-runs (and clears) when pending
+  // hits 0. Circle finalizes in a few min (up to ~15 on Ethereum).
+  useEffect(() => {
+    if (pending <= 0) return;
+    const id = setInterval(load, 15_000);
+    return () => clearInterval(id);
+  }, [pending, load]);
   const funded = bal?.byChain.filter((c) => Number(c.balanceUsdc) > 0 || Number(c.pendingUsdc) > 0) ?? [];
   // Balance held OFF Arc - what "Move to Arc" can consolidate for use in Bezant.
   const offArc = funded.filter((c) => c.key !== ARC_KEY && Number(c.balanceUsdc) > 0);

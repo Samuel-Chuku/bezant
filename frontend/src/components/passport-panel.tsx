@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getPassport, type PassportSnapshot } from '@/lib/api';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 
 // Credit passport snapshot: the buyer's settled-bond track record, which sets
 // their credit standing (financing fee tier now, buyer credit later). Note: the
@@ -10,16 +11,17 @@ export function PassportPanel({ address }: { address?: string }) {
   const [p, setP] = useState<PassportSnapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!address) return;
-    let live = true;
     getPassport(address)
-      .then((snap) => live && setP(snap))
-      .catch((e) => live && setErr(e instanceof Error ? e.message : String(e)));
-    return () => {
-      live = false;
-    };
+      .then(setP)
+      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, [address]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+  useOnChainRefresh(load); // deposit tier earns down after a settled bond, etc.
 
   if (!address) return null;
 

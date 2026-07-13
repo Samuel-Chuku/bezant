@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 import { PoolPanel } from '@/components/pool-panel';
 import { RecentPoolStakes } from '@/components/recent-pool-stakes';
 import { ContextTabs, ContextHeader } from '@/components/ui';
@@ -69,13 +70,18 @@ export default function PoolPage() {
 function PoolStatsBanner() {
   const [stats, setStats] = useState<PoolStats | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     getPoolStats()
       .then(setStats)
       .catch(() => {
         /* pool unreachable - banner stays in its skeleton/quiet state */
       });
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+  useOnChainRefresh(load); // TVL / idle / deployed update after deposit/withdraw
 
   return (
     <section className="bz-frame mt-6 rounded-xl border border-line bg-surface p-5">

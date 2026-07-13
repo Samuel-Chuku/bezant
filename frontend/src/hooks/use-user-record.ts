@@ -15,6 +15,23 @@ import {
 } from '@/lib/api';
 import { useSigner } from './use-signer';
 
+// Cross-instance sync. useUserRecord is called independently in the nav pill,
+// the profile page, banners, etc. - each kept its own copy, so a mutation in one
+// (e.g. claiming a handle) left the others stale until a manual refresh. After a
+// mutation we broadcast the fresh record; every mounted instance for the same
+// address updates instantly. `user` omitted means "refetch" (when we don't hold
+// the new record, e.g. after an out-of-band change).
+export const USER_RECORD_EVENT = 'arc-trade:user-changed';
+type UserChangedDetail = { address: string; user?: UserRecord | null };
+function broadcastUserChanged(address: string | undefined, user?: UserRecord | null) {
+  if (typeof window === 'undefined' || !address) return;
+  window.dispatchEvent(
+    new CustomEvent<UserChangedDetail>(USER_RECORD_EVENT, {
+      detail: { address: address.toLowerCase(), user },
+    }),
+  );
+}
+
 // State machine:
 //   idle:    no signer connected
 //   loading: looking up the address in our backend
@@ -62,6 +79,20 @@ export function useUserRecord() {
     };
   }, [signer.isConnected, signer.address, reloadTick]);
 
+  // Sync from any other instance that just mutated this address's record.
+  useEffect(() => {
+    if (!signer.isConnected) return;
+    const me = signer.address.toLowerCase();
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent<UserChangedDetail>).detail;
+      if (!detail || detail.address !== me) return;
+      if (detail.user === undefined) reload();
+      else setState({ status: 'ready', user: detail.user });
+    };
+    window.addEventListener(USER_RECORD_EVENT, onChanged);
+    return () => window.removeEventListener(USER_RECORD_EVENT, onChanged);
+  }, [signer.isConnected, signer.address, reload]);
+
   // claimHandle is the single entry point for "I want a handle." It picks the
   // right backend call based on whether a row already exists:
   //   - no row yet  → POST /users/register-external creates the row + handle in one shot
@@ -83,11 +114,13 @@ export function useUserRecord() {
           handle,
         });
         setState({ status: 'ready', user: created });
+        broadcastUserChanged(signer.address, created);
         return created;
       }
       if (state.user.handle === null) {
         const updated = await claimHandleApi(state.user.id, handle);
         setState({ status: 'ready', user: updated });
+        broadcastUserChanged(signer.address, updated);
         return updated;
       }
       throw new Error('Handle already claimed');
@@ -105,9 +138,10 @@ export function useUserRecord() {
       }
       const updated = await linkAgentIdApi(state.user.id, agentId);
       setState({ status: 'ready', user: updated });
+      broadcastUserChanged(signer.address, updated);
       return updated;
     },
-    [state],
+    [state, signer],
   );
 
   // registerAgent mints a fresh ERC-8004 agentId for the connected wallet
@@ -134,6 +168,7 @@ export function useUserRecord() {
     const parsed = await parseRegistration(txHash);
     const updated = await linkAgentIdApi(state.user.id, parsed.agentId);
     setState({ status: 'ready', user: updated });
+    broadcastUserChanged(signer.address, updated);
     return { agentId: parsed.agentId };
   }, [state, signer]);
 
@@ -149,8 +184,8 @@ export function useUserRecord() {
   const unlinkTelegram = useCallback(async () => {
     if (!signer.isConnected) throw new Error('Not connected');
     await unlinkTelegramApi(signer.address.toLowerCase());
-    reload();
-  }, [signer, reload]);
+    broadcastUserChanged(signer.address); // no record in hand - tell instances to refetch
+  }, [signer]);
 
   return { state, claimHandle, linkAgentId, registerAgent, reload, linkTelegram, unlinkTelegram };
 }

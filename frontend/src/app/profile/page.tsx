@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSigner } from '@/hooks/use-signer';
+import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
 import { useUserRecord } from '@/hooks/use-user-record';
 import { useNotifications, type NotificationItem } from '@/hooks/use-notifications';
 import { PassportPanel } from '@/components/passport-panel';
@@ -30,19 +31,20 @@ export default function ProfilePage() {
 
   const user = userState.status === 'ready' ? userState.user : null;
 
-  useEffect(() => {
+  const loadStats = useCallback(() => {
     if (!signer.isConnected) {
       setStats(null);
       return;
     }
-    let live = true;
     getUserStats(signer.address)
-      .then((s) => live && setStats(s))
-      .catch(() => live && setStats(null));
-    return () => {
-      live = false;
-    };
-  }, [signer.isConnected, signer.address, sv]);
+      .then(setStats)
+      .catch(() => setStats(null));
+  }, [signer.isConnected, signer.address]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats, sv]);
+  useOnChainRefresh(loadStats); // settled/contested counts, standing, volume live
 
   if (!signer.isConnected) {
     return (
@@ -284,17 +286,18 @@ function VerifierBlock({ v }: { v: NonNullable<UserStats['verifier']> }) {
 function LpPositionCard({ address }: { address: string }) {
   const [stats, setStats] = useState<PoolStats | null>(null);
 
-  useEffect(() => {
-    let live = true;
+  const load = useCallback(() => {
     getPoolStats(address)
-      .then((s) => live && setStats(s))
+      .then(setStats)
       .catch(() => {
         /* pool unreachable - leave null */
       });
-    return () => {
-      live = false;
-    };
   }, [address]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+  useOnChainRefresh(load); // LP position updates after deposit/withdraw
 
   const hasPosition = stats?.myShares && stats.myShares !== '0';
 
