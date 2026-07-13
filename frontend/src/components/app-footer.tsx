@@ -37,7 +37,8 @@ const COLS: { title: string; links: { label: string; href: string; ext?: boolean
   {
     title: 'Protocol',
     links: [
-      { label: 'Docs', href: 'https://github.com/Samuel-Chuku/bezant', ext: true },
+      { label: 'Docs', href: '/docs' },
+      { label: 'GitHub', href: 'https://github.com/Samuel-Chuku/bezant', ext: true },
       { label: 'Landing', href: '/landing' },
     ],
   },

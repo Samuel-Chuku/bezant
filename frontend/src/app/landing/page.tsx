@@ -80,7 +80,7 @@ export default function LandingPage() {
     <div className="bezant-landing" data-theme={theme}>
       <header className="nav"><div className="wrap nav-row">
         <span className="wordmark">bezant<span className="dot">.</span></span>
-        <nav className="nav-links"><a href="#product">Product</a><a href="#protocol">Protocol</a><a href="https://github.com/Samuel-Chuku/bezant" target="_blank" rel="noopener">Docs</a></nav>
+        <nav className="nav-links"><a href="#product">Product</a><a href="#protocol">Protocol</a><Link href={`${APP_URL}/docs`}>Docs</Link></nav>
         <div className="nav-right">
           <button className="toggle" type="button" aria-label="Toggle theme" onClick={() => setTheme((t) => { const next = t === 'dark' ? 'light' : 'dark'; persistTheme(next); return next; })}>◐</button>
           {connected ? (
