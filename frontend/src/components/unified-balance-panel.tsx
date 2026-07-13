@@ -4,13 +4,16 @@
 // spendable across chains. Top up from any chain, spend it to fund bonds on Arc,
 // withdraw it out to any chain. EOA-only (Gateway rejects passkey/1271 sigs), so
 // wagmi is always the active signer here and we drive source-chain txs directly.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { parseUnits, type Address, type Hex } from 'viem';
 import { useConfig, useSignTypedData, useBalance } from 'wagmi';
 import { switchChain, writeContract, waitForTransactionReceipt } from '@wagmi/core';
 import { useToast } from '@/components/toast';
 import { useOnChainRefresh } from '@/hooks/use-refresh-chain-data';
+import { timeAgo } from '@/lib/relative-time';
+import { addGatewayDeposit, getGatewayDeposits, onGatewayDepositsChange, type GatewayDeposit } from '@/lib/gateway-deposits';
 import { useTxFlow, type FlowStep } from '@/components/tx-flow';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
@@ -61,15 +64,44 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
   const total = bal ? Number(bal.totalUsdc) : 0;
   const pending = bal ? Number(bal.pendingUsdc) : 0;
 
-  // While a deposit is confirming, poll so the balance credits itself on
-  // finality - no manual refresh. The effect re-runs (and clears) when pending
-  // hits 0. Circle finalizes in a few min (up to ~15 on Ethereum).
+  // Locally-tracked top-up deposits (reliable "confirming" state; see
+  // lib/gateway-deposits). Synced from localStorage + across instances.
+  const [deposits, setDeposits] = useState<GatewayDeposit[]>([]);
+  const [showRecents, setShowRecents] = useState(false);
   useEffect(() => {
-    if (pending <= 0) return;
+    const sync = () => setDeposits(getGatewayDeposits(address));
+    sync();
+    return onGatewayDepositsChange(sync);
+  }, [address]);
+
+  const availFor = useCallback(
+    (chainKey: string) => Number(bal?.byChain.find((c) => c.key === chainKey)?.balanceUsdc ?? 0),
+    [bal],
+  );
+  // A deposit is credited once that chain's available balance has risen to cover
+  // it (baseline snapshot + amount). Until then it's confirming.
+  const isCredited = useCallback(
+    (d: GatewayDeposit) => availFor(d.chainKey) >= d.availableAtDeposit + d.amountUsdc - 0.01,
+    [availFor],
+  );
+  const pendingDeposits = useMemo(() => deposits.filter((d) => !isCredited(d)), [deposits, isCredited]);
+  const pendingByChain = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const d of pendingDeposits) m.set(d.chainKey, (m.get(d.chainKey) ?? 0) + d.amountUsdc);
+    return m;
+  }, [pendingDeposits]);
+  const trackedPendingTotal = useMemo(() => pendingDeposits.reduce((s, d) => s + d.amountUsdc, 0), [pendingDeposits]);
+
+  // Poll while ANY deposit is confirming (Circle's pendingBatch or our tracked
+  // ones) so the balance credits itself with no manual refresh.
+  useEffect(() => {
+    if (pending <= 0 && pendingDeposits.length === 0) return;
     const id = setInterval(load, 15_000);
     return () => clearInterval(id);
-  }, [pending, load]);
-  const funded = bal?.byChain.filter((c) => Number(c.balanceUsdc) > 0 || Number(c.pendingUsdc) > 0) ?? [];
+  }, [pending, pendingDeposits.length, load]);
+  const funded = bal?.byChain.filter(
+    (c) => Number(c.balanceUsdc) > 0 || Number(c.pendingUsdc) > 0 || (pendingByChain.get(c.key) ?? 0) > 0,
+  ) ?? [];
   // Balance held OFF Arc - what "Move to Arc" can consolidate for use in Bezant.
   const offArc = funded.filter((c) => c.key !== ARC_KEY && Number(c.balanceUsdc) > 0);
   const offArcTotal = offArc.reduce((s, c) => s + Number(c.balanceUsdc), 0);
@@ -88,24 +120,47 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
         <div className="text-xs text-muted">spendable on any chain</div>
       </div>
 
-      {/* Confirming: Circle credits deposits only after on-chain finality. */}
-      {pending > 0 && (
-        <div className="mt-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
-          <span className="font-mono font-medium">{pending.toFixed(2)} USDC</span> confirming on-chain — shows once finalized (a few min; up to ~15 on Ethereum).
-        </div>
+      {/* Compact recents affordance - opens an overlay instead of growing the
+          card. Shows a live "confirming" count while deposits finalize. */}
+      {deposits.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowRecents(true)}
+          className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted transition hover:text-fg"
+        >
+          {pendingDeposits.length > 0 ? (
+            <>
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warn opacity-70" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-warn" />
+              </span>
+              <span className="font-medium text-warn">{trackedPendingTotal.toFixed(2)} USDC confirming</span>
+            </>
+          ) : (
+            <span>Recent deposits</span>
+          )}
+          <span aria-hidden>›</span>
+        </button>
       )}
 
       {/* Per-chain Gateway balance (only chains that hold something) */}
       {funded.length > 0 && (
         <ul className="mt-3 space-y-1.5">
-          {funded.map((c) => (
-            <li key={c.key} className="flex items-center gap-2 text-sm">
-              <ChainLogo sourceKey={c.key as ChainLogoKey} className="h-4 w-4" />
-              <span className="text-fg">{c.name}</span>
-              <span className="ml-auto font-mono tabular-nums text-fg">{Number(c.balanceUsdc).toFixed(2)}</span>
-              {Number(c.pendingUsdc) > 0 && <span className="font-mono text-[11px] text-warn">+{Number(c.pendingUsdc).toFixed(2)} confirming</span>}
-            </li>
-          ))}
+          {funded.map((c) => {
+            const chainPending = Math.max(pendingByChain.get(c.key) ?? 0, Number(c.pendingUsdc));
+            return (
+              <li key={c.key} className="flex items-center gap-2 text-sm">
+                <ChainLogo sourceKey={c.key as ChainLogoKey} className="h-4 w-4" />
+                <span className="text-fg">{c.name}</span>
+                <span className="ml-auto font-mono tabular-nums text-fg">{Number(c.balanceUsdc).toFixed(2)}</span>
+                {chainPending > 0 && (
+                  <span className="rounded bg-warn/12 px-1.5 py-0.5 font-mono text-[11px] text-warn">
+                    +{chainPending.toFixed(2)} pending
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {funded.length === 0 && pending === 0 && (
@@ -139,6 +194,9 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
           sources={sources}
           onClose={() => setMode('idle')}
           onDone={load}
+          onDeposited={(chainKey, chainName, amt) =>
+            addGatewayDeposit(address, { chainKey, chainName, amountUsdc: amt, availableAtDeposit: availFor(chainKey) })
+          }
           config={config}
           txFlow={txFlow}
           toast={toast}
@@ -195,7 +253,81 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
           </ul>
         </div>
       )}
+
+      {showRecents && (
+        <RecentDepositsOverlay deposits={deposits} isCredited={isCredited} onClose={() => setShowRecents(false)} />
+      )}
     </div>
+  );
+}
+
+// Overlay listing recent top-up deposits and whether each has credited yet.
+// Portalled so it sits above the page without adding height to the card.
+function RecentDepositsOverlay({
+  deposits,
+  isCredited,
+  onClose,
+}: {
+  deposits: GatewayDeposit[];
+  isCredited: (d: GatewayDeposit) => boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end justify-center px-4 py-4 sm:items-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="bz-frame relative w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-fg">Recent deposits</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1 text-muted hover:bg-surface-2 hover:text-fg">
+            ×
+          </button>
+        </div>
+        {deposits.length === 0 ? (
+          <p className="py-4 text-center text-xs text-muted">No recent deposits.</p>
+        ) : (
+          <ul className="divide-y divide-line/70">
+            {deposits.map((d) => {
+              const credited = isCredited(d);
+              return (
+                <li key={d.id} className="flex items-center gap-2.5 py-2.5">
+                  <ChainLogo sourceKey={d.chainKey as ChainLogoKey} className="h-5 w-5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-fg">
+                      <span className="font-mono">{d.amountUsdc.toFixed(2)}</span> USDC · {d.chainName}
+                    </div>
+                    <div className="text-[11px] text-muted">{timeAgo(d.ts)}</div>
+                  </div>
+                  {credited ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-medium text-primary">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                      Credited
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warn/12 px-2 py-0.5 text-[11px] font-medium text-warn">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warn opacity-70" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-warn" />
+                      </span>
+                      Confirming
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="mt-3 text-[11px] leading-snug text-muted">
+          Deposits credit your unified balance once they finalize on the source chain — a few minutes, up to ~15 on Ethereum.
+        </p>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -226,11 +358,12 @@ function WalletRow({ chain, address }: { chain: BridgeChain; address: Address })
 
 // ── Top up: deposit USDC into Gateway on a source chain (approve + deposit) ──
 function TopUp({
-  sources, onClose, onDone, config, txFlow, toast, setBusy, busy,
+  sources, onClose, onDone, onDeposited, config, txFlow, toast, setBusy, busy,
 }: {
   sources: GatewaySource[];
   onClose: () => void;
   onDone: () => void;
+  onDeposited: (chainKey: string, chainName: string, amountUsdc: number) => void;
   config: ReturnType<typeof useConfig>;
   txFlow: ReturnType<typeof useTxFlow>;
   toast: ReturnType<typeof useToast>;
@@ -266,6 +399,7 @@ function TopUp({
       ];
       const ok = await txFlow.start({ title: `Top up ${amount} USDC from ${src.name}`, amountUsdc: amount, steps });
       if (ok) {
+        onDeposited(src.key, src.name, Number(amount)); // track as confirming until it credits
         toast.success(`Deposited ${amount} USDC — it credits your balance shortly.`);
         onDone();
         onClose();
