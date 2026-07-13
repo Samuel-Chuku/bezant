@@ -3318,6 +3318,11 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
   },
 );
 
+// Minimum settled-trade history a seller needs before the pool will advance them
+// working capital. Keeps brand-new accounts from drawing on their first bond -
+// financing is a track-record privilege. (Fee is still priced off the buyer's tier.)
+const MIN_FINANCING_TRADES = 2;
+
 // Seller draws an advance while goods are in transit (Funded phase).
 app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>(
   '/arc/trade/:id/finance',
@@ -3325,6 +3330,14 @@ app.post<{ Params: { id: string }; Body: { userId?: string; handle?: string } }>
     if (!escrowReady(reply)) return;
     const signer = requireSigner(request, reply, request.body);
     if (!signer) return;
+    // Gate: the seller must have a settled-trade track record to draw an advance.
+    const t = await getTrade(BigInt(request.params.id));
+    const sellerTrades = await passportTier(t.seller);
+    if (sellerTrades < MIN_FINANCING_TRADES) {
+      return reply.code(403).send({
+        error: `Financing needs at least ${MIN_FINANCING_TRADES} settled trades — this account has ${sellerTrades}.`,
+      });
+    }
     const tx = await runExec(signer.circle_wallet_id, requestFinancingSpec(BigInt(request.params.id)));
     return { tradeId: request.params.id, txId: tx.id, txHash: tx.txHash, state: tx.state };
   },
@@ -3375,22 +3388,27 @@ app.get<{ Params: { id: string } }>('/arc/trade/:id/financing-quote', async (req
   if (!escrowReady(reply)) return;
   const id = BigInt(request.params.id);
   const t = await getTrade(id);
-  const [tier, fBps] = await Promise.all([passportTier(t.buyer), financeBps()]);
+  const [tier, sellerTrades, fBps] = await Promise.all([passportTier(t.buyer), passportTier(t.seller), financeBps()]);
   const feeBps = await poolFeeBps(tier);
   // Financed against the escrowed deposit (so the pool is always repayable on settle).
   const gross = (t.deposit * BigInt(fBps)) / 10000n;
   const fee = (gross * BigInt(feeBps)) / 10000n;
   const net = gross - fee; // what the seller receives now
+  // The seller needs a settled-trade track record to draw (fresh accounts can't).
+  const meetsHistory = sellerTrades >= MIN_FINANCING_TRADES;
   return {
     tradeId: request.params.id,
     buyerTier: tier,
+    sellerTrades,
+    minTrades: MIN_FINANCING_TRADES,
+    meetsHistory,
     financeBps: fBps,
     feeBps,
     advanceUsdc: formatUnits(net, 6),
     grossUsdc: formatUnits(gross, 6),
     feeUsdc: formatUnits(fee, 6),
     repayUsdc: formatUnits(gross, 6), // repaid out of the settlement
-    eligible: t.status === 'Funded' && !t.financingAdvanced,
+    eligible: t.status === 'Funded' && !t.financingAdvanced && meetsHistory,
     alreadyAdvanced: t.financingAdvanced,
   };
 });

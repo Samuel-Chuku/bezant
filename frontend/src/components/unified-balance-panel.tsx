@@ -18,6 +18,7 @@ import { useTxFlow, type FlowStep } from '@/components/tx-flow';
 import { ChainLogo, type ChainLogoKey } from '@/components/chain-logo';
 import { ExternalLinkIcon } from '@/components/external-link-icon';
 import { BridgeIcon } from '@/components/bridge-icon';
+import { UsdcIcon } from '@/components/usdc-icon';
 import { BRIDGE_CHAINS, type BridgeChain } from '@/lib/bridge';
 import { truncateBalance } from '@/lib/format';
 import {
@@ -114,8 +115,9 @@ export function UnifiedBalancePanel({ address }: { address: string }) {
       </div>
 
       <div className="mt-3">
-        <div className="font-mono text-3xl font-semibold tabular-nums text-primary">
-          {bal ? total.toFixed(2) : '—'} <span className="text-sm font-normal text-muted">USDC</span>
+        <div className="flex items-center gap-2 font-mono text-3xl font-semibold tabular-nums text-primary">
+          <span>{bal ? total.toFixed(2) : '—'} <span className="text-sm font-normal text-muted">USDC</span></span>
+          <UsdcIcon className="h-6 w-6 shrink-0" />
         </div>
         <div className="text-xs text-muted">spendable on any chain</div>
       </div>

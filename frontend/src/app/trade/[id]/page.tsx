@@ -640,7 +640,32 @@ export default function TradeDetailPage() {
                 </div>
                 {!trade.financingAdvanced && (
                   <div className="border-t border-line pt-3">
-                    {financingQuote ? (
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <span className="text-xs font-medium text-fg">Working capital</span>
+                      <InfoDot label="Why can I draw an advance?">
+                        The financing pool fronts the seller up to{' '}
+                        <span className="text-fg">{((financingQuote?.financeBps ?? 8000) / 100).toFixed(0)}%</span> of the
+                        escrowed amount the moment the buyer funds — cash now instead of waiting out delivery. It&apos;s repaid
+                        automatically at settlement, and the fee is priced off the buyer&apos;s passport tier (a stronger buyer
+                        means a cheaper advance). Only sellers with at least{' '}
+                        <span className="text-fg">{financingQuote?.minTrades ?? 2} settled trades</span> can draw — financing is
+                        a track-record privilege.
+                      </InfoDot>
+                    </div>
+                    {financingQuote && !financingQuote.meetsHistory ? (
+                      <div className="rounded-lg border border-line bg-bg/40 p-3">
+                        <div className="flex items-center gap-2 text-sm text-fg">
+                          <LockIcon />
+                          <span>Financing locked</span>
+                        </div>
+                        <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                          The pool advances working capital only to sellers with a settled-trade track record. This account has{' '}
+                          <strong className="text-fg">{financingQuote.sellerTrades}</strong> of{' '}
+                          <strong className="text-fg">{financingQuote.minTrades}</strong> required settled trades. Complete a
+                          couple of bonds to unlock it.
+                        </p>
+                      </div>
+                    ) : financingQuote ? (
                       <div className="space-y-2">
                         <p className="text-xs text-muted">
                           Trade Officer underwriting - buyer is{' '}
@@ -808,6 +833,28 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="text-muted">{label}</span>
       <span className="text-fg">{children}</span>
     </div>
+  );
+}
+
+// Small "?" affordance with a hover/focus tooltip. Explains a mechanic inline
+// without spending vertical space. Opens on pointer hover and keyboard focus.
+function InfoDot({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        aria-label={label}
+        className="flex h-4 w-4 items-center justify-center rounded-full border border-line text-[10px] font-semibold leading-none text-muted transition hover:border-primary hover:text-primary focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      >
+        ?
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-6 z-30 w-64 rounded-lg border border-line bg-surface p-3 text-[11px] leading-relaxed text-muted opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 sm:left-1/2 sm:-translate-x-1/2"
+      >
+        {children}
+      </span>
+    </span>
   );
 }
 

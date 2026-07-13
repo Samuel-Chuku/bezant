@@ -1266,6 +1266,9 @@ export async function buildRequestFinancingUnsigned(tradeId: string): Promise<Un
 // passport tier). Read-only; the seller still signs requestFinancing to draw.
 export type FinancingQuote = {
   buyerTier: number;
+  sellerTrades: number; // seller's settled-trade count (financing eligibility)
+  minTrades: number; // settled trades required to draw an advance
+  meetsHistory: boolean; // sellerTrades >= minTrades
   financeBps: number;
   feeBps: number;
   advanceUsdc: string; // received now
